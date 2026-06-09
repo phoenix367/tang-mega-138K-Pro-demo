@@ -1,0 +1,11 @@
+#!/bin/busybox sh
+# /etc/init.d/rcK -- shutdown: stop services (reverse order), flush, remount-ro.
+for s in $(ls -r /etc/init.d/S??* 2>/dev/null) ; do
+	[ -x "$s" ] && "$s" stop
+done
+
+sync
+# Remount-ro any real filesystems; the rootfs (initramfs) and virtual fs
+# (devtmpfs/proc/sys) can't be unmounted -- silence those expected errors.
+# (RAM-only system: nothing persistent, so this is just future-proofing.)
+umount -a -r 2>/dev/null

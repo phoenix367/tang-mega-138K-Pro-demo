@@ -1,0 +1,8 @@
+# /etc/profile -- login shell environment (sourced by -/bin/sh).
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+export TERM=linux
+export PS1='\u@\h:\w\$ '
+umask 022
+
+alias ll='ls -la'
+echo "Welcome to $(hostname) -- Gowin AE350 RISC-V Linux."

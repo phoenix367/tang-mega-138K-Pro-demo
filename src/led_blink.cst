@@ -1,0 +1,18 @@
+// Physical constraints for led_blink on the Tang Mega 138K Pro
+// (GW5AST-138B, gw5ast138b-007). Pin locations taken from the board's
+// official examples (TangMega-138KPro-example: led/ and key_led/).
+//
+//   clk    P16 - 50 MHz system clock
+//   rst_n  K16 - reset key (active-low, pull-up)
+//   led    J14 - on-board LED 0 (active-low on this board)
+//
+// The board has 6 user LEDs: led0..led5 = J14, R26, L20, M25, N21, N23.
+
+IO_LOC "clk" P16;
+IO_PORT "clk" IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+
+IO_LOC "rst_n" K16;
+IO_PORT "rst_n" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;
+
+IO_LOC "led" J14;
+IO_PORT "led" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;

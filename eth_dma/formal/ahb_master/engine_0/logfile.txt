@@ -1,0 +1,5 @@
+##   0:00:00  Solver: z3
+##   0:00:00  Checking assumptions in step 0..
+##   0:01:00  waiting for solver (1 minute)
+##   0:05:00  waiting for solver (5 minutes)
+##   0:10:00  waiting for solver (10 minutes)

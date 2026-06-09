@@ -1,0 +1,7 @@
+#!/bin/sh
+# Minimal sudo->doas shim (busybox has no sudo; this maps the common forms).
+#   sudo CMD [args]   ==  doas CMD [args]
+#   sudo -s           ==  doas -s        (root shell)
+#   sudo -u USER CMD   ==  doas -u USER CMD
+# For full semantics use doas directly:  doas [-Lns] [-u user] command
+exec /usr/bin/doas "$@"

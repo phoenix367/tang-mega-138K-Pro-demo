@@ -1,0 +1,15 @@
+SBY  0:18:38 [formal/ahb_master] Removing directory '/home/ivan/projects/mega_138K_test/eth_dma/formal/ahb_master'.
+SBY  0:18:38 [formal/ahb_master] Copy '/home/ivan/projects/mega_138K_test/eth_dma/rtl/ahb_master.v' to '/home/ivan/projects/mega_138K_test/eth_dma/formal/ahb_master/src/ahb_master.v'.
+SBY  0:18:38 [formal/ahb_master] engine_0: smtbmc z3
+SBY  0:18:38 [formal/ahb_master] base: starting process "cd formal/ahb_master/src; yosys -ql ../model/design.log ../model/design.ys"
+SBY  0:18:38 [formal/ahb_master] base: finished (returncode=0)
+SBY  0:18:38 [formal/ahb_master] prep: starting process "cd formal/ahb_master/model; yosys -ql design_prep.log design_prep.ys"
+SBY  0:18:38 [formal/ahb_master] prep: finished (returncode=0)
+SBY  0:18:38 [formal/ahb_master] smt2: starting process "cd formal/ahb_master/model; yosys -ql design_smt2.log design_smt2.ys"
+SBY  0:18:38 [formal/ahb_master] smt2: finished (returncode=0)
+SBY  0:18:38 [formal/ahb_master] engine_0: starting process "cd formal/ahb_master; yosys-smtbmc -s z3 --presat --noprogress -t 24  --append 0 --dump-vcd engine_0/trace.vcd --dump-yw engine_0/trace.yw --dump-vlogtb engine_0/trace_tb.v --dump-smtc engine_0/trace.smtc model/design_smt2.smt2"
+SBY  0:18:38 [formal/ahb_master] engine_0: ##   0:00:00  Solver: z3
+SBY  0:18:38 [formal/ahb_master] engine_0: ##   0:00:00  Checking assumptions in step 0..
+SBY  0:19:38 [formal/ahb_master] engine_0: ##   0:01:00  waiting for solver (1 minute)
+SBY  0:23:38 [formal/ahb_master] engine_0: ##   0:05:00  waiting for solver (5 minutes)
+SBY  0:28:38 [formal/ahb_master] engine_0: ##   0:10:00  waiting for solver (10 minutes)

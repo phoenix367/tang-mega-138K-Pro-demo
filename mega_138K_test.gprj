@@ -1,0 +1,34 @@
+<?xml version="1" encoding="UTF-8"?>
+<!DOCTYPE gowin-fpga-project>
+<Project>
+    <Template>FPGA</Template>
+    <Version>5</Version>
+    <Device name="GW5AST-138B" pn="GW5AST-LV138FPG676AC1/I0">gw5ast138b-007</Device>
+    <FileList>
+        <File path="src/ae350_demo.v" type="file.verilog" enable="1"/>
+        <File path="src/apb_sd_host/apb_sd_host.v" type="file.verilog" enable="0"/>
+        <File path="src/apb_spi/apb_spi.v" type="file.verilog" enable="0"/>
+        <File path="src/ddr3_memory_interface/ddr3_memory_interface.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_pll/sd_pll.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_pll/sd_pll_mod.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_pll_ae350/gowin_pll_ae350.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_pll_ddr3/gowin_pll_ddr3.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_pll_eth/gowin_pll_eth.v" type="file.verilog" enable="1"/>
+        <File path="src/gw_ahb_ddr3.v" type="file.verilog" enable="1"/>
+        <File path="src/gw_ahb_ddr3_top.v" type="file.verilog" enable="1"/>
+        <File path="src/gw_ahb_ethernet.v" type="file.verilog" enable="1"/>
+        <File path="src/gw_ahb_ethernet_top.v" type="file.verilog" enable="1"/>
+        <File path="src/key_debounce.v" type="file.verilog" enable="1"/>
+        <File path="src/led_blink.v" type="file.verilog" enable="0"/>
+        <File path="src/pll_init.v" type="file.verilog" enable="1"/>
+        <File path="src/riscv_ae350_soc/riscv_ae350_soc.v" type="file.verilog" enable="1"/>
+        <File path="src/sd_controller/sd.v" type="file.verilog" enable="0"/>
+        <File path="src/sd_controller/sd_top.v" type="file.verilog" enable="0"/>
+        <File path="src/spi_flash_interface/spi_flash_interface.v" type="file.verilog" enable="0"/>
+        <File path="src/triple_speed_ethernet_mac/triple_speed_ethernet_mac.v" type="file.verilog" enable="1"/>
+        <File path="src/ae350_demo.cst" type="file.cst" enable="1"/>
+        <File path="src/led_blink.cst" type="file.cst" enable="0"/>
+        <File path="src/ae350_demo.sdc" type="file.sdc" enable="1"/>
+        <File path="src/led_blink.sdc" type="file.sdc" enable="0"/>
+    </FileList>
+</Project>

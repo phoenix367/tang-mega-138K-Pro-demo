@@ -1,0 +1,7 @@
+# /etc/fstab -- mounted by `mount -a` in /etc/init.d/rcS.
+# <device>   <mountpoint>  <type>     <options>                <dump> <pass>
+proc         /proc         proc       defaults                 0      0
+sysfs        /sys          sysfs      defaults                 0      0
+devtmpfs     /dev          devtmpfs   defaults                 0      0
+tmpfs        /tmp          tmpfs      mode=1777,nosuid,nodev   0      0
+tmpfs        /run          tmpfs      mode=0755,nosuid,nodev   0      0
