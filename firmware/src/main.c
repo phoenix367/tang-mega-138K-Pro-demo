@@ -395,9 +395,13 @@ static int dma_selftest(void)
 		txh[0] = len;                                  /* TX descriptor header = length */
 		for (i = 0; i < len; i++) txd[i] = (i < 6) ? 0xFF : (uint8_t)(0x10 + i);
 
-		eth_mdio_write(ETH_PHY_ADDR, 0, 0x4140);       /* BMCR: loopback + 1000M/FD, AN off */
-		ETH_REG(ETH_MODE) = ETH_MODE_1000_FD;
+		eth_mdio_write(ETH_PHY_ADDR, 0, 0x6100);       /* BMCR: loopback + 100M/FD, AN off */
+		ETH_REG(ETH_MODE) = ETH_MODE_100_FD;
 		eth_busy_wait(8000000);                        /* let the PHY loopback settle */
+
+		{ uint32_t bmsr = eth_mdio_read(ETH_PHY_ADDR, 1);
+		  bmsr = eth_mdio_read(ETH_PHY_ADDR, 1);       /* read twice: link bit is latch-low */
+		  printf(" [3] PHY BMSR=%04x link=%u\r\n", (unsigned)bmsr, (unsigned)((bmsr >> 2) & 1)); }
 
 		ae350_dma_writeback_range((unsigned long)txb, ETH_BUF_SIZE);  /* flush TX to DRAM */
 
@@ -406,9 +410,9 @@ static int dma_selftest(void)
 
 		{ uint32_t to = 8000000; while (ETH_REG(ETH_RX_HEAD) == 0 && --to) ; }
 
-		printf(" [3] tx_head=%u rx_head=%u drop=%u\r\n",
-		       (unsigned)ETH_REG(ETH_TX_HEAD), (unsigned)ETH_REG(ETH_RX_HEAD),
-		       (unsigned)ETH_REG(ETH_RX_DROP));
+		printf(" [3] tx_fetch=%u tx_head=%u rx_head=%u drop=%u\r\n",
+		       (unsigned)ETH_REG(ETH_TX_FETCH), (unsigned)ETH_REG(ETH_TX_HEAD),
+		       (unsigned)ETH_REG(ETH_RX_HEAD), (unsigned)ETH_REG(ETH_RX_DROP));
 
 		if (ETH_REG(ETH_RX_HEAD) == 0) {
 			printf("     no RX frame (PHY loopback / link not up) : FAIL\r\n");
