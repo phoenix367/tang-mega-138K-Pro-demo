@@ -30,6 +30,7 @@
 #define ETH_MODE       0x60   /* [1:0] 0=10 1=100 2=1000M, [2] full-duplex   */
 #define ETH_TX_DBG     0x70   /* [0] TX ahb_master busy, [31:16] cmd_done cnt */
 #define ETH_RX_DBG     0x74   /* [0] RX ahb_master busy, [31:16] cmd_done cnt */
+#define ETH_EXTM_DBG   0x78   /* [3:0] {hresp, hreadyout, htrans-active, hsel}  */
 
 /* CTRL bits */
 #define ETH_CTRL_RX_EN (1u << 0)

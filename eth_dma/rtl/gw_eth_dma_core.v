@@ -47,7 +47,9 @@ module gw_eth_dma_core (
     input  wire [15:0] miim_rddata, input wire miim_rddata_valid, input wire miim_busy,
     // status
     output wire        irq,
-    output wire [2:0]  eth_mode
+    output wire [2:0]  eth_mode,
+    // debug: EXTM handshake probe {hresp,hreadyout,htrans1,hsel} (from ae350_demo)
+    input  wire [3:0]  dbg_extm
 );
     wire bus_rstn;
     Reset_Synchronizer #(.EXTRA_DEPTH(0), .RESET_ACTIVE_STATE(0)) rs (
@@ -72,7 +74,8 @@ module gw_eth_dma_core (
         .miim_phyad(miim_phyad), .miim_regad(miim_regad), .miim_wrdata(miim_wrdata),
         .miim_wren(miim_wren), .miim_rden(miim_rden), .miim_rddata(miim_rddata),
         .miim_rddata_valid(miim_rddata_valid), .miim_busy(miim_busy), .eth_mode(eth_mode),
-        .rx_busy(m0_busy), .tx_busy(m1_busy), .rx_done(rx_dbg_done), .tx_done(tx_dbg_done)
+        .rx_busy(m0_busy), .tx_busy(m1_busy), .rx_done(rx_dbg_done), .tx_done(tx_dbg_done),
+        .dbg_extm(dbg_extm)
     );
 
     rx_path u_rx (

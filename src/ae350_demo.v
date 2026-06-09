@@ -50,7 +50,8 @@ module ae350_demo_top
     input  RGMII_RX_CTL,
     input  [3:0] RGMII_RXD,
     output MDC,
-    inout  MDIO
+    inout  MDIO,
+    output [3:0] DBG            // EXTM handshake probe: {hresp,hreadyout,htrans1,hsel}
 );
 
 
@@ -172,6 +173,11 @@ assign tx_pause_source_addr = 48'b0;
 assign eth_hresp[1]         = 1'b0;
 
 assign eth_rstn = EXTS_HRSTN;
+
+// EXTM handshake probe -> debug pins (and CSR EXTM_DBG): is the SoC EXTM
+// responding to the DMA's AHB read?  {hresp, hreadyout, htrans-active, hsel}
+wire [3:0] dbg_extm = {extm_hresp, extm_hreadyout, extm_htrans[1], extm_hsel};
+assign DBG = dbg_extm;
 
 // Dedicated Ethernet PLL: clkout1 = 125 MHz (GTX), clkout3 = 25 MHz (PHY ref).
 // (Same Gowin_PLL IP as the SDK ae350_ext_ethernet example; VCO 1000 MHz.
@@ -421,7 +427,8 @@ gw_eth_dma_core u_gw_eth_dma_core
     .miim_rddata_valid(miim_rddata_valid), .miim_busy(miim_busy),
     // status
     .irq(intr_ethernet),
-    .eth_mode(eth_mode)
+    .eth_mode(eth_mode),
+    .dbg_extm(dbg_extm)
 );
 
 // Gowin AHBBusArbiter IP (src/gowin_ahb_arbiter): fixed priority master0(RX) > master1(TX).

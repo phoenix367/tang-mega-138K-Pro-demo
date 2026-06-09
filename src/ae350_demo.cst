@@ -156,4 +156,8 @@ IO_LOC "RGMII_RXD[1]"  C26;
 IO_LOC "RGMII_RXD[2]"  D26;
 IO_LOC "RGMII_RXD[3]"  E26;
 IO_LOC "MDC"           K23;
-IO_LOC "MDIO"          K22;
+IO_LOC "MDIO"          K22;//EXTM handshake debug probe (logic analyzer): {hresp,hreadyout,htrans1,hsel}
+IO_LOC "DBG[0]" U16;
+IO_LOC "DBG[1]" U15;
+IO_LOC "DBG[2]" W21;
+IO_LOC "DBG[3]" P21;

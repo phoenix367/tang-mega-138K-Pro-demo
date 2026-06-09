@@ -425,6 +425,10 @@ static int dma_selftest(void)
 		  printf(" [3] TX ahb busy=%u cmd_done=%u | RX ahb busy=%u cmd_done=%u\r\n",
 		         (unsigned)(td & 1), (unsigned)(td >> 16),
 		         (unsigned)(rdv & 1), (unsigned)(rdv >> 16)); }
+		{ uint32_t ed = ETH_REG(ETH_EXTM_DBG);
+		  printf(" [3] EXTM hsel=%u htrans=%u hreadyout=%u hresp=%u\r\n",
+		         (unsigned)(ed & 1), (unsigned)((ed >> 1) & 1),
+		         (unsigned)((ed >> 2) & 1), (unsigned)((ed >> 3) & 1)); }
 
 		if (ETH_REG(ETH_RX_HEAD) == 0) {
 			printf("     no RX frame (PHY loopback / link not up) : FAIL\r\n");

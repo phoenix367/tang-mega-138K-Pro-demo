@@ -69,7 +69,8 @@ module csr (
     input  wire        rx_busy,
     input  wire        tx_busy,
     input  wire        rx_done,         // ahb_master cmd_done pulse (RX)
-    input  wire        tx_done          // ahb_master cmd_done pulse (TX)
+    input  wire        tx_done,         // ahb_master cmd_done pulse (TX)
+    input  wire [3:0]  dbg_extm         // EXTM handshake {hresp,hreadyout,htrans1,hsel}
 );
     assign hready = 1'b1;
     assign hresp  = 1'b0;
@@ -154,6 +155,7 @@ module csr (
             6'h18: rd = {29'b0, eth_mode};
             6'h1C: rd = {tx_done_cnt, 15'b0, tx_busy};   // 0x70 TX_DBG
             6'h1D: rd = {rx_done_cnt, 15'b0, rx_busy};   // 0x74 RX_DBG
+            6'h1E: rd = {28'b0, dbg_extm};               // 0x78 EXTM_DBG
             default: rd = 32'h0;
         endcase
     end
