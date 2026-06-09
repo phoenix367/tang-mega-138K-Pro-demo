@@ -6,9 +6,37 @@
     <Device name="GW5AST-138B" pn="GW5AST-LV138FPG676AC1/I0">gw5ast138b-007</Device>
     <FileList>
         <File path="src/ae350_demo.v" type="file.verilog" enable="1"/>
-        <File path="src/apb_sd_host/apb_sd_host.v" type="file.verilog" enable="0"/>
+        <File path="eth_dma/rtl/gw_eth_dma_core.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/rtl/rx_path.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/rtl/tx_path.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/rtl/rx_capture.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/rtl/rx_ring_writer.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/rtl/tx_unpack.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/rtl/tx_ring_reader.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/rtl/cdc_fifo_reset.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/rtl/ahb_master.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/rtl/csr.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/rtl/extm_bridge.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/lib/Adder_Subtractor_Binary.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/lib/CarryIn_Binary.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/lib/CDC_Bit_Synchronizer.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/lib/CDC_FIFO_Buffer.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/lib/CDC_Word_Synchronizer.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/lib/Counter_Binary.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/lib/Pipeline_Half_Buffer.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/lib/Pipeline_to_Pulse.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/lib/Pulse_Generator.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/lib/Pulse_Latch.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/lib/Pulse_to_Pipeline.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/lib/RAM_Simple_Dual_Port_Dual_Clock.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/lib/Register_Toggle.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/lib/Register.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/lib/Reset_Synchronizer.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/lib/Width_Adjuster.v" type="file.verilog" enable="1"/>
+        <File path="src/apb_sd_host/apb_sd_host.v" type="file.verilog" enable="1"/>
         <File path="src/apb_spi/apb_spi.v" type="file.verilog" enable="0"/>
         <File path="src/ddr3_memory_interface/ddr3_memory_interface.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_ahb_arbiter/eth_ahb_arbiter.v" type="file.verilog" enable="1"/>
         <File path="src/gowin_pll/sd_pll.v" type="file.verilog" enable="1"/>
         <File path="src/gowin_pll/sd_pll_mod.v" type="file.verilog" enable="1"/>
         <File path="src/gowin_pll_ae350/gowin_pll_ae350.v" type="file.verilog" enable="1"/>
@@ -22,9 +50,9 @@
         <File path="src/led_blink.v" type="file.verilog" enable="0"/>
         <File path="src/pll_init.v" type="file.verilog" enable="1"/>
         <File path="src/riscv_ae350_soc/riscv_ae350_soc.v" type="file.verilog" enable="1"/>
-        <File path="src/sd_controller/sd.v" type="file.verilog" enable="0"/>
-        <File path="src/sd_controller/sd_top.v" type="file.verilog" enable="0"/>
-        <File path="src/spi_flash_interface/spi_flash_interface.v" type="file.verilog" enable="0"/>
+        <File path="src/sd_controller/sd.v" type="file.verilog" enable="1"/>
+        <File path="src/sd_controller/sd_top.v" type="file.verilog" enable="1"/>
+        <File path="src/spi_flash_interface/spi_flash_interface.v" type="file.verilog" enable="1"/>
         <File path="src/triple_speed_ethernet_mac/triple_speed_ethernet_mac.v" type="file.verilog" enable="1"/>
         <File path="src/ae350_demo.cst" type="file.cst" enable="1"/>
         <File path="src/led_blink.cst" type="file.cst" enable="0"/>

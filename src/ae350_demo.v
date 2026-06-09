@@ -144,6 +144,33 @@ wire [15:0] miim_wrdata, miim_rddata;
 wire miim_wren, miim_rden, miim_rddata_valid, miim_busy;
 wire mdio_in, mdio_out, mdio_oen;
 
+// gw_eth_dma: CSR on EXTS; two AHB masters -> arbiter -> extm_bridge -> EXTM(64-bit).
+wire [2:0]  eth_mode;
+wire [31:0] m0_haddr, m0_hwdata, m0_hrdata, m1_haddr, m1_hwdata, m1_hrdata;
+wire [1:0]  m0_htrans, m1_htrans;
+wire        m0_hwrite, m0_hready, m0_busy, m1_hwrite, m1_hready, m1_busy;
+wire [1:0]  m0_hresp, m1_hresp;        // Gowin arbiter HRESP is 2-bit
+wire [2:0]  m0_hsize, m0_hburst, m1_hsize, m1_hburst;
+wire [31:0] arb_haddr, arb_hwdata, arb_hrdata;
+wire [1:0]  arb_htrans;
+wire        arb_hwrite, arb_hready, arb_hresp, arb_active;
+wire [2:0]  arb_hsize, arb_hburst;
+wire [31:0] extm_haddr;   wire [1:0] extm_htrans;  wire extm_hwrite;
+wire [2:0]  extm_hsize, extm_hburst;   wire [3:0] extm_hprot;
+wire [63:0] extm_hwdata, extm_hrdata;
+wire        extm_hsel, extm_hready, extm_hreadyout, extm_hresp;
+
+// MAC speed/duplex from the CSR eth_mode (00=10M, 01=100M, 10=1000M; [2]=full-duplex)
+assign speedis1000   = (eth_mode[1:0] == 2'b10);
+assign speedis10     = (eth_mode[1:0] == 2'b00);
+assign duplex_status = eth_mode[2];
+// MAC TX-side inputs the DMA engine does not drive
+assign tx_mac_error         = 1'b0;
+assign tx_pause_req         = 1'b0;
+assign tx_pause_val         = 16'b0;
+assign tx_pause_source_addr = 48'b0;
+assign eth_hresp[1]         = 1'b0;
+
 assign eth_rstn = EXTS_HRSTN;
 
 // Dedicated Ethernet PLL: clkout1 = 125 MHz (GTX), clkout3 = 25 MHz (PHY ref).
@@ -244,19 +271,19 @@ RiscV_AE350_SOC_Top u_RiscV_AE350_SOC_Top
     .EXTS_HWRITE(EXTS_HWRITE),
     .EXTS_HCLK(EXTS_HCLK),
     .EXTS_HRSTN(EXTS_HRSTN),
-    // External AHB master port - unused (no transaction: HSEL/HTRANS low)
-    .EXTM_HADDR(32'b0),
-    .EXTM_HBURST(3'b0),
-    .EXTM_HPROT(4'b0),
-    .EXTM_HREADY(1'b1),
-    .EXTM_HSEL(1'b0),
-    .EXTM_HSIZE(3'b0),
-    .EXTM_HTRANS(2'b0),
-    .EXTM_HWDATA(64'b0),
-    .EXTM_HWRITE(1'b0),
-    .EXTM_HRDATA(),
-    .EXTM_HREADYOUT(),
-    .EXTM_HRESP(),
+    // External AHB master port -> gw_eth_dma DMA (via extm_bridge 32->64)
+    .EXTM_HADDR(extm_haddr),
+    .EXTM_HBURST(extm_hburst),
+    .EXTM_HPROT(extm_hprot),
+    .EXTM_HREADY(extm_hready),
+    .EXTM_HSEL(extm_hsel),
+    .EXTM_HSIZE(extm_hsize),
+    .EXTM_HTRANS(extm_htrans),
+    .EXTM_HWDATA(extm_hwdata),
+    .EXTM_HWRITE(extm_hwrite),
+    .EXTM_HRDATA(extm_hrdata),
+    .EXTM_HREADYOUT(extm_hreadyout),
+    .EXTM_HRESP(extm_hresp),
     // External APB master -> apb_sd_top (SD-SPI HW controller @ CPU 0xF8000000)
     // External APB master - unused (SD removed)
     .APB_PRDATA(32'b0),
@@ -353,57 +380,82 @@ gw_ahb_ddr3_top u_gw_ahb_ddr3_top
 // Ethernet MAC (Gowin Triple-Speed) + AHB register/stream bridge.
 // EXTS_* (SoC AHB master) <-> gw_ahb_ethernet_top <-> Triple_Speed MAC <-> RGMII.
 // ---------------------------------------------------------------------------
-gw_ahb_ethernet_top u_gw_ahb_ethernet_top
+gw_eth_dma_core u_gw_eth_dma_core
 (
-    .rstn(eth_rstn),
-    .tx_mac_clk(tx_mac_clk),
-    .tx_mac_valid(tx_mac_valid),
-    .tx_mac_data(tx_mac_data),
-    .tx_mac_last(tx_mac_last),
-    .tx_mac_error(tx_mac_error),
-    .tx_mac_ready(tx_mac_ready),
-    .tx_collision(tx_collision),
-    .tx_retransmit(tx_retransmit),
-    .tx_pause_req(tx_pause_req),
-    .tx_pause_val(tx_pause_val),
-    .tx_pause_source_addr(tx_pause_source_addr),
-    .tx_statistics_valid(tx_statistics_valid),
-    .tx_statistics_vector(tx_statistics_vector),
+    // MAC RX stream (from the TSE MAC)
     .rx_mac_clk(rx_mac_clk),
     .rx_mac_valid(rx_mac_valid),
     .rx_mac_data(rx_mac_data),
     .rx_mac_last(rx_mac_last),
     .rx_mac_error(rx_mac_error),
-    .rx_statistics_valid(rx_statistics_valid),
-    .rx_statistics_vector(rx_statistics_vector),
-    .rx_pause_req(rx_pause_req),
-    .rx_pause_val(rx_pause_val),
-    .clk(EXTS_HCLK),
-    .miim_phyad(miim_phyad),
-    .miim_regad(miim_regad),
-    .miim_wrdata(miim_wrdata),
-    .miim_wren(miim_wren),
-    .miim_rden(miim_rden),
-    .miim_rddata(miim_rddata),
-    .miim_rddata_valid(miim_rddata_valid),
-    .miim_busy(miim_busy),
-    .hclk(EXTS_HCLK),
-    .hresetn(EXTS_HRSTN),
-    .haddr(EXTS_HADDR),
-    .htrans(EXTS_HTRANS),
-    .hwrite(EXTS_HWRITE),
-    .hsize(EXTS_HSIZE),
-    .hburst(EXTS_HBURST),
-    .hwdata(EXTS_HWDATA),
-    .hsel(EXTS_HSEL),
-    .hreadyin(EXTS_HREADY),
-    .hrdata(EXTS_HRDATA),
-    .hresp(eth_hresp),
-    .hready(EXTS_HREADY),
-    .eth_int(intr_ethernet),
-    .speedis1000(speedis1000),
-    .speedis10(speedis10),
-    .duplex_status(duplex_status)
+    // MAC TX stream (to the TSE MAC)
+    .tx_mac_clk(tx_mac_clk),
+    .tx_mac_valid(tx_mac_valid),
+    .tx_mac_data(tx_mac_data),
+    .tx_mac_last(tx_mac_last),
+    .tx_mac_ready(tx_mac_ready),
+    // bus domain (EXTS register clock)
+    .bus_clk(EXTS_HCLK),
+    .arst_n(EXTS_HRSTN),
+    // EXTS slave: CSR register block @ 0xE8000000
+    .s_haddr(EXTS_HADDR),
+    .s_htrans(EXTS_HTRANS),
+    .s_hwrite(EXTS_HWRITE),
+    .s_hsel(EXTS_HSEL),
+    .s_hready_in(EXTS_HREADY),
+    .s_hwdata(EXTS_HWDATA),
+    .s_hrdata(EXTS_HRDATA),
+    .s_hready(EXTS_HREADY),
+    .s_hresp(eth_hresp[0]),
+    // EXTM master 0 (RX write)
+    .m0_haddr(m0_haddr), .m0_htrans(m0_htrans), .m0_hwrite(m0_hwrite), .m0_hsize(m0_hsize),
+    .m0_hburst(m0_hburst), .m0_hwdata(m0_hwdata), .m0_hrdata(m0_hrdata), .m0_hready(m0_hready),
+    .m0_hresp(m0_hresp[0]), .m0_busy(m0_busy),
+    // EXTM master 1 (TX read)
+    .m1_haddr(m1_haddr), .m1_htrans(m1_htrans), .m1_hwrite(m1_hwrite), .m1_hsize(m1_hsize),
+    .m1_hburst(m1_hburst), .m1_hwdata(m1_hwdata), .m1_hrdata(m1_hrdata), .m1_hready(m1_hready),
+    .m1_hresp(m1_hresp[0]), .m1_busy(m1_busy),
+    // MDIO management -> TSE MAC
+    .miim_phyad(miim_phyad), .miim_regad(miim_regad), .miim_wrdata(miim_wrdata),
+    .miim_wren(miim_wren), .miim_rden(miim_rden), .miim_rddata(miim_rddata),
+    .miim_rddata_valid(miim_rddata_valid), .miim_busy(miim_busy),
+    // status
+    .irq(intr_ethernet),
+    .eth_mode(eth_mode)
+);
+
+// Gowin AHBBusArbiter IP (src/gowin_ahb_arbiter): fixed priority master0(RX) > master1(TX).
+Eth_AHB_Arbiter_Top u_eth_ahb_arbiter
+(
+    .HCLK(EXTS_HCLK), .HRESETn(EXTS_HRSTN),
+    // master 0 = RX write
+    .MHSELS0(m0_busy), .MHADDRS0(m0_haddr), .MHTRANSS0(m0_htrans), .MHWRITES0(m0_hwrite),
+    .MHSIZES0(m0_hsize), .MHBURSTS0(m0_hburst), .MHPROTS0(4'b0011), .MHMASTERS0(4'b0),
+    .MHWDATAS0(m0_hwdata), .MHMASTLOCKS0(1'b0), .MHREADYS0(m0_hready),
+    .MHRDATAS0(m0_hrdata), .MHREADYOUTS0(m0_hready), .MHRESPS0(m0_hresp),
+    // master 1 = TX read
+    .MHSELS1(m1_busy), .MHADDRS1(m1_haddr), .MHTRANSS1(m1_htrans), .MHWRITES1(m1_hwrite),
+    .MHSIZES1(m1_hsize), .MHBURSTS1(m1_hburst), .MHPROTS1(4'b0011), .MHMASTERS1(4'b0),
+    .MHWDATAS1(m1_hwdata), .MHMASTLOCKS1(1'b0), .MHREADYS1(m1_hready),
+    .MHRDATAS1(m1_hrdata), .MHREADYOUTS1(m1_hready), .MHRESPS1(m1_hresp),
+    // shared master -> extm_bridge
+    .SHSELM0(arb_active), .SHADDRM0(arb_haddr), .SHTRANSM0(arb_htrans), .SHWRITEM0(arb_hwrite),
+    .SHSIZEM0(arb_hsize), .SHBURSTM0(arb_hburst), .SHPROTM0(), .SHMASTERM0(),
+    .SHWDATAM0(arb_hwdata), .SHMASTLOCKM0(), .SHREADYMUXM0(),
+    .SHRDATAM0(arb_hrdata), .SHREADYOUTM0(arb_hready), .SHRESPM0({1'b0, arb_hresp})
+);
+
+// 32-bit arbiter master -> 64-bit SoC EXTM slave port
+extm_bridge u_extm_bridge
+(
+    .hclk(EXTS_HCLK), .hresetn(EXTS_HRSTN),
+    .a_haddr(arb_haddr), .a_htrans(arb_htrans), .a_hwrite(arb_hwrite), .a_hsize(arb_hsize),
+    .a_hburst(arb_hburst), .a_hwdata(arb_hwdata), .a_active(arb_active),
+    .a_hrdata(arb_hrdata), .a_hready(arb_hready), .a_hresp(arb_hresp),
+    .extm_haddr(extm_haddr), .extm_htrans(extm_htrans), .extm_hwrite(extm_hwrite),
+    .extm_hsize(extm_hsize), .extm_hburst(extm_hburst), .extm_hprot(extm_hprot),
+    .extm_hwdata(extm_hwdata), .extm_hsel(extm_hsel), .extm_hready(extm_hready),
+    .extm_hrdata(extm_hrdata), .extm_hreadyout(extm_hreadyout), .extm_hresp(extm_hresp)
 );
 
 Triple_Speed_Ethernet_MAC_Top u_Triple_Speed_Ethernet_MAC_Top

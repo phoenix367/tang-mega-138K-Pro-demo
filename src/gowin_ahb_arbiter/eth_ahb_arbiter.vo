@@ -1,0 +1,3651 @@
+//Copyright (C)2014-2026 Gowin Semiconductor Corporation.
+//All rights reserved.
+//File Title: Post-PnR Verilog Simulation Model file
+//Tool Version: V1.9.12.02_SP2
+//Created Time: Wed Jun 10 02:07:49 2026
+
+`timescale 100 ps/100 ps
+module Eth_AHB_Arbiter_Top(
+	HCLK,
+	HRESETn,
+	MHSELS0,
+	MHADDRS0,
+	MHTRANSS0,
+	MHWRITES0,
+	MHSIZES0,
+	MHBURSTS0,
+	MHPROTS0,
+	MHMASTERS0,
+	MHWDATAS0,
+	MHMASTLOCKS0,
+	MHREADYS0,
+	MHSELS1,
+	MHADDRS1,
+	MHTRANSS1,
+	MHWRITES1,
+	MHSIZES1,
+	MHBURSTS1,
+	MHPROTS1,
+	MHMASTERS1,
+	MHWDATAS1,
+	MHMASTLOCKS1,
+	MHREADYS1,
+	SHRDATAM0,
+	SHREADYOUTM0,
+	SHRESPM0,
+	MHRDATAS0,
+	MHREADYOUTS0,
+	MHRESPS0,
+	MHRDATAS1,
+	MHREADYOUTS1,
+	MHRESPS1,
+	SHSELM0,
+	SHADDRM0,
+	SHTRANSM0,
+	SHWRITEM0,
+	SHSIZEM0,
+	SHBURSTM0,
+	SHPROTM0,
+	SHMASTERM0,
+	SHWDATAM0,
+	SHMASTLOCKM0,
+	SHREADYMUXM0
+);
+input HCLK;
+input HRESETn;
+input MHSELS0;
+input [31:0] MHADDRS0;
+input [1:0] MHTRANSS0;
+input MHWRITES0;
+input [2:0] MHSIZES0;
+input [2:0] MHBURSTS0;
+input [3:0] MHPROTS0;
+input [3:0] MHMASTERS0;
+input [31:0] MHWDATAS0;
+input MHMASTLOCKS0;
+input MHREADYS0;
+input MHSELS1;
+input [31:0] MHADDRS1;
+input [1:0] MHTRANSS1;
+input MHWRITES1;
+input [2:0] MHSIZES1;
+input [2:0] MHBURSTS1;
+input [3:0] MHPROTS1;
+input [3:0] MHMASTERS1;
+input [31:0] MHWDATAS1;
+input MHMASTLOCKS1;
+input MHREADYS1;
+input [31:0] SHRDATAM0;
+input SHREADYOUTM0;
+input [1:0] SHRESPM0;
+output [31:0] MHRDATAS0;
+output MHREADYOUTS0;
+output [1:0] MHRESPS0;
+output [31:0] MHRDATAS1;
+output MHREADYOUTS1;
+output [1:0] MHRESPS1;
+output SHSELM0;
+output [31:0] SHADDRM0;
+output [1:0] SHTRANSM0;
+output SHWRITEM0;
+output [2:0] SHSIZEM0;
+output [2:0] SHBURSTM0;
+output [3:0] SHPROTM0;
+output [3:0] SHMASTERM0;
+output [31:0] SHWDATAM0;
+output SHMASTLOCKM0;
+output SHREADYMUXM0;
+wire GND;
+wire HCLK;
+wire HRESETn;
+wire [31:0] MHADDRS0;
+wire [31:0] MHADDRS1;
+wire [2:0] MHBURSTS0;
+wire [2:0] MHBURSTS1;
+wire [3:0] MHMASTERS0;
+wire [3:0] MHMASTERS1;
+wire MHMASTLOCKS0;
+wire MHMASTLOCKS1;
+wire [3:0] MHPROTS0;
+wire [3:0] MHPROTS1;
+wire [31:0] MHRDATAS0;
+wire [31:0] MHRDATAS1;
+wire MHREADYOUTS0;
+wire MHREADYOUTS1;
+wire MHREADYS0;
+wire MHREADYS1;
+wire [1:0] MHRESPS0;
+wire [1:0] MHRESPS1;
+wire MHSELS0;
+wire MHSELS1;
+wire [2:0] MHSIZES0;
+wire [2:0] MHSIZES1;
+wire [1:0] MHTRANSS0;
+wire [1:0] MHTRANSS1;
+wire [31:0] MHWDATAS0;
+wire [31:0] MHWDATAS1;
+wire MHWRITES0;
+wire MHWRITES1;
+wire [31:0] SHADDRM0;
+wire [2:0] SHBURSTM0;
+wire [3:0] SHMASTERM0;
+wire SHMASTLOCKM0;
+wire [3:0] SHPROTM0;
+wire [31:0] SHRDATAM0;
+wire SHREADYMUXM0;
+wire SHREADYOUTM0;
+wire [1:0] SHRESPM0;
+wire SHSELM0;
+wire [2:0] SHSIZEM0;
+wire [1:0] SHTRANSM0;
+wire [31:0] SHWDATAM0;
+wire SHWRITEM0;
+wire VCC;
+wire \u_busmatrix16/RegMastlock ;
+wire \u_busmatrix16/BurstOverride ;
+wire \u_busmatrix16/Bound ;
+wire \u_busmatrix16/PendTranReg ;
+wire \u_busmatrix16/Addr0_23_1 ;
+wire \u_busmatrix16/Addr0_22_1 ;
+wire \u_busmatrix16/Addr0_21_1 ;
+wire \u_busmatrix16/Addr0_20_1 ;
+wire \u_busmatrix16/Addr0_19_1 ;
+wire \u_busmatrix16/Addr0_18_1 ;
+wire \u_busmatrix16/Addr0_17_1 ;
+wire \u_busmatrix16/Addr0_16_1 ;
+wire \u_busmatrix16/Addr0_15_1 ;
+wire \u_busmatrix16/Addr0_14_1 ;
+wire \u_busmatrix16/Addr0_13_1 ;
+wire \u_busmatrix16/Addr0_12_1 ;
+wire \u_busmatrix16/Addr0_11_1 ;
+wire \u_busmatrix16/Addr0_10_1 ;
+wire \u_busmatrix16/Addr0_9_1 ;
+wire \u_busmatrix16/Addr0_8_1 ;
+wire \u_busmatrix16/Addr0_7_1 ;
+wire \u_busmatrix16/Addr0_6_1 ;
+wire \u_busmatrix16/Addr0_5_1 ;
+wire \u_busmatrix16/Addr0_4_1 ;
+wire \u_busmatrix16/Addr0_3_1 ;
+wire \u_busmatrix16/Addr0_2_1 ;
+wire \u_busmatrix16/Addr0_1_1 ;
+wire \u_busmatrix16/Addr0_0_1 ;
+wire \u_busmatrix16/Write0_1 ;
+wire \u_busmatrix16/Size0_2_1 ;
+wire \u_busmatrix16/Size0_1_1 ;
+wire \u_busmatrix16/Size0_0_1 ;
+wire \u_busmatrix16/Prot0_3_1 ;
+wire \u_busmatrix16/Prot0_2_1 ;
+wire \u_busmatrix16/Prot0_1_1 ;
+wire \u_busmatrix16/Prot0_0_1 ;
+wire \u_busmatrix16/Master0_3_1 ;
+wire \u_busmatrix16/Master0_2_1 ;
+wire \u_busmatrix16/Master0_1_1 ;
+wire \u_busmatrix16/Master0_0_1 ;
+wire \u_busmatrix16/LoadReg ;
+wire \u_busmatrix16/n115_4 ;
+wire \u_busmatrix16/n6_6 ;
+wire \u_busmatrix16/RegMastlock_11 ;
+wire \u_busmatrix16/BurstOverride_12 ;
+wire \u_busmatrix16/Bound_13 ;
+wire \u_busmatrix16/PendTranReg_14 ;
+wire \u_busmatrix16/Addr1_23_1 ;
+wire \u_busmatrix16/Addr1_22_1 ;
+wire \u_busmatrix16/Addr1_21_1 ;
+wire \u_busmatrix16/Addr1_20_1 ;
+wire \u_busmatrix16/Addr1_19_1 ;
+wire \u_busmatrix16/Addr1_18_1 ;
+wire \u_busmatrix16/Addr1_17_1 ;
+wire \u_busmatrix16/Addr1_16_1 ;
+wire \u_busmatrix16/Addr1_15_1 ;
+wire \u_busmatrix16/Addr1_14_1 ;
+wire \u_busmatrix16/Addr1_13_1 ;
+wire \u_busmatrix16/Addr1_12_1 ;
+wire \u_busmatrix16/Addr1_11_1 ;
+wire \u_busmatrix16/Addr1_10_1 ;
+wire \u_busmatrix16/Addr1_9_1 ;
+wire \u_busmatrix16/Addr1_8_1 ;
+wire \u_busmatrix16/Addr1_7_1 ;
+wire \u_busmatrix16/Addr1_6_1 ;
+wire \u_busmatrix16/Addr1_5_1 ;
+wire \u_busmatrix16/Addr1_4_1 ;
+wire \u_busmatrix16/Addr1_3_1 ;
+wire \u_busmatrix16/Addr1_2_1 ;
+wire \u_busmatrix16/Addr1_1_1 ;
+wire \u_busmatrix16/Addr1_0_1 ;
+wire \u_busmatrix16/Write1_1 ;
+wire \u_busmatrix16/Size1_2_1 ;
+wire \u_busmatrix16/Size1_1_1 ;
+wire \u_busmatrix16/Size1_0_1 ;
+wire \u_busmatrix16/Prot1_3_1 ;
+wire \u_busmatrix16/Prot1_2_1 ;
+wire \u_busmatrix16/Prot1_1_1 ;
+wire \u_busmatrix16/Prot1_0_1 ;
+wire \u_busmatrix16/Master1_3_1 ;
+wire \u_busmatrix16/Master1_2_1 ;
+wire \u_busmatrix16/Master1_1_1 ;
+wire \u_busmatrix16/Master1_0_1 ;
+wire \u_busmatrix16/SlaveSel ;
+wire \u_busmatrix16/NoPort ;
+wire [1:0] \u_busmatrix16/RegTrans ;
+wire [31:24] \u_busmatrix16/RegAddr ;
+wire [2:0] \u_busmatrix16/RegBurst ;
+wire [1:0] \u_busmatrix16/RegTrans_0 ;
+wire [31:24] \u_busmatrix16/RegAddr_0 ;
+wire [2:0] \u_busmatrix16/RegBurst_0 ;
+wire [3:0] \u_busmatrix16/AddrInPort ;
+wire \u_busmatrix16/uInputStage0/AddrValid ;
+wire \u_busmatrix16/uInputStage0/n115_3 ;
+wire \u_busmatrix16/uInputStage0/BoundNext ;
+wire \u_busmatrix16/uInputStage0/BoundEn ;
+wire \u_busmatrix16/uInputStage0/PendTranReg_8 ;
+wire \u_busmatrix16/uInputStage0/BurstOverride_6 ;
+wire \u_busmatrix16/uInputStage0/BoundNext_4 ;
+wire \u_busmatrix16/uInputStage0/BoundNext_5 ;
+wire \u_busmatrix16/uInputStage0/BoundNext_6 ;
+wire \u_busmatrix16/uInputStage0/BoundNext_7 ;
+wire \u_busmatrix16/uInputStage0/BoundNext_8 ;
+wire \u_busmatrix16/uInputStage0/BoundNext_9 ;
+wire \u_busmatrix16/uInputStage0/BoundNext_10 ;
+wire \u_busmatrix16/uInputStage0/BoundNext_11 ;
+wire \u_busmatrix16/uInputStage0/BoundNext_12 ;
+wire \u_busmatrix16/uInputStage0/BoundNext_13 ;
+wire \u_busmatrix16/uInputStage0/BoundNext_14 ;
+wire \u_busmatrix16/uInputStage0/BoundNext_15 ;
+wire \u_busmatrix16/uInputStage0/RegWrite ;
+wire \u_busmatrix16/uInputStage0/DataValid ;
+wire [23:0] \u_busmatrix16/uInputStage0/RegAddr_0 ;
+wire [2:0] \u_busmatrix16/uInputStage0/RegSize ;
+wire [3:0] \u_busmatrix16/uInputStage0/RegProt ;
+wire [3:0] \u_busmatrix16/uInputStage0/RegMaster ;
+wire \u_busmatrix16/uInputStage1/AddrValid ;
+wire \u_busmatrix16/uInputStage1/n115_3 ;
+wire \u_busmatrix16/uInputStage1/BoundNext ;
+wire \u_busmatrix16/uInputStage1/BoundEn ;
+wire \u_busmatrix16/uInputStage1/PendTranReg_8 ;
+wire \u_busmatrix16/uInputStage1/BurstOverride_6 ;
+wire \u_busmatrix16/uInputStage1/BoundNext_4 ;
+wire \u_busmatrix16/uInputStage1/BoundNext_5 ;
+wire \u_busmatrix16/uInputStage1/BoundNext_6 ;
+wire \u_busmatrix16/uInputStage1/BoundNext_7 ;
+wire \u_busmatrix16/uInputStage1/BoundNext_8 ;
+wire \u_busmatrix16/uInputStage1/BoundNext_9 ;
+wire \u_busmatrix16/uInputStage1/BoundNext_10 ;
+wire \u_busmatrix16/uInputStage1/BoundNext_11 ;
+wire \u_busmatrix16/uInputStage1/BoundNext_12 ;
+wire \u_busmatrix16/uInputStage1/BoundNext_13 ;
+wire \u_busmatrix16/uInputStage1/BoundNext_14 ;
+wire \u_busmatrix16/uInputStage1/LoadReg ;
+wire \u_busmatrix16/uInputStage1/RegWrite ;
+wire \u_busmatrix16/uInputStage1/DataValid ;
+wire [23:0] \u_busmatrix16/uInputStage1/RegAddr_0 ;
+wire [2:0] \u_busmatrix16/uInputStage1/RegSize ;
+wire [3:0] \u_busmatrix16/uInputStage1/RegProt ;
+wire [3:0] \u_busmatrix16/uInputStage1/RegMaster ;
+wire \u_busmatrix16/uOutputstage0/BurstInt_2_2 ;
+wire \u_busmatrix16/uOutputstage0/BurstInt_1_2 ;
+wire \u_busmatrix16/uOutputstage0/BurstInt_0_2 ;
+wire \u_busmatrix16/uOutputstage0/Mastlock0_1 ;
+wire \u_busmatrix16/uOutputstage0/BurstInt_2_2_8 ;
+wire \u_busmatrix16/uOutputstage0/BurstInt_1_2_9 ;
+wire \u_busmatrix16/uOutputstage0/BurstInt_0_2_10 ;
+wire \u_busmatrix16/uOutputstage0/Mastlock1_1 ;
+wire \u_busmatrix16/uOutputstage0/n177_4 ;
+wire \u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ;
+wire \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_5 ;
+wire \u_busmatrix16/uOutputstage0/SHTRANSM0_d_0_5 ;
+wire \u_busmatrix16/uOutputstage0/SHTRANSM0_d_0_6 ;
+wire \u_busmatrix16/uOutputstage0/SHTRANSM0_d_1_5 ;
+wire \u_busmatrix16/uOutputstage0/SHTRANSM0_d_1_6 ;
+wire \u_busmatrix16/uOutputstage0/SHADDRM0_d_24_5 ;
+wire \u_busmatrix16/uOutputstage0/SHADDRM0_d_24_6 ;
+wire \u_busmatrix16/uOutputstage0/SHADDRM0_d_25_5 ;
+wire \u_busmatrix16/uOutputstage0/SHADDRM0_d_25_6 ;
+wire \u_busmatrix16/uOutputstage0/SHADDRM0_d_26_5 ;
+wire \u_busmatrix16/uOutputstage0/SHADDRM0_d_26_6 ;
+wire \u_busmatrix16/uOutputstage0/SHADDRM0_d_27_5 ;
+wire \u_busmatrix16/uOutputstage0/SHADDRM0_d_27_6 ;
+wire \u_busmatrix16/uOutputstage0/SHADDRM0_d_28_5 ;
+wire \u_busmatrix16/uOutputstage0/SHADDRM0_d_28_6 ;
+wire \u_busmatrix16/uOutputstage0/SHADDRM0_d_29_5 ;
+wire \u_busmatrix16/uOutputstage0/SHADDRM0_d_29_6 ;
+wire \u_busmatrix16/uOutputstage0/SHADDRM0_d_30_5 ;
+wire \u_busmatrix16/uOutputstage0/SHADDRM0_d_30_6 ;
+wire \u_busmatrix16/uOutputstage0/SHADDRM0_d_31_5 ;
+wire \u_busmatrix16/uOutputstage0/SHADDRM0_d_31_6 ;
+wire \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_6 ;
+wire \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_7 ;
+wire \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_8 ;
+wire \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_9 ;
+wire \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_10 ;
+wire \u_busmatrix16/uOutputstage0/HselLock_8 ;
+wire \u_busmatrix16/uOutputstage0/n177_6 ;
+wire \u_busmatrix16/uOutputstage0/SHSELM0_d_10 ;
+wire \u_busmatrix16/uOutputstage0/HselLock ;
+wire \u_busmatrix16/uOutputstage0/n113_31 ;
+wire \u_busmatrix16/uOutputstage0/n114_31 ;
+wire \u_busmatrix16/uOutputstage0/n115_31 ;
+wire \u_busmatrix16/uOutputstage0/n124_31 ;
+wire \u_busmatrix16/uOutputstage0/BurstCount_2_7 ;
+wire [1:0] \u_busmatrix16/uOutputstage0/DataInPort ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_6 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_0_6 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/n22_15 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/n21_14 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/n20_14 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/n19_14 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/n192_6 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/n28_6 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/NoPortNext ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_8 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_9 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_11 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/n22_16 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/n21_15 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/n20_15 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/n19_15 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/n19_16 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/n230_10 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/n230_11 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/NoPortNext_7 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_8 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_9 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_10 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_12 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_13 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_15 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_16 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/n230_12 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/n230_13 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/n230_14 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_17 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_19 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/n230_16 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_21 ;
+wire \u_busmatrix16/uOutputstage0/uOutputArb/BurstHold ;
+wire [3:0] \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount ;
+VCC VCC_cZ (
+  .V(VCC)
+);
+GND GND_cZ (
+  .G(GND)
+);
+GSR GSR (
+	.GSRI(VCC)
+);
+OBUF gowin_buf_0 (
+	.I(SHRDATAM0[0]),
+	.O(MHRDATAS0[0])
+);
+OBUF gowin_buf_1 (
+	.I(SHRDATAM0[1]),
+	.O(MHRDATAS0[1])
+);
+OBUF gowin_buf_2 (
+	.I(SHRDATAM0[2]),
+	.O(MHRDATAS0[2])
+);
+OBUF gowin_buf_3 (
+	.I(SHRDATAM0[3]),
+	.O(MHRDATAS0[3])
+);
+OBUF gowin_buf_4 (
+	.I(SHRDATAM0[4]),
+	.O(MHRDATAS0[4])
+);
+OBUF gowin_buf_5 (
+	.I(SHRDATAM0[5]),
+	.O(MHRDATAS0[5])
+);
+OBUF gowin_buf_6 (
+	.I(SHRDATAM0[6]),
+	.O(MHRDATAS0[6])
+);
+OBUF gowin_buf_7 (
+	.I(SHRDATAM0[7]),
+	.O(MHRDATAS0[7])
+);
+OBUF gowin_buf_8 (
+	.I(SHRDATAM0[8]),
+	.O(MHRDATAS0[8])
+);
+OBUF gowin_buf_9 (
+	.I(SHRDATAM0[9]),
+	.O(MHRDATAS0[9])
+);
+OBUF gowin_buf_10 (
+	.I(SHRDATAM0[10]),
+	.O(MHRDATAS0[10])
+);
+OBUF gowin_buf_11 (
+	.I(SHRDATAM0[11]),
+	.O(MHRDATAS0[11])
+);
+OBUF gowin_buf_12 (
+	.I(SHRDATAM0[12]),
+	.O(MHRDATAS0[12])
+);
+OBUF gowin_buf_13 (
+	.I(SHRDATAM0[13]),
+	.O(MHRDATAS0[13])
+);
+OBUF gowin_buf_14 (
+	.I(SHRDATAM0[14]),
+	.O(MHRDATAS0[14])
+);
+OBUF gowin_buf_15 (
+	.I(SHRDATAM0[15]),
+	.O(MHRDATAS0[15])
+);
+OBUF gowin_buf_16 (
+	.I(SHRDATAM0[16]),
+	.O(MHRDATAS0[16])
+);
+OBUF gowin_buf_17 (
+	.I(SHRDATAM0[17]),
+	.O(MHRDATAS0[17])
+);
+OBUF gowin_buf_18 (
+	.I(SHRDATAM0[18]),
+	.O(MHRDATAS0[18])
+);
+OBUF gowin_buf_19 (
+	.I(SHRDATAM0[19]),
+	.O(MHRDATAS0[19])
+);
+OBUF gowin_buf_20 (
+	.I(SHRDATAM0[20]),
+	.O(MHRDATAS0[20])
+);
+OBUF gowin_buf_21 (
+	.I(SHRDATAM0[21]),
+	.O(MHRDATAS0[21])
+);
+OBUF gowin_buf_22 (
+	.I(SHRDATAM0[22]),
+	.O(MHRDATAS0[22])
+);
+OBUF gowin_buf_23 (
+	.I(SHRDATAM0[23]),
+	.O(MHRDATAS0[23])
+);
+OBUF gowin_buf_24 (
+	.I(SHRDATAM0[24]),
+	.O(MHRDATAS0[24])
+);
+OBUF gowin_buf_25 (
+	.I(SHRDATAM0[25]),
+	.O(MHRDATAS0[25])
+);
+OBUF gowin_buf_26 (
+	.I(SHRDATAM0[26]),
+	.O(MHRDATAS0[26])
+);
+OBUF gowin_buf_27 (
+	.I(SHRDATAM0[27]),
+	.O(MHRDATAS0[27])
+);
+OBUF gowin_buf_28 (
+	.I(SHRDATAM0[28]),
+	.O(MHRDATAS0[28])
+);
+OBUF gowin_buf_29 (
+	.I(SHRDATAM0[29]),
+	.O(MHRDATAS0[29])
+);
+OBUF gowin_buf_30 (
+	.I(SHRDATAM0[30]),
+	.O(MHRDATAS0[30])
+);
+OBUF gowin_buf_31 (
+	.I(SHRDATAM0[31]),
+	.O(MHRDATAS0[31])
+);
+OBUF gowin_buf_32 (
+	.I(SHRDATAM0[0]),
+	.O(MHRDATAS1[0])
+);
+OBUF gowin_buf_33 (
+	.I(SHRDATAM0[1]),
+	.O(MHRDATAS1[1])
+);
+OBUF gowin_buf_34 (
+	.I(SHRDATAM0[2]),
+	.O(MHRDATAS1[2])
+);
+OBUF gowin_buf_35 (
+	.I(SHRDATAM0[3]),
+	.O(MHRDATAS1[3])
+);
+OBUF gowin_buf_36 (
+	.I(SHRDATAM0[4]),
+	.O(MHRDATAS1[4])
+);
+OBUF gowin_buf_37 (
+	.I(SHRDATAM0[5]),
+	.O(MHRDATAS1[5])
+);
+OBUF gowin_buf_38 (
+	.I(SHRDATAM0[6]),
+	.O(MHRDATAS1[6])
+);
+OBUF gowin_buf_39 (
+	.I(SHRDATAM0[7]),
+	.O(MHRDATAS1[7])
+);
+OBUF gowin_buf_40 (
+	.I(SHRDATAM0[8]),
+	.O(MHRDATAS1[8])
+);
+OBUF gowin_buf_41 (
+	.I(SHRDATAM0[9]),
+	.O(MHRDATAS1[9])
+);
+OBUF gowin_buf_42 (
+	.I(SHRDATAM0[10]),
+	.O(MHRDATAS1[10])
+);
+OBUF gowin_buf_43 (
+	.I(SHRDATAM0[11]),
+	.O(MHRDATAS1[11])
+);
+OBUF gowin_buf_44 (
+	.I(SHRDATAM0[12]),
+	.O(MHRDATAS1[12])
+);
+OBUF gowin_buf_45 (
+	.I(SHRDATAM0[13]),
+	.O(MHRDATAS1[13])
+);
+OBUF gowin_buf_46 (
+	.I(SHRDATAM0[14]),
+	.O(MHRDATAS1[14])
+);
+OBUF gowin_buf_47 (
+	.I(SHRDATAM0[15]),
+	.O(MHRDATAS1[15])
+);
+OBUF gowin_buf_48 (
+	.I(SHRDATAM0[16]),
+	.O(MHRDATAS1[16])
+);
+OBUF gowin_buf_49 (
+	.I(SHRDATAM0[17]),
+	.O(MHRDATAS1[17])
+);
+OBUF gowin_buf_50 (
+	.I(SHRDATAM0[18]),
+	.O(MHRDATAS1[18])
+);
+OBUF gowin_buf_51 (
+	.I(SHRDATAM0[19]),
+	.O(MHRDATAS1[19])
+);
+OBUF gowin_buf_52 (
+	.I(SHRDATAM0[20]),
+	.O(MHRDATAS1[20])
+);
+OBUF gowin_buf_53 (
+	.I(SHRDATAM0[21]),
+	.O(MHRDATAS1[21])
+);
+OBUF gowin_buf_54 (
+	.I(SHRDATAM0[22]),
+	.O(MHRDATAS1[22])
+);
+OBUF gowin_buf_55 (
+	.I(SHRDATAM0[23]),
+	.O(MHRDATAS1[23])
+);
+OBUF gowin_buf_56 (
+	.I(SHRDATAM0[24]),
+	.O(MHRDATAS1[24])
+);
+OBUF gowin_buf_57 (
+	.I(SHRDATAM0[25]),
+	.O(MHRDATAS1[25])
+);
+OBUF gowin_buf_58 (
+	.I(SHRDATAM0[26]),
+	.O(MHRDATAS1[26])
+);
+OBUF gowin_buf_59 (
+	.I(SHRDATAM0[27]),
+	.O(MHRDATAS1[27])
+);
+OBUF gowin_buf_60 (
+	.I(SHRDATAM0[28]),
+	.O(MHRDATAS1[28])
+);
+OBUF gowin_buf_61 (
+	.I(SHRDATAM0[29]),
+	.O(MHRDATAS1[29])
+);
+OBUF gowin_buf_62 (
+	.I(SHRDATAM0[30]),
+	.O(MHRDATAS1[30])
+);
+OBUF gowin_buf_63 (
+	.I(SHRDATAM0[31]),
+	.O(MHRDATAS1[31])
+);
+LUT3 \u_busmatrix16/uInputStage0/Addr0_23_s  (
+	.I0(MHADDRS0[23]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [23]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_23_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_23_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_22_s  (
+	.I0(MHADDRS0[22]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [22]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_22_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_22_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_21_s  (
+	.I0(MHADDRS0[21]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [21]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_21_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_21_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_20_s  (
+	.I0(MHADDRS0[20]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [20]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_20_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_20_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_19_s  (
+	.I0(MHADDRS0[19]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [19]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_19_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_19_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_18_s  (
+	.I0(MHADDRS0[18]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [18]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_18_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_18_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_17_s  (
+	.I0(MHADDRS0[17]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [17]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_17_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_17_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_16_s  (
+	.I0(MHADDRS0[16]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [16]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_16_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_16_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_15_s  (
+	.I0(MHADDRS0[15]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [15]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_15_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_15_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_14_s  (
+	.I0(MHADDRS0[14]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [14]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_14_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_14_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_13_s  (
+	.I0(MHADDRS0[13]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [13]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_13_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_13_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_12_s  (
+	.I0(MHADDRS0[12]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [12]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_12_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_12_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_11_s  (
+	.I0(MHADDRS0[11]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [11]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_11_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_11_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_10_s  (
+	.I0(MHADDRS0[10]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [10]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_10_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_10_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_9_s  (
+	.I0(MHADDRS0[9]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [9]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_9_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_9_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_8_s  (
+	.I0(MHADDRS0[8]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [8]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_8_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_8_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_7_s  (
+	.I0(MHADDRS0[7]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [7]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_7_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_7_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_6_s  (
+	.I0(MHADDRS0[6]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [6]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_6_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_6_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_5_s  (
+	.I0(MHADDRS0[5]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [5]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_5_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_5_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_4_s  (
+	.I0(MHADDRS0[4]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [4]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_4_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_4_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_3_s  (
+	.I0(MHADDRS0[3]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [3]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_3_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_3_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_2_s  (
+	.I0(MHADDRS0[2]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [2]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_2_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_2_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_1_s  (
+	.I0(MHADDRS0[1]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [1]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_1_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_1_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Addr0_0_s  (
+	.I0(MHADDRS0[0]),
+	.I1(\u_busmatrix16/uInputStage0/RegAddr_0 [0]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Addr0_0_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Addr0_0_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Write0_s  (
+	.I0(MHWRITES0),
+	.I1(\u_busmatrix16/uInputStage0/RegWrite ),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Write0_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Write0_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Size0_2_s  (
+	.I0(MHSIZES0[2]),
+	.I1(\u_busmatrix16/uInputStage0/RegSize [2]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Size0_2_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Size0_2_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Size0_1_s  (
+	.I0(MHSIZES0[1]),
+	.I1(\u_busmatrix16/uInputStage0/RegSize [1]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Size0_1_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Size0_1_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Size0_0_s  (
+	.I0(MHSIZES0[0]),
+	.I1(\u_busmatrix16/uInputStage0/RegSize [0]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Size0_0_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Size0_0_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Prot0_3_s  (
+	.I0(MHPROTS0[3]),
+	.I1(\u_busmatrix16/uInputStage0/RegProt [3]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Prot0_3_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Prot0_3_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Prot0_2_s  (
+	.I0(MHPROTS0[2]),
+	.I1(\u_busmatrix16/uInputStage0/RegProt [2]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Prot0_2_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Prot0_2_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Prot0_1_s  (
+	.I0(MHPROTS0[1]),
+	.I1(\u_busmatrix16/uInputStage0/RegProt [1]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Prot0_1_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Prot0_1_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Prot0_0_s  (
+	.I0(MHPROTS0[0]),
+	.I1(\u_busmatrix16/uInputStage0/RegProt [0]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Prot0_0_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Prot0_0_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Master0_3_s  (
+	.I0(MHMASTERS0[3]),
+	.I1(\u_busmatrix16/uInputStage0/RegMaster [3]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Master0_3_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Master0_3_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Master0_2_s  (
+	.I0(MHMASTERS0[2]),
+	.I1(\u_busmatrix16/uInputStage0/RegMaster [2]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Master0_2_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Master0_2_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Master0_1_s  (
+	.I0(MHMASTERS0[1]),
+	.I1(\u_busmatrix16/uInputStage0/RegMaster [1]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Master0_1_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Master0_1_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage0/Master0_0_s  (
+	.I0(MHMASTERS0[0]),
+	.I1(\u_busmatrix16/uInputStage0/RegMaster [0]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/Master0_0_1 )
+);
+defparam \u_busmatrix16/uInputStage0/Master0_0_s .INIT=8'hCA;
+LUT2 \u_busmatrix16/uInputStage0/AddrValid_s0  (
+	.I0(MHSELS0),
+	.I1(MHTRANSS0[1]),
+	.F(\u_busmatrix16/uInputStage0/AddrValid )
+);
+defparam \u_busmatrix16/uInputStage0/AddrValid_s0 .INIT=4'h8;
+LUT3 \u_busmatrix16/uInputStage0/LoadReg_s0  (
+	.I0(MHSELS0),
+	.I1(MHTRANSS0[1]),
+	.I2(MHREADYS0),
+	.F(\u_busmatrix16/LoadReg )
+);
+defparam \u_busmatrix16/uInputStage0/LoadReg_s0 .INIT=8'h80;
+LUT3 \u_busmatrix16/uInputStage0/n115_s0  (
+	.I0(\u_busmatrix16/n115_4 ),
+	.I1(\u_busmatrix16/AddrInPort [0]),
+	.I2(\u_busmatrix16/LoadReg ),
+	.F(\u_busmatrix16/uInputStage0/n115_3 )
+);
+defparam \u_busmatrix16/uInputStage0/n115_s0 .INIT=8'hD0;
+LUT4 \u_busmatrix16/uInputStage0/BoundNext_s0  (
+	.I0(MHBURSTS0[0]),
+	.I1(\u_busmatrix16/uInputStage0/BoundNext_4 ),
+	.I2(\u_busmatrix16/uInputStage0/BoundNext_5 ),
+	.I3(\u_busmatrix16/uInputStage0/BoundNext_6 ),
+	.F(\u_busmatrix16/uInputStage0/BoundNext )
+);
+defparam \u_busmatrix16/uInputStage0/BoundNext_s0 .INIT=16'h0100;
+LUT2 \u_busmatrix16/uInputStage0/BoundEn_s0  (
+	.I0(MHTRANSS0[1]),
+	.I1(MHREADYS0),
+	.F(\u_busmatrix16/uInputStage0/BoundEn )
+);
+defparam \u_busmatrix16/uInputStage0/BoundEn_s0 .INIT=4'h8;
+LUT4 \u_busmatrix16/uInputStage0/PendTranReg_s3  (
+	.I0(SHREADYMUXM0),
+	.I1(\u_busmatrix16/LoadReg ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(\u_busmatrix16/uInputStage0/PendTranReg_8 )
+);
+defparam \u_busmatrix16/uInputStage0/PendTranReg_s3 .INIT=16'hCACC;
+LUT3 \u_busmatrix16/uInputStage0/BurstOverride_s2  (
+	.I0(MHTRANSS0[0]),
+	.I1(MHREADYS0),
+	.I2(\u_busmatrix16/uInputStage0/n115_3 ),
+	.F(\u_busmatrix16/uInputStage0/BurstOverride_6 )
+);
+defparam \u_busmatrix16/uInputStage0/BurstOverride_s2 .INIT=8'hF4;
+LUT3 \u_busmatrix16/uInputStage0/MHRESPS0_d_0_s  (
+	.I0(\u_busmatrix16/PendTranReg ),
+	.I1(\u_busmatrix16/uInputStage0/DataValid ),
+	.I2(SHRESPM0[0]),
+	.F(MHRESPS0[0])
+);
+defparam \u_busmatrix16/uInputStage0/MHRESPS0_d_0_s .INIT=8'h40;
+LUT3 \u_busmatrix16/uInputStage0/MHRESPS0_d_1_s  (
+	.I0(\u_busmatrix16/PendTranReg ),
+	.I1(\u_busmatrix16/uInputStage0/DataValid ),
+	.I2(SHRESPM0[1]),
+	.F(MHRESPS0[1])
+);
+defparam \u_busmatrix16/uInputStage0/MHRESPS0_d_1_s .INIT=8'h40;
+LUT4 \u_busmatrix16/uInputStage0/n115_s1  (
+	.I0(\u_busmatrix16/AddrInPort [3]),
+	.I1(\u_busmatrix16/AddrInPort [3]),
+	.I2(\u_busmatrix16/AddrInPort [3]),
+	.I3(\u_busmatrix16/NoPort ),
+	.F(\u_busmatrix16/n115_4 )
+);
+defparam \u_busmatrix16/uInputStage0/n115_s1 .INIT=16'h0001;
+LUT4 \u_busmatrix16/uInputStage0/BoundNext_s1  (
+	.I0(\u_busmatrix16/uInputStage0/BoundNext_7 ),
+	.I1(\u_busmatrix16/uInputStage0/BoundNext_8 ),
+	.I2(MHSIZES0[1]),
+	.I3(MHADDRS0[1]),
+	.F(\u_busmatrix16/uInputStage0/BoundNext_4 )
+);
+defparam \u_busmatrix16/uInputStage0/BoundNext_s1 .INIT=16'h82BD;
+LUT4 \u_busmatrix16/uInputStage0/BoundNext_s2  (
+	.I0(\u_busmatrix16/uInputStage0/BoundNext_9 ),
+	.I1(MHSIZES0[1]),
+	.I2(MHSIZES0[2]),
+	.I3(\u_busmatrix16/uInputStage0/BoundNext_10 ),
+	.F(\u_busmatrix16/uInputStage0/BoundNext_5 )
+);
+defparam \u_busmatrix16/uInputStage0/BoundNext_s2 .INIT=16'h525E;
+LUT4 \u_busmatrix16/uInputStage0/BoundNext_s3  (
+	.I0(\u_busmatrix16/uInputStage0/BoundNext_11 ),
+	.I1(MHBURSTS0[1]),
+	.I2(\u_busmatrix16/uInputStage0/BoundNext_12 ),
+	.I3(MHBURSTS0[2]),
+	.F(\u_busmatrix16/uInputStage0/BoundNext_6 )
+);
+defparam \u_busmatrix16/uInputStage0/BoundNext_s3 .INIT=16'h0BCC;
+LUT4 \u_busmatrix16/uInputStage0/BoundNext_s4  (
+	.I0(MHADDRS0[4]),
+	.I1(MHADDRS0[3]),
+	.I2(MHSIZES0[1]),
+	.I3(MHSIZES0[0]),
+	.F(\u_busmatrix16/uInputStage0/BoundNext_7 )
+);
+defparam \u_busmatrix16/uInputStage0/BoundNext_s4 .INIT=16'h5F30;
+LUT3 \u_busmatrix16/uInputStage0/BoundNext_s5  (
+	.I0(MHADDRS0[2]),
+	.I1(MHSIZES0[2]),
+	.I2(MHSIZES0[1]),
+	.F(\u_busmatrix16/uInputStage0/BoundNext_8 )
+);
+defparam \u_busmatrix16/uInputStage0/BoundNext_s5 .INIT=8'h3E;
+LUT4 \u_busmatrix16/uInputStage0/BoundNext_s6  (
+	.I0(MHSIZES0[0]),
+	.I1(MHADDRS0[1]),
+	.I2(MHSIZES0[2]),
+	.I3(MHADDRS0[0]),
+	.F(\u_busmatrix16/uInputStage0/BoundNext_9 )
+);
+defparam \u_busmatrix16/uInputStage0/BoundNext_s6 .INIT=16'hF207;
+LUT4 \u_busmatrix16/uInputStage0/BoundNext_s7  (
+	.I0(MHADDRS0[3]),
+	.I1(MHADDRS0[2]),
+	.I2(MHSIZES0[2]),
+	.I3(MHSIZES0[0]),
+	.F(\u_busmatrix16/uInputStage0/BoundNext_10 )
+);
+defparam \u_busmatrix16/uInputStage0/BoundNext_s7 .INIT=16'hCACC;
+LUT2 \u_busmatrix16/uInputStage0/BoundNext_s8  (
+	.I0(MHADDRS0[3]),
+	.I1(\u_busmatrix16/uInputStage0/BoundNext_13 ),
+	.F(\u_busmatrix16/uInputStage0/BoundNext_11 )
+);
+defparam \u_busmatrix16/uInputStage0/BoundNext_s8 .INIT=4'h6;
+LUT4 \u_busmatrix16/uInputStage0/BoundNext_s9  (
+	.I0(\u_busmatrix16/uInputStage0/BoundNext_14 ),
+	.I1(\u_busmatrix16/uInputStage0/BoundNext_10 ),
+	.I2(MHSIZES0[2]),
+	.I3(MHSIZES0[1]),
+	.F(\u_busmatrix16/uInputStage0/BoundNext_12 )
+);
+defparam \u_busmatrix16/uInputStage0/BoundNext_s9 .INIT=16'h3A33;
+LUT4 \u_busmatrix16/uInputStage0/BoundNext_s10  (
+	.I0(MHADDRS0[4]),
+	.I1(MHSIZES0[0]),
+	.I2(\u_busmatrix16/uInputStage0/BoundNext_15 ),
+	.I3(MHSIZES0[2]),
+	.F(\u_busmatrix16/uInputStage0/BoundNext_13 )
+);
+defparam \u_busmatrix16/uInputStage0/BoundNext_s10 .INIT=16'h00F4;
+LUT3 \u_busmatrix16/uInputStage0/BoundNext_s11  (
+	.I0(MHADDRS0[4]),
+	.I1(MHADDRS0[5]),
+	.I2(MHSIZES0[0]),
+	.F(\u_busmatrix16/uInputStage0/BoundNext_14 )
+);
+defparam \u_busmatrix16/uInputStage0/BoundNext_s11 .INIT=8'h35;
+LUT4 \u_busmatrix16/uInputStage0/BoundNext_s12  (
+	.I0(MHADDRS0[5]),
+	.I1(MHADDRS0[6]),
+	.I2(MHSIZES0[0]),
+	.I3(MHSIZES0[1]),
+	.F(\u_busmatrix16/uInputStage0/BoundNext_15 )
+);
+defparam \u_busmatrix16/uInputStage0/BoundNext_s12 .INIT=16'h3500;
+LUT4 \u_busmatrix16/uInputStage0/MHREADYOUTS0_d_s0  (
+	.I0(\u_busmatrix16/PendTranReg ),
+	.I1(SHREADYOUTM0),
+	.I2(\u_busmatrix16/SlaveSel ),
+	.I3(\u_busmatrix16/uInputStage0/DataValid ),
+	.F(MHREADYOUTS0)
+);
+defparam \u_busmatrix16/uInputStage0/MHREADYOUTS0_d_s0 .INIT=16'h45FF;
+DFFCE \u_busmatrix16/uInputStage0/RegTrans_0_s0  (
+	.D(MHTRANSS0[0]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegTrans [0])
+);
+defparam \u_busmatrix16/uInputStage0/RegTrans_0_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_31_s0  (
+	.D(MHADDRS0[31]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegAddr [31])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_31_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_30_s0  (
+	.D(MHADDRS0[30]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegAddr [30])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_30_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_29_s0  (
+	.D(MHADDRS0[29]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegAddr [29])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_29_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_28_s0  (
+	.D(MHADDRS0[28]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegAddr [28])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_28_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_27_s0  (
+	.D(MHADDRS0[27]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegAddr [27])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_27_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_26_s0  (
+	.D(MHADDRS0[26]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegAddr [26])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_26_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_25_s0  (
+	.D(MHADDRS0[25]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegAddr [25])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_25_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_24_s0  (
+	.D(MHADDRS0[24]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegAddr [24])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_24_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_23_s0  (
+	.D(MHADDRS0[23]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [23])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_23_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_22_s0  (
+	.D(MHADDRS0[22]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [22])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_22_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_21_s0  (
+	.D(MHADDRS0[21]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [21])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_21_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_20_s0  (
+	.D(MHADDRS0[20]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [20])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_20_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_19_s0  (
+	.D(MHADDRS0[19]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [19])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_19_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_18_s0  (
+	.D(MHADDRS0[18]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [18])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_18_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_17_s0  (
+	.D(MHADDRS0[17]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [17])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_17_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_16_s0  (
+	.D(MHADDRS0[16]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [16])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_16_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_15_s0  (
+	.D(MHADDRS0[15]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [15])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_15_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_14_s0  (
+	.D(MHADDRS0[14]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [14])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_14_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_13_s0  (
+	.D(MHADDRS0[13]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [13])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_13_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_12_s0  (
+	.D(MHADDRS0[12]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [12])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_12_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_11_s0  (
+	.D(MHADDRS0[11]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [11])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_11_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_10_s0  (
+	.D(MHADDRS0[10]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [10])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_10_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_9_s0  (
+	.D(MHADDRS0[9]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [9])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_9_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_8_s0  (
+	.D(MHADDRS0[8]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [8])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_8_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_7_s0  (
+	.D(MHADDRS0[7]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [7])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_7_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_6_s0  (
+	.D(MHADDRS0[6]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [6])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_6_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_5_s0  (
+	.D(MHADDRS0[5]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [5])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_5_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_4_s0  (
+	.D(MHADDRS0[4]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [4])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_4_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_3_s0  (
+	.D(MHADDRS0[3]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [3])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_3_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_2_s0  (
+	.D(MHADDRS0[2]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [2])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_2_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_1_s0  (
+	.D(MHADDRS0[1]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [1])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_1_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegAddr_0_s0  (
+	.D(MHADDRS0[0]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegAddr_0 [0])
+);
+defparam \u_busmatrix16/uInputStage0/RegAddr_0_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegWrite_s0  (
+	.D(MHWRITES0),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegWrite )
+);
+defparam \u_busmatrix16/uInputStage0/RegWrite_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegSize_2_s0  (
+	.D(MHSIZES0[2]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegSize [2])
+);
+defparam \u_busmatrix16/uInputStage0/RegSize_2_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegSize_1_s0  (
+	.D(MHSIZES0[1]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegSize [1])
+);
+defparam \u_busmatrix16/uInputStage0/RegSize_1_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegSize_0_s0  (
+	.D(MHSIZES0[0]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegSize [0])
+);
+defparam \u_busmatrix16/uInputStage0/RegSize_0_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegBurst_2_s0  (
+	.D(MHBURSTS0[2]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegBurst [2])
+);
+defparam \u_busmatrix16/uInputStage0/RegBurst_2_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegBurst_1_s0  (
+	.D(MHBURSTS0[1]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegBurst [1])
+);
+defparam \u_busmatrix16/uInputStage0/RegBurst_1_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegBurst_0_s0  (
+	.D(MHBURSTS0[0]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegBurst [0])
+);
+defparam \u_busmatrix16/uInputStage0/RegBurst_0_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegProt_3_s0  (
+	.D(MHPROTS0[3]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegProt [3])
+);
+defparam \u_busmatrix16/uInputStage0/RegProt_3_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegProt_2_s0  (
+	.D(MHPROTS0[2]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegProt [2])
+);
+defparam \u_busmatrix16/uInputStage0/RegProt_2_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegProt_1_s0  (
+	.D(MHPROTS0[1]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegProt [1])
+);
+defparam \u_busmatrix16/uInputStage0/RegProt_1_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegProt_0_s0  (
+	.D(MHPROTS0[0]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegProt [0])
+);
+defparam \u_busmatrix16/uInputStage0/RegProt_0_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegMaster_3_s0  (
+	.D(MHMASTERS0[3]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegMaster [3])
+);
+defparam \u_busmatrix16/uInputStage0/RegMaster_3_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegMaster_2_s0  (
+	.D(MHMASTERS0[2]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegMaster [2])
+);
+defparam \u_busmatrix16/uInputStage0/RegMaster_2_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegMaster_1_s0  (
+	.D(MHMASTERS0[1]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegMaster [1])
+);
+defparam \u_busmatrix16/uInputStage0/RegMaster_1_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegMaster_0_s0  (
+	.D(MHMASTERS0[0]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/RegMaster [0])
+);
+defparam \u_busmatrix16/uInputStage0/RegMaster_0_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegMastlock_s0  (
+	.D(MHMASTLOCKS0),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegMastlock )
+);
+defparam \u_busmatrix16/uInputStage0/RegMastlock_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/DataValid_s0  (
+	.D(\u_busmatrix16/uInputStage0/AddrValid ),
+	.CLK(HCLK),
+	.CE(MHREADYS0),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage0/DataValid )
+);
+defparam \u_busmatrix16/uInputStage0/DataValid_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/BurstOverride_s0  (
+	.D(MHTRANSS0[0]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage0/BurstOverride_6 ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/BurstOverride )
+);
+defparam \u_busmatrix16/uInputStage0/BurstOverride_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/Bound_s0  (
+	.D(\u_busmatrix16/uInputStage0/BoundNext ),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage0/BoundEn ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/Bound )
+);
+defparam \u_busmatrix16/uInputStage0/Bound_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/RegTrans_1_s0  (
+	.D(MHTRANSS0[1]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegTrans [1])
+);
+defparam \u_busmatrix16/uInputStage0/RegTrans_1_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage0/PendTranReg_s1  (
+	.D(\u_busmatrix16/uInputStage0/n115_3 ),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage0/PendTranReg_8 ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/PendTranReg )
+);
+defparam \u_busmatrix16/uInputStage0/PendTranReg_s1 .INIT=1'b0;
+INV \u_busmatrix16/uInputStage0/n6_s2  (
+	.I(HRESETn),
+	.O(\u_busmatrix16/n6_6 )
+);
+LUT3 \u_busmatrix16/uInputStage1/Addr1_23_s  (
+	.I0(MHADDRS1[23]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [23]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_23_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_23_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_22_s  (
+	.I0(MHADDRS1[22]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [22]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_22_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_22_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_21_s  (
+	.I0(MHADDRS1[21]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [21]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_21_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_21_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_20_s  (
+	.I0(MHADDRS1[20]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [20]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_20_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_20_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_19_s  (
+	.I0(MHADDRS1[19]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [19]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_19_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_19_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_18_s  (
+	.I0(MHADDRS1[18]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [18]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_18_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_18_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_17_s  (
+	.I0(MHADDRS1[17]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [17]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_17_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_17_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_16_s  (
+	.I0(MHADDRS1[16]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [16]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_16_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_16_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_15_s  (
+	.I0(MHADDRS1[15]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [15]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_15_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_15_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_14_s  (
+	.I0(MHADDRS1[14]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [14]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_14_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_14_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_13_s  (
+	.I0(MHADDRS1[13]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [13]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_13_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_13_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_12_s  (
+	.I0(MHADDRS1[12]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [12]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_12_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_12_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_11_s  (
+	.I0(MHADDRS1[11]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [11]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_11_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_11_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_10_s  (
+	.I0(MHADDRS1[10]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [10]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_10_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_10_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_9_s  (
+	.I0(MHADDRS1[9]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [9]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_9_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_9_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_8_s  (
+	.I0(MHADDRS1[8]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [8]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_8_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_8_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_7_s  (
+	.I0(MHADDRS1[7]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [7]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_7_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_7_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_6_s  (
+	.I0(MHADDRS1[6]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [6]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_6_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_6_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_5_s  (
+	.I0(MHADDRS1[5]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [5]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_5_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_5_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_4_s  (
+	.I0(MHADDRS1[4]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [4]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_4_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_4_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_3_s  (
+	.I0(MHADDRS1[3]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [3]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_3_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_3_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_2_s  (
+	.I0(MHADDRS1[2]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [2]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_2_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_2_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_1_s  (
+	.I0(MHADDRS1[1]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [1]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_1_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_1_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Addr1_0_s  (
+	.I0(MHADDRS1[0]),
+	.I1(\u_busmatrix16/uInputStage1/RegAddr_0 [0]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Addr1_0_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Addr1_0_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Write1_s  (
+	.I0(MHWRITES1),
+	.I1(\u_busmatrix16/uInputStage1/RegWrite ),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Write1_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Write1_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Size1_2_s  (
+	.I0(MHSIZES1[2]),
+	.I1(\u_busmatrix16/uInputStage1/RegSize [2]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Size1_2_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Size1_2_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Size1_1_s  (
+	.I0(MHSIZES1[1]),
+	.I1(\u_busmatrix16/uInputStage1/RegSize [1]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Size1_1_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Size1_1_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Size1_0_s  (
+	.I0(MHSIZES1[0]),
+	.I1(\u_busmatrix16/uInputStage1/RegSize [0]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Size1_0_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Size1_0_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Prot1_3_s  (
+	.I0(MHPROTS1[3]),
+	.I1(\u_busmatrix16/uInputStage1/RegProt [3]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Prot1_3_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Prot1_3_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Prot1_2_s  (
+	.I0(MHPROTS1[2]),
+	.I1(\u_busmatrix16/uInputStage1/RegProt [2]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Prot1_2_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Prot1_2_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Prot1_1_s  (
+	.I0(MHPROTS1[1]),
+	.I1(\u_busmatrix16/uInputStage1/RegProt [1]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Prot1_1_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Prot1_1_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Prot1_0_s  (
+	.I0(MHPROTS1[0]),
+	.I1(\u_busmatrix16/uInputStage1/RegProt [0]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Prot1_0_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Prot1_0_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Master1_3_s  (
+	.I0(MHMASTERS1[3]),
+	.I1(\u_busmatrix16/uInputStage1/RegMaster [3]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Master1_3_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Master1_3_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Master1_2_s  (
+	.I0(MHMASTERS1[2]),
+	.I1(\u_busmatrix16/uInputStage1/RegMaster [2]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Master1_2_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Master1_2_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Master1_1_s  (
+	.I0(MHMASTERS1[1]),
+	.I1(\u_busmatrix16/uInputStage1/RegMaster [1]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Master1_1_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Master1_1_s .INIT=8'hCA;
+LUT3 \u_busmatrix16/uInputStage1/Master1_0_s  (
+	.I0(MHMASTERS1[0]),
+	.I1(\u_busmatrix16/uInputStage1/RegMaster [0]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/Master1_0_1 )
+);
+defparam \u_busmatrix16/uInputStage1/Master1_0_s .INIT=8'hCA;
+LUT2 \u_busmatrix16/uInputStage1/AddrValid_s0  (
+	.I0(MHSELS1),
+	.I1(MHTRANSS1[1]),
+	.F(\u_busmatrix16/uInputStage1/AddrValid )
+);
+defparam \u_busmatrix16/uInputStage1/AddrValid_s0 .INIT=4'h8;
+LUT3 \u_busmatrix16/uInputStage1/n115_s0  (
+	.I0(\u_busmatrix16/n115_4 ),
+	.I1(\u_busmatrix16/AddrInPort [0]),
+	.I2(\u_busmatrix16/uInputStage1/LoadReg ),
+	.F(\u_busmatrix16/uInputStage1/n115_3 )
+);
+defparam \u_busmatrix16/uInputStage1/n115_s0 .INIT=8'h70;
+LUT4 \u_busmatrix16/uInputStage1/BoundNext_s0  (
+	.I0(MHBURSTS1[0]),
+	.I1(\u_busmatrix16/uInputStage1/BoundNext_4 ),
+	.I2(\u_busmatrix16/uInputStage1/BoundNext_5 ),
+	.I3(\u_busmatrix16/uInputStage1/BoundNext_6 ),
+	.F(\u_busmatrix16/uInputStage1/BoundNext )
+);
+defparam \u_busmatrix16/uInputStage1/BoundNext_s0 .INIT=16'h0004;
+LUT2 \u_busmatrix16/uInputStage1/BoundEn_s0  (
+	.I0(MHTRANSS1[1]),
+	.I1(MHREADYS1),
+	.F(\u_busmatrix16/uInputStage1/BoundEn )
+);
+defparam \u_busmatrix16/uInputStage1/BoundEn_s0 .INIT=4'h8;
+LUT4 \u_busmatrix16/uInputStage1/PendTranReg_s3  (
+	.I0(SHREADYMUXM0),
+	.I1(\u_busmatrix16/uInputStage1/LoadReg ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(\u_busmatrix16/uInputStage1/PendTranReg_8 )
+);
+defparam \u_busmatrix16/uInputStage1/PendTranReg_s3 .INIT=16'hACCC;
+LUT3 \u_busmatrix16/uInputStage1/BurstOverride_s2  (
+	.I0(MHTRANSS1[0]),
+	.I1(MHREADYS1),
+	.I2(\u_busmatrix16/uInputStage1/n115_3 ),
+	.F(\u_busmatrix16/uInputStage1/BurstOverride_6 )
+);
+defparam \u_busmatrix16/uInputStage1/BurstOverride_s2 .INIT=8'hF4;
+LUT3 \u_busmatrix16/uInputStage1/MHRESPS1_d_0_s  (
+	.I0(\u_busmatrix16/PendTranReg_14 ),
+	.I1(\u_busmatrix16/uInputStage1/DataValid ),
+	.I2(SHRESPM0[0]),
+	.F(MHRESPS1[0])
+);
+defparam \u_busmatrix16/uInputStage1/MHRESPS1_d_0_s .INIT=8'h40;
+LUT3 \u_busmatrix16/uInputStage1/MHRESPS1_d_1_s  (
+	.I0(\u_busmatrix16/PendTranReg_14 ),
+	.I1(\u_busmatrix16/uInputStage1/DataValid ),
+	.I2(SHRESPM0[1]),
+	.F(MHRESPS1[1])
+);
+defparam \u_busmatrix16/uInputStage1/MHRESPS1_d_1_s .INIT=8'h40;
+LUT4 \u_busmatrix16/uInputStage1/BoundNext_s1  (
+	.I0(\u_busmatrix16/uInputStage1/BoundNext_7 ),
+	.I1(MHBURSTS1[1]),
+	.I2(\u_busmatrix16/uInputStage1/BoundNext_8 ),
+	.I3(MHBURSTS1[2]),
+	.F(\u_busmatrix16/uInputStage1/BoundNext_4 )
+);
+defparam \u_busmatrix16/uInputStage1/BoundNext_s1 .INIT=16'h07CC;
+LUT3 \u_busmatrix16/uInputStage1/BoundNext_s2  (
+	.I0(\u_busmatrix16/uInputStage1/BoundNext_9 ),
+	.I1(MHADDRS1[0]),
+	.I2(MHSIZES1[2]),
+	.F(\u_busmatrix16/uInputStage1/BoundNext_5 )
+);
+defparam \u_busmatrix16/uInputStage1/BoundNext_s2 .INIT=8'h3A;
+LUT4 \u_busmatrix16/uInputStage1/BoundNext_s3  (
+	.I0(MHADDRS1[3]),
+	.I1(MHADDRS1[1]),
+	.I2(MHSIZES1[2]),
+	.I3(MHSIZES1[1]),
+	.F(\u_busmatrix16/uInputStage1/BoundNext_6 )
+);
+defparam \u_busmatrix16/uInputStage1/BoundNext_s3 .INIT=16'h3533;
+LUT4 \u_busmatrix16/uInputStage1/BoundNext_s4  (
+	.I0(\u_busmatrix16/uInputStage1/BoundNext_10 ),
+	.I1(\u_busmatrix16/uInputStage1/BoundNext_11 ),
+	.I2(MHSIZES1[1]),
+	.I3(MHSIZES1[2]),
+	.F(\u_busmatrix16/uInputStage1/BoundNext_7 )
+);
+defparam \u_busmatrix16/uInputStage1/BoundNext_s4 .INIT=16'h33AC;
+LUT4 \u_busmatrix16/uInputStage1/BoundNext_s5  (
+	.I0(\u_busmatrix16/uInputStage1/BoundNext_12 ),
+	.I1(\u_busmatrix16/uInputStage1/BoundNext_13 ),
+	.I2(MHSIZES1[0]),
+	.I3(MHSIZES1[2]),
+	.F(\u_busmatrix16/uInputStage1/BoundNext_8 )
+);
+defparam \u_busmatrix16/uInputStage1/BoundNext_s5 .INIT=16'h33AC;
+LUT4 \u_busmatrix16/uInputStage1/BoundNext_s6  (
+	.I0(\u_busmatrix16/uInputStage1/BoundNext_14 ),
+	.I1(MHADDRS1[2]),
+	.I2(MHSIZES1[0]),
+	.I3(MHSIZES1[1]),
+	.F(\u_busmatrix16/uInputStage1/BoundNext_9 )
+);
+defparam \u_busmatrix16/uInputStage1/BoundNext_s6 .INIT=16'h533A;
+LUT3 \u_busmatrix16/uInputStage1/BoundNext_s7  (
+	.I0(MHADDRS1[5]),
+	.I1(MHADDRS1[6]),
+	.I2(MHSIZES1[0]),
+	.F(\u_busmatrix16/uInputStage1/BoundNext_10 )
+);
+defparam \u_busmatrix16/uInputStage1/BoundNext_s7 .INIT=8'h35;
+LUT4 \u_busmatrix16/uInputStage1/BoundNext_s8  (
+	.I0(MHSIZES1[0]),
+	.I1(MHADDRS1[4]),
+	.I2(MHSIZES1[2]),
+	.I3(MHADDRS1[3]),
+	.F(\u_busmatrix16/uInputStage1/BoundNext_11 )
+);
+defparam \u_busmatrix16/uInputStage1/BoundNext_s8 .INIT=16'hF207;
+LUT3 \u_busmatrix16/uInputStage1/BoundNext_s9  (
+	.I0(MHADDRS1[3]),
+	.I1(MHADDRS1[5]),
+	.I2(MHSIZES1[1]),
+	.F(\u_busmatrix16/uInputStage1/BoundNext_12 )
+);
+defparam \u_busmatrix16/uInputStage1/BoundNext_s9 .INIT=8'h35;
+LUT4 \u_busmatrix16/uInputStage1/BoundNext_s10  (
+	.I0(MHSIZES1[1]),
+	.I1(MHADDRS1[4]),
+	.I2(MHSIZES1[2]),
+	.I3(MHADDRS1[2]),
+	.F(\u_busmatrix16/uInputStage1/BoundNext_13 )
+);
+defparam \u_busmatrix16/uInputStage1/BoundNext_s10 .INIT=16'hF207;
+LUT3 \u_busmatrix16/uInputStage1/BoundNext_s11  (
+	.I0(MHADDRS1[0]),
+	.I1(MHADDRS1[4]),
+	.I2(MHSIZES1[0]),
+	.F(\u_busmatrix16/uInputStage1/BoundNext_14 )
+);
+defparam \u_busmatrix16/uInputStage1/BoundNext_s11 .INIT=8'hC5;
+LUT3 \u_busmatrix16/uInputStage1/LoadReg_s1  (
+	.I0(MHREADYS1),
+	.I1(MHSELS1),
+	.I2(MHTRANSS1[1]),
+	.F(\u_busmatrix16/uInputStage1/LoadReg )
+);
+defparam \u_busmatrix16/uInputStage1/LoadReg_s1 .INIT=8'h80;
+LUT4 \u_busmatrix16/uInputStage1/MHREADYOUTS1_d_s0  (
+	.I0(\u_busmatrix16/PendTranReg_14 ),
+	.I1(SHREADYOUTM0),
+	.I2(\u_busmatrix16/SlaveSel ),
+	.I3(\u_busmatrix16/uInputStage1/DataValid ),
+	.F(MHREADYOUTS1)
+);
+defparam \u_busmatrix16/uInputStage1/MHREADYOUTS1_d_s0 .INIT=16'h45FF;
+DFFCE \u_busmatrix16/uInputStage1/RegTrans_0_s0  (
+	.D(MHTRANSS1[0]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegTrans_0 [0])
+);
+defparam \u_busmatrix16/uInputStage1/RegTrans_0_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_31_s0  (
+	.D(MHADDRS1[31]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegAddr_0 [31])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_31_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_30_s0  (
+	.D(MHADDRS1[30]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegAddr_0 [30])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_30_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_29_s0  (
+	.D(MHADDRS1[29]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegAddr_0 [29])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_29_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_28_s0  (
+	.D(MHADDRS1[28]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegAddr_0 [28])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_28_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_27_s0  (
+	.D(MHADDRS1[27]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegAddr_0 [27])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_27_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_26_s0  (
+	.D(MHADDRS1[26]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegAddr_0 [26])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_26_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_25_s0  (
+	.D(MHADDRS1[25]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegAddr_0 [25])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_25_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_24_s0  (
+	.D(MHADDRS1[24]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegAddr_0 [24])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_24_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_23_s0  (
+	.D(MHADDRS1[23]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [23])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_23_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_22_s0  (
+	.D(MHADDRS1[22]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [22])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_22_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_21_s0  (
+	.D(MHADDRS1[21]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [21])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_21_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_20_s0  (
+	.D(MHADDRS1[20]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [20])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_20_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_19_s0  (
+	.D(MHADDRS1[19]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [19])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_19_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_18_s0  (
+	.D(MHADDRS1[18]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [18])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_18_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_17_s0  (
+	.D(MHADDRS1[17]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [17])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_17_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_16_s0  (
+	.D(MHADDRS1[16]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [16])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_16_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_15_s0  (
+	.D(MHADDRS1[15]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [15])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_15_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_14_s0  (
+	.D(MHADDRS1[14]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [14])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_14_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_13_s0  (
+	.D(MHADDRS1[13]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [13])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_13_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_12_s0  (
+	.D(MHADDRS1[12]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [12])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_12_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_11_s0  (
+	.D(MHADDRS1[11]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [11])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_11_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_10_s0  (
+	.D(MHADDRS1[10]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [10])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_10_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_9_s0  (
+	.D(MHADDRS1[9]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [9])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_9_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_8_s0  (
+	.D(MHADDRS1[8]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [8])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_8_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_7_s0  (
+	.D(MHADDRS1[7]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [7])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_7_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_6_s0  (
+	.D(MHADDRS1[6]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [6])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_6_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_5_s0  (
+	.D(MHADDRS1[5]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [5])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_5_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_4_s0  (
+	.D(MHADDRS1[4]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [4])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_4_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_3_s0  (
+	.D(MHADDRS1[3]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [3])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_3_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_2_s0  (
+	.D(MHADDRS1[2]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [2])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_2_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_1_s0  (
+	.D(MHADDRS1[1]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [1])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_1_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegAddr_0_s0  (
+	.D(MHADDRS1[0]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegAddr_0 [0])
+);
+defparam \u_busmatrix16/uInputStage1/RegAddr_0_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegWrite_s0  (
+	.D(MHWRITES1),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegWrite )
+);
+defparam \u_busmatrix16/uInputStage1/RegWrite_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegSize_2_s0  (
+	.D(MHSIZES1[2]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegSize [2])
+);
+defparam \u_busmatrix16/uInputStage1/RegSize_2_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegSize_1_s0  (
+	.D(MHSIZES1[1]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegSize [1])
+);
+defparam \u_busmatrix16/uInputStage1/RegSize_1_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegSize_0_s0  (
+	.D(MHSIZES1[0]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegSize [0])
+);
+defparam \u_busmatrix16/uInputStage1/RegSize_0_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegBurst_2_s0  (
+	.D(MHBURSTS1[2]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegBurst_0 [2])
+);
+defparam \u_busmatrix16/uInputStage1/RegBurst_2_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegBurst_1_s0  (
+	.D(MHBURSTS1[1]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegBurst_0 [1])
+);
+defparam \u_busmatrix16/uInputStage1/RegBurst_1_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegBurst_0_s0  (
+	.D(MHBURSTS1[0]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegBurst_0 [0])
+);
+defparam \u_busmatrix16/uInputStage1/RegBurst_0_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegProt_3_s0  (
+	.D(MHPROTS1[3]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegProt [3])
+);
+defparam \u_busmatrix16/uInputStage1/RegProt_3_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegProt_2_s0  (
+	.D(MHPROTS1[2]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegProt [2])
+);
+defparam \u_busmatrix16/uInputStage1/RegProt_2_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegProt_1_s0  (
+	.D(MHPROTS1[1]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegProt [1])
+);
+defparam \u_busmatrix16/uInputStage1/RegProt_1_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegProt_0_s0  (
+	.D(MHPROTS1[0]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegProt [0])
+);
+defparam \u_busmatrix16/uInputStage1/RegProt_0_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegMaster_3_s0  (
+	.D(MHMASTERS1[3]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegMaster [3])
+);
+defparam \u_busmatrix16/uInputStage1/RegMaster_3_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegMaster_2_s0  (
+	.D(MHMASTERS1[2]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegMaster [2])
+);
+defparam \u_busmatrix16/uInputStage1/RegMaster_2_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegMaster_1_s0  (
+	.D(MHMASTERS1[1]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegMaster [1])
+);
+defparam \u_busmatrix16/uInputStage1/RegMaster_1_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegMaster_0_s0  (
+	.D(MHMASTERS1[0]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/RegMaster [0])
+);
+defparam \u_busmatrix16/uInputStage1/RegMaster_0_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegMastlock_s0  (
+	.D(MHMASTLOCKS1),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegMastlock_11 )
+);
+defparam \u_busmatrix16/uInputStage1/RegMastlock_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/DataValid_s0  (
+	.D(\u_busmatrix16/uInputStage1/AddrValid ),
+	.CLK(HCLK),
+	.CE(MHREADYS1),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uInputStage1/DataValid )
+);
+defparam \u_busmatrix16/uInputStage1/DataValid_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/BurstOverride_s0  (
+	.D(MHTRANSS1[0]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/BurstOverride_6 ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/BurstOverride_12 )
+);
+defparam \u_busmatrix16/uInputStage1/BurstOverride_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/Bound_s0  (
+	.D(\u_busmatrix16/uInputStage1/BoundNext ),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/BoundEn ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/Bound_13 )
+);
+defparam \u_busmatrix16/uInputStage1/Bound_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/RegTrans_1_s0  (
+	.D(MHTRANSS1[1]),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/LoadReg ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/RegTrans_0 [1])
+);
+defparam \u_busmatrix16/uInputStage1/RegTrans_1_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uInputStage1/PendTranReg_s1  (
+	.D(\u_busmatrix16/uInputStage1/n115_3 ),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uInputStage1/PendTranReg_8 ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/PendTranReg_14 )
+);
+defparam \u_busmatrix16/uInputStage1/PendTranReg_s1 .INIT=1'b0;
+LUT3 \u_busmatrix16/uOutputstage0/n113_s22  (
+	.I0(MHBURSTS0[2]),
+	.I1(\u_busmatrix16/RegBurst [2]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/uOutputstage0/BurstInt_2_2 )
+);
+defparam \u_busmatrix16/uOutputstage0/n113_s22 .INIT=8'hCA;
+LUT3 \u_busmatrix16/uOutputstage0/n114_s22  (
+	.I0(MHBURSTS0[1]),
+	.I1(\u_busmatrix16/RegBurst [1]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/uOutputstage0/BurstInt_1_2 )
+);
+defparam \u_busmatrix16/uOutputstage0/n114_s22 .INIT=8'hCA;
+LUT3 \u_busmatrix16/uOutputstage0/n115_s22  (
+	.I0(MHBURSTS0[0]),
+	.I1(\u_busmatrix16/RegBurst [0]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/uOutputstage0/BurstInt_0_2 )
+);
+defparam \u_busmatrix16/uOutputstage0/n115_s22 .INIT=8'hCA;
+LUT3 \u_busmatrix16/uOutputstage0/n124_s22  (
+	.I0(MHMASTLOCKS0),
+	.I1(\u_busmatrix16/RegMastlock ),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/uOutputstage0/Mastlock0_1 )
+);
+defparam \u_busmatrix16/uOutputstage0/n124_s22 .INIT=8'hCA;
+LUT3 \u_busmatrix16/uOutputstage0/n113_s23  (
+	.I0(MHBURSTS1[2]),
+	.I1(\u_busmatrix16/RegBurst_0 [2]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/uOutputstage0/BurstInt_2_2_8 )
+);
+defparam \u_busmatrix16/uOutputstage0/n113_s23 .INIT=8'hCA;
+LUT3 \u_busmatrix16/uOutputstage0/n114_s23  (
+	.I0(MHBURSTS1[1]),
+	.I1(\u_busmatrix16/RegBurst_0 [1]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/uOutputstage0/BurstInt_1_2_9 )
+);
+defparam \u_busmatrix16/uOutputstage0/n114_s23 .INIT=8'hCA;
+LUT3 \u_busmatrix16/uOutputstage0/n115_s23  (
+	.I0(MHBURSTS1[0]),
+	.I1(\u_busmatrix16/RegBurst_0 [0]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/uOutputstage0/BurstInt_0_2_10 )
+);
+defparam \u_busmatrix16/uOutputstage0/n115_s23 .INIT=8'hCA;
+LUT3 \u_busmatrix16/uOutputstage0/n124_s23  (
+	.I0(MHMASTLOCKS1),
+	.I1(\u_busmatrix16/RegMastlock_11 ),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/uOutputstage0/Mastlock1_1 )
+);
+defparam \u_busmatrix16/uOutputstage0/n124_s23 .INIT=8'hCA;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_s  (
+	.I0(MHWDATAS0[0]),
+	.I1(MHWDATAS1[0]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[0])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_1_s  (
+	.I0(MHWDATAS0[1]),
+	.I1(MHWDATAS1[1]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[1])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_1_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_2_s  (
+	.I0(MHWDATAS0[2]),
+	.I1(MHWDATAS1[2]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[2])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_2_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_3_s  (
+	.I0(MHWDATAS0[3]),
+	.I1(MHWDATAS1[3]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[3])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_3_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_4_s  (
+	.I0(MHWDATAS0[4]),
+	.I1(MHWDATAS1[4]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[4])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_4_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_5_s  (
+	.I0(MHWDATAS0[5]),
+	.I1(MHWDATAS1[5]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[5])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_5_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_6_s  (
+	.I0(MHWDATAS0[6]),
+	.I1(MHWDATAS1[6]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[6])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_6_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_7_s  (
+	.I0(MHWDATAS0[7]),
+	.I1(MHWDATAS1[7]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[7])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_7_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_8_s  (
+	.I0(MHWDATAS0[8]),
+	.I1(MHWDATAS1[8]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[8])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_8_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_9_s  (
+	.I0(MHWDATAS0[9]),
+	.I1(MHWDATAS1[9]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[9])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_9_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_10_s  (
+	.I0(MHWDATAS0[10]),
+	.I1(MHWDATAS1[10]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[10])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_10_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_11_s  (
+	.I0(MHWDATAS0[11]),
+	.I1(MHWDATAS1[11]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[11])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_11_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_12_s  (
+	.I0(MHWDATAS0[12]),
+	.I1(MHWDATAS1[12]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[12])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_12_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_13_s  (
+	.I0(MHWDATAS0[13]),
+	.I1(MHWDATAS1[13]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[13])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_13_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_14_s  (
+	.I0(MHWDATAS0[14]),
+	.I1(MHWDATAS1[14]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[14])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_14_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_15_s  (
+	.I0(MHWDATAS0[15]),
+	.I1(MHWDATAS1[15]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[15])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_15_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_16_s  (
+	.I0(MHWDATAS0[16]),
+	.I1(MHWDATAS1[16]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[16])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_16_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_17_s  (
+	.I0(MHWDATAS0[17]),
+	.I1(MHWDATAS1[17]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[17])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_17_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_18_s  (
+	.I0(MHWDATAS0[18]),
+	.I1(MHWDATAS1[18]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[18])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_18_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_19_s  (
+	.I0(MHWDATAS0[19]),
+	.I1(MHWDATAS1[19]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[19])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_19_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_20_s  (
+	.I0(MHWDATAS0[20]),
+	.I1(MHWDATAS1[20]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[20])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_20_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_21_s  (
+	.I0(MHWDATAS0[21]),
+	.I1(MHWDATAS1[21]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[21])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_21_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_22_s  (
+	.I0(MHWDATAS0[22]),
+	.I1(MHWDATAS1[22]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[22])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_22_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_23_s  (
+	.I0(MHWDATAS0[23]),
+	.I1(MHWDATAS1[23]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[23])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_23_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_24_s  (
+	.I0(MHWDATAS0[24]),
+	.I1(MHWDATAS1[24]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[24])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_24_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_25_s  (
+	.I0(MHWDATAS0[25]),
+	.I1(MHWDATAS1[25]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[25])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_25_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_26_s  (
+	.I0(MHWDATAS0[26]),
+	.I1(MHWDATAS1[26]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[26])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_26_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_27_s  (
+	.I0(MHWDATAS0[27]),
+	.I1(MHWDATAS1[27]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[27])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_27_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_28_s  (
+	.I0(MHWDATAS0[28]),
+	.I1(MHWDATAS1[28]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[28])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_28_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_29_s  (
+	.I0(MHWDATAS0[29]),
+	.I1(MHWDATAS1[29]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[29])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_29_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_30_s  (
+	.I0(MHWDATAS0[30]),
+	.I1(MHWDATAS1[30]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[30])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_30_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_31_s  (
+	.I0(MHWDATAS1[31]),
+	.I1(MHWDATAS0[31]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 ),
+	.F(SHWDATAM0[31])
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_31_s .INIT=16'hAC00;
+LUT2 \u_busmatrix16/uOutputstage0/SHMASTLOCKM0_d_s  (
+	.I0(\u_busmatrix16/uOutputstage0/n124_31 ),
+	.I1(\u_busmatrix16/n115_4 ),
+	.F(SHMASTLOCKM0)
+);
+defparam \u_busmatrix16/uOutputstage0/SHMASTLOCKM0_d_s .INIT=4'h8;
+LUT3 \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_s  (
+	.I0(\u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_5 ),
+	.I1(\u_busmatrix16/uOutputstage0/n115_31 ),
+	.I2(\u_busmatrix16/n115_4 ),
+	.F(SHBURSTM0[0])
+);
+defparam \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_s .INIT=8'hD0;
+LUT3 \u_busmatrix16/uOutputstage0/SHBURSTM0_d_1_s  (
+	.I0(\u_busmatrix16/uOutputstage0/n114_31 ),
+	.I1(\u_busmatrix16/n115_4 ),
+	.I2(\u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_5 ),
+	.F(SHBURSTM0[1])
+);
+defparam \u_busmatrix16/uOutputstage0/SHBURSTM0_d_1_s .INIT=8'h80;
+LUT3 \u_busmatrix16/uOutputstage0/SHBURSTM0_d_2_s  (
+	.I0(\u_busmatrix16/uOutputstage0/n113_31 ),
+	.I1(\u_busmatrix16/n115_4 ),
+	.I2(\u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_5 ),
+	.F(SHBURSTM0[2])
+);
+defparam \u_busmatrix16/uOutputstage0/SHBURSTM0_d_2_s .INIT=8'h80;
+LUT4 \u_busmatrix16/uOutputstage0/SHTRANSM0_d_0_s  (
+	.I0(\u_busmatrix16/uOutputstage0/SHTRANSM0_d_0_5 ),
+	.I1(\u_busmatrix16/uOutputstage0/SHTRANSM0_d_0_6 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHTRANSM0[0])
+);
+defparam \u_busmatrix16/uOutputstage0/SHTRANSM0_d_0_s .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHTRANSM0_d_1_s  (
+	.I0(\u_busmatrix16/uOutputstage0/SHTRANSM0_d_1_5 ),
+	.I1(\u_busmatrix16/uOutputstage0/SHTRANSM0_d_1_6 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHTRANSM0[1])
+);
+defparam \u_busmatrix16/uOutputstage0/SHTRANSM0_d_1_s .INIT=16'h3500;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_24_s  (
+	.I0(\u_busmatrix16/uOutputstage0/SHADDRM0_d_24_5 ),
+	.I1(\u_busmatrix16/uOutputstage0/SHADDRM0_d_24_6 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[24])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_24_s .INIT=16'h3500;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_25_s  (
+	.I0(\u_busmatrix16/uOutputstage0/SHADDRM0_d_25_5 ),
+	.I1(\u_busmatrix16/uOutputstage0/SHADDRM0_d_25_6 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[25])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_25_s .INIT=16'h3500;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_26_s  (
+	.I0(\u_busmatrix16/uOutputstage0/SHADDRM0_d_26_5 ),
+	.I1(\u_busmatrix16/uOutputstage0/SHADDRM0_d_26_6 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[26])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_26_s .INIT=16'h3500;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_27_s  (
+	.I0(\u_busmatrix16/uOutputstage0/SHADDRM0_d_27_5 ),
+	.I1(\u_busmatrix16/uOutputstage0/SHADDRM0_d_27_6 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[27])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_27_s .INIT=16'h3500;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_28_s  (
+	.I0(\u_busmatrix16/uOutputstage0/SHADDRM0_d_28_5 ),
+	.I1(\u_busmatrix16/uOutputstage0/SHADDRM0_d_28_6 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[28])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_28_s .INIT=16'h3500;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_29_s  (
+	.I0(\u_busmatrix16/uOutputstage0/SHADDRM0_d_29_5 ),
+	.I1(\u_busmatrix16/uOutputstage0/SHADDRM0_d_29_6 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[29])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_29_s .INIT=16'h3500;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_30_s  (
+	.I0(\u_busmatrix16/uOutputstage0/SHADDRM0_d_30_5 ),
+	.I1(\u_busmatrix16/uOutputstage0/SHADDRM0_d_30_6 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[30])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_30_s .INIT=16'h3500;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_31_s  (
+	.I0(\u_busmatrix16/uOutputstage0/SHADDRM0_d_31_5 ),
+	.I1(\u_busmatrix16/uOutputstage0/SHADDRM0_d_31_6 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[31])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_31_s .INIT=16'h3500;
+LUT2 \u_busmatrix16/uOutputstage0/n177_s1  (
+	.I0(SHTRANSM0[1]),
+	.I1(\u_busmatrix16/uOutputstage0/BurstCount_2_7 ),
+	.F(\u_busmatrix16/uOutputstage0/n177_4 )
+);
+defparam \u_busmatrix16/uOutputstage0/n177_s1 .INIT=4'h2;
+LUT3 \u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_s0  (
+	.I0(\u_busmatrix16/uOutputstage0/DataInPort [1]),
+	.I1(\u_busmatrix16/uOutputstage0/DataInPort [1]),
+	.I2(\u_busmatrix16/uOutputstage0/DataInPort [1]),
+	.F(\u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_6 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHWDATAM0_d_0_s0 .INIT=8'h01;
+LUT4 \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_s0  (
+	.I0(\u_busmatrix16/BurstOverride ),
+	.I1(\u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_6 ),
+	.I2(\u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_7 ),
+	.I3(\u_busmatrix16/AddrInPort [0]),
+	.F(\u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_5 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_s0 .INIT=16'h0F77;
+LUT4 \u_busmatrix16/uOutputstage0/SHTRANSM0_d_0_s0  (
+	.I0(\u_busmatrix16/Bound ),
+	.I1(\u_busmatrix16/BurstOverride ),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.I3(MHTRANSS0[0]),
+	.F(\u_busmatrix16/uOutputstage0/SHTRANSM0_d_0_5 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHTRANSM0_d_0_s0 .INIT=16'h0700;
+LUT4 \u_busmatrix16/uOutputstage0/SHTRANSM0_d_0_s1  (
+	.I0(\u_busmatrix16/Bound_13 ),
+	.I1(\u_busmatrix16/BurstOverride_12 ),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.I3(MHTRANSS1[0]),
+	.F(\u_busmatrix16/uOutputstage0/SHTRANSM0_d_0_6 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHTRANSM0_d_0_s1 .INIT=16'h0700;
+LUT2 \u_busmatrix16/uOutputstage0/SHTRANSM0_d_1_s0  (
+	.I0(MHTRANSS0[1]),
+	.I1(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/uOutputstage0/SHTRANSM0_d_1_5 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHTRANSM0_d_1_s0 .INIT=4'h1;
+LUT2 \u_busmatrix16/uOutputstage0/SHTRANSM0_d_1_s1  (
+	.I0(MHTRANSS1[1]),
+	.I1(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/uOutputstage0/SHTRANSM0_d_1_6 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHTRANSM0_d_1_s1 .INIT=4'h1;
+LUT3 \u_busmatrix16/uOutputstage0/SHADDRM0_d_24_s0  (
+	.I0(MHADDRS0[24]),
+	.I1(\u_busmatrix16/RegAddr [24]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/uOutputstage0/SHADDRM0_d_24_5 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_24_s0 .INIT=8'h35;
+LUT3 \u_busmatrix16/uOutputstage0/SHADDRM0_d_24_s1  (
+	.I0(MHADDRS1[24]),
+	.I1(\u_busmatrix16/RegAddr_0 [24]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/uOutputstage0/SHADDRM0_d_24_6 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_24_s1 .INIT=8'h35;
+LUT3 \u_busmatrix16/uOutputstage0/SHADDRM0_d_25_s0  (
+	.I0(MHADDRS0[25]),
+	.I1(\u_busmatrix16/RegAddr [25]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/uOutputstage0/SHADDRM0_d_25_5 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_25_s0 .INIT=8'h35;
+LUT3 \u_busmatrix16/uOutputstage0/SHADDRM0_d_25_s1  (
+	.I0(MHADDRS1[25]),
+	.I1(\u_busmatrix16/RegAddr_0 [25]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/uOutputstage0/SHADDRM0_d_25_6 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_25_s1 .INIT=8'h35;
+LUT3 \u_busmatrix16/uOutputstage0/SHADDRM0_d_26_s0  (
+	.I0(MHADDRS0[26]),
+	.I1(\u_busmatrix16/RegAddr [26]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/uOutputstage0/SHADDRM0_d_26_5 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_26_s0 .INIT=8'h35;
+LUT3 \u_busmatrix16/uOutputstage0/SHADDRM0_d_26_s1  (
+	.I0(MHADDRS1[26]),
+	.I1(\u_busmatrix16/RegAddr_0 [26]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/uOutputstage0/SHADDRM0_d_26_6 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_26_s1 .INIT=8'h35;
+LUT3 \u_busmatrix16/uOutputstage0/SHADDRM0_d_27_s0  (
+	.I0(MHADDRS0[27]),
+	.I1(\u_busmatrix16/RegAddr [27]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/uOutputstage0/SHADDRM0_d_27_5 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_27_s0 .INIT=8'h35;
+LUT3 \u_busmatrix16/uOutputstage0/SHADDRM0_d_27_s1  (
+	.I0(MHADDRS1[27]),
+	.I1(\u_busmatrix16/RegAddr_0 [27]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/uOutputstage0/SHADDRM0_d_27_6 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_27_s1 .INIT=8'h35;
+LUT3 \u_busmatrix16/uOutputstage0/SHADDRM0_d_28_s0  (
+	.I0(MHADDRS0[28]),
+	.I1(\u_busmatrix16/RegAddr [28]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/uOutputstage0/SHADDRM0_d_28_5 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_28_s0 .INIT=8'h35;
+LUT3 \u_busmatrix16/uOutputstage0/SHADDRM0_d_28_s1  (
+	.I0(MHADDRS1[28]),
+	.I1(\u_busmatrix16/RegAddr_0 [28]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/uOutputstage0/SHADDRM0_d_28_6 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_28_s1 .INIT=8'h35;
+LUT3 \u_busmatrix16/uOutputstage0/SHADDRM0_d_29_s0  (
+	.I0(MHADDRS0[29]),
+	.I1(\u_busmatrix16/RegAddr [29]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/uOutputstage0/SHADDRM0_d_29_5 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_29_s0 .INIT=8'h35;
+LUT3 \u_busmatrix16/uOutputstage0/SHADDRM0_d_29_s1  (
+	.I0(MHADDRS1[29]),
+	.I1(\u_busmatrix16/RegAddr_0 [29]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/uOutputstage0/SHADDRM0_d_29_6 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_29_s1 .INIT=8'h35;
+LUT3 \u_busmatrix16/uOutputstage0/SHADDRM0_d_30_s0  (
+	.I0(MHADDRS0[30]),
+	.I1(\u_busmatrix16/RegAddr [30]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/uOutputstage0/SHADDRM0_d_30_5 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_30_s0 .INIT=8'h35;
+LUT3 \u_busmatrix16/uOutputstage0/SHADDRM0_d_30_s1  (
+	.I0(MHADDRS1[30]),
+	.I1(\u_busmatrix16/RegAddr_0 [30]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/uOutputstage0/SHADDRM0_d_30_6 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_30_s1 .INIT=8'h35;
+LUT3 \u_busmatrix16/uOutputstage0/SHADDRM0_d_31_s0  (
+	.I0(MHADDRS0[31]),
+	.I1(\u_busmatrix16/RegAddr [31]),
+	.I2(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/uOutputstage0/SHADDRM0_d_31_5 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_31_s0 .INIT=8'h35;
+LUT3 \u_busmatrix16/uOutputstage0/SHADDRM0_d_31_s1  (
+	.I0(MHADDRS1[31]),
+	.I1(\u_busmatrix16/RegAddr_0 [31]),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.F(\u_busmatrix16/uOutputstage0/SHADDRM0_d_31_6 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_31_s1 .INIT=8'h35;
+LUT4 \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_s1  (
+	.I0(MHTRANSS0[0]),
+	.I1(MHTRANSS0[1]),
+	.I2(\u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_8 ),
+	.I3(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_6 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_s1 .INIT=16'h0FBB;
+LUT4 \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_s2  (
+	.I0(\u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_9 ),
+	.I1(\u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_10 ),
+	.I2(\u_busmatrix16/PendTranReg_14 ),
+	.I3(\u_busmatrix16/BurstOverride_12 ),
+	.F(\u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_7 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_s2 .INIT=16'h3500;
+LUT2 \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_s3  (
+	.I0(\u_busmatrix16/RegTrans [0]),
+	.I1(\u_busmatrix16/RegTrans [1]),
+	.F(\u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_8 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_s3 .INIT=4'h4;
+LUT2 \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_s4  (
+	.I0(MHTRANSS1[0]),
+	.I1(MHTRANSS1[1]),
+	.F(\u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_9 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_s4 .INIT=4'h4;
+LUT2 \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_s5  (
+	.I0(\u_busmatrix16/RegTrans_0 [0]),
+	.I1(\u_busmatrix16/RegTrans_0 [1]),
+	.F(\u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_10 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_s5 .INIT=4'h4;
+LUT4 \u_busmatrix16/uOutputstage0/HselLock_s3  (
+	.I0(\u_busmatrix16/uOutputstage0/n124_31 ),
+	.I1(\u_busmatrix16/n115_4 ),
+	.I2(\u_busmatrix16/uOutputstage0/n177_4 ),
+	.I3(SHREADYMUXM0),
+	.F(\u_busmatrix16/uOutputstage0/HselLock_8 )
+);
+defparam \u_busmatrix16/uOutputstage0/HselLock_s3 .INIT=16'hF700;
+LUT3 \u_busmatrix16/uOutputstage0/n177_s2  (
+	.I0(\u_busmatrix16/uOutputstage0/n124_31 ),
+	.I1(SHTRANSM0[1]),
+	.I2(\u_busmatrix16/uOutputstage0/BurstCount_2_7 ),
+	.F(\u_busmatrix16/uOutputstage0/n177_6 )
+);
+defparam \u_busmatrix16/uOutputstage0/n177_s2 .INIT=8'h08;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_23_s0  (
+	.I0(\u_busmatrix16/Addr0_23_1 ),
+	.I1(\u_busmatrix16/Addr1_23_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[23])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_23_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_22_s0  (
+	.I0(\u_busmatrix16/Addr0_22_1 ),
+	.I1(\u_busmatrix16/Addr1_22_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[22])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_22_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_21_s0  (
+	.I0(\u_busmatrix16/Addr0_21_1 ),
+	.I1(\u_busmatrix16/Addr1_21_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[21])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_21_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_20_s0  (
+	.I0(\u_busmatrix16/Addr0_20_1 ),
+	.I1(\u_busmatrix16/Addr1_20_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[20])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_20_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_19_s0  (
+	.I0(\u_busmatrix16/Addr0_19_1 ),
+	.I1(\u_busmatrix16/Addr1_19_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[19])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_19_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_18_s0  (
+	.I0(\u_busmatrix16/Addr0_18_1 ),
+	.I1(\u_busmatrix16/Addr1_18_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[18])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_18_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_17_s0  (
+	.I0(\u_busmatrix16/Addr0_17_1 ),
+	.I1(\u_busmatrix16/Addr1_17_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[17])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_17_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_16_s0  (
+	.I0(\u_busmatrix16/Addr0_16_1 ),
+	.I1(\u_busmatrix16/Addr1_16_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[16])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_16_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_15_s0  (
+	.I0(\u_busmatrix16/Addr0_15_1 ),
+	.I1(\u_busmatrix16/Addr1_15_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[15])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_15_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_14_s0  (
+	.I0(\u_busmatrix16/Addr0_14_1 ),
+	.I1(\u_busmatrix16/Addr1_14_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[14])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_14_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_13_s0  (
+	.I0(\u_busmatrix16/Addr0_13_1 ),
+	.I1(\u_busmatrix16/Addr1_13_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[13])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_13_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_12_s0  (
+	.I0(\u_busmatrix16/Addr0_12_1 ),
+	.I1(\u_busmatrix16/Addr1_12_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[12])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_12_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_11_s0  (
+	.I0(\u_busmatrix16/Addr0_11_1 ),
+	.I1(\u_busmatrix16/Addr1_11_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[11])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_11_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_10_s0  (
+	.I0(\u_busmatrix16/Addr0_10_1 ),
+	.I1(\u_busmatrix16/Addr1_10_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[10])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_10_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_9_s0  (
+	.I0(\u_busmatrix16/Addr0_9_1 ),
+	.I1(\u_busmatrix16/Addr1_9_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[9])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_9_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_8_s0  (
+	.I0(\u_busmatrix16/Addr0_8_1 ),
+	.I1(\u_busmatrix16/Addr1_8_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[8])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_8_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_7_s0  (
+	.I0(\u_busmatrix16/Addr0_7_1 ),
+	.I1(\u_busmatrix16/Addr1_7_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[7])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_7_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_6_s0  (
+	.I0(\u_busmatrix16/Addr0_6_1 ),
+	.I1(\u_busmatrix16/Addr1_6_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[6])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_6_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_5_s0  (
+	.I0(\u_busmatrix16/Addr0_5_1 ),
+	.I1(\u_busmatrix16/Addr1_5_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[5])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_5_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_4_s0  (
+	.I0(\u_busmatrix16/Addr0_4_1 ),
+	.I1(\u_busmatrix16/Addr1_4_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[4])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_4_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_3_s0  (
+	.I0(\u_busmatrix16/Addr0_3_1 ),
+	.I1(\u_busmatrix16/Addr1_3_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[3])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_3_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_2_s0  (
+	.I0(\u_busmatrix16/Addr0_2_1 ),
+	.I1(\u_busmatrix16/Addr1_2_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[2])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_2_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_1_s0  (
+	.I0(\u_busmatrix16/Addr0_1_1 ),
+	.I1(\u_busmatrix16/Addr1_1_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[1])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_1_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHADDRM0_d_0_s0  (
+	.I0(\u_busmatrix16/Addr0_0_1 ),
+	.I1(\u_busmatrix16/Addr1_0_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHADDRM0[0])
+);
+defparam \u_busmatrix16/uOutputstage0/SHADDRM0_d_0_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHWRITEM0_d_s0  (
+	.I0(\u_busmatrix16/Write0_1 ),
+	.I1(\u_busmatrix16/Write1_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHWRITEM0)
+);
+defparam \u_busmatrix16/uOutputstage0/SHWRITEM0_d_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHSIZEM0_d_2_s0  (
+	.I0(\u_busmatrix16/Size0_2_1 ),
+	.I1(\u_busmatrix16/Size1_2_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHSIZEM0[2])
+);
+defparam \u_busmatrix16/uOutputstage0/SHSIZEM0_d_2_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHSIZEM0_d_1_s0  (
+	.I0(\u_busmatrix16/Size0_1_1 ),
+	.I1(\u_busmatrix16/Size1_1_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHSIZEM0[1])
+);
+defparam \u_busmatrix16/uOutputstage0/SHSIZEM0_d_1_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHSIZEM0_d_0_s0  (
+	.I0(\u_busmatrix16/Size0_0_1 ),
+	.I1(\u_busmatrix16/Size1_0_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHSIZEM0[0])
+);
+defparam \u_busmatrix16/uOutputstage0/SHSIZEM0_d_0_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHPROTM0_d_3_s0  (
+	.I0(\u_busmatrix16/Prot0_3_1 ),
+	.I1(\u_busmatrix16/Prot1_3_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHPROTM0[3])
+);
+defparam \u_busmatrix16/uOutputstage0/SHPROTM0_d_3_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHPROTM0_d_2_s0  (
+	.I0(\u_busmatrix16/Prot0_2_1 ),
+	.I1(\u_busmatrix16/Prot1_2_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHPROTM0[2])
+);
+defparam \u_busmatrix16/uOutputstage0/SHPROTM0_d_2_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHPROTM0_d_1_s0  (
+	.I0(\u_busmatrix16/Prot0_1_1 ),
+	.I1(\u_busmatrix16/Prot1_1_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHPROTM0[1])
+);
+defparam \u_busmatrix16/uOutputstage0/SHPROTM0_d_1_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHPROTM0_d_0_s0  (
+	.I0(\u_busmatrix16/Prot0_0_1 ),
+	.I1(\u_busmatrix16/Prot1_0_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHPROTM0[0])
+);
+defparam \u_busmatrix16/uOutputstage0/SHPROTM0_d_0_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHMASTERM0_d_3_s0  (
+	.I0(\u_busmatrix16/Master0_3_1 ),
+	.I1(\u_busmatrix16/Master1_3_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHMASTERM0[3])
+);
+defparam \u_busmatrix16/uOutputstage0/SHMASTERM0_d_3_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHMASTERM0_d_2_s0  (
+	.I0(\u_busmatrix16/Master0_2_1 ),
+	.I1(\u_busmatrix16/Master1_2_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHMASTERM0[2])
+);
+defparam \u_busmatrix16/uOutputstage0/SHMASTERM0_d_2_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHMASTERM0_d_1_s0  (
+	.I0(\u_busmatrix16/Master0_1_1 ),
+	.I1(\u_busmatrix16/Master1_1_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHMASTERM0[1])
+);
+defparam \u_busmatrix16/uOutputstage0/SHMASTERM0_d_1_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHMASTERM0_d_0_s0  (
+	.I0(\u_busmatrix16/Master0_0_1 ),
+	.I1(\u_busmatrix16/Master1_0_1 ),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.I3(\u_busmatrix16/n115_4 ),
+	.F(SHMASTERM0[0])
+);
+defparam \u_busmatrix16/uOutputstage0/SHMASTERM0_d_0_s0 .INIT=16'hCA00;
+LUT4 \u_busmatrix16/uOutputstage0/SHSELM0_d_s1  (
+	.I0(\u_busmatrix16/uOutputstage0/BurstCount_2_7 ),
+	.I1(\u_busmatrix16/n115_4 ),
+	.I2(SHREADYOUTM0),
+	.I3(\u_busmatrix16/SlaveSel ),
+	.F(\u_busmatrix16/uOutputstage0/SHSELM0_d_10 )
+);
+defparam \u_busmatrix16/uOutputstage0/SHSELM0_d_s1 .INIT=16'h4F44;
+LUT2 \u_busmatrix16/uOutputstage0/SHSELM0_d_s2  (
+	.I0(\u_busmatrix16/uOutputstage0/BurstCount_2_7 ),
+	.I1(\u_busmatrix16/n115_4 ),
+	.F(SHSELM0)
+);
+defparam \u_busmatrix16/uOutputstage0/SHSELM0_d_s2 .INIT=4'h4;
+LUT2 \u_busmatrix16/uOutputstage0/SHREADYMUXM0_d_s0  (
+	.I0(SHREADYOUTM0),
+	.I1(\u_busmatrix16/SlaveSel ),
+	.F(SHREADYMUXM0)
+);
+defparam \u_busmatrix16/uOutputstage0/SHREADYMUXM0_d_s0 .INIT=4'hB;
+DFFCE \u_busmatrix16/uOutputstage0/DataInPort_1_s0  (
+	.D(\u_busmatrix16/AddrInPort [3]),
+	.CLK(HCLK),
+	.CE(SHREADYMUXM0),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uOutputstage0/DataInPort [1])
+);
+defparam \u_busmatrix16/uOutputstage0/DataInPort_1_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uOutputstage0/DataInPort_0_s0  (
+	.D(\u_busmatrix16/AddrInPort [0]),
+	.CLK(HCLK),
+	.CE(SHREADYMUXM0),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uOutputstage0/DataInPort [0])
+);
+defparam \u_busmatrix16/uOutputstage0/DataInPort_0_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uOutputstage0/HselLock_s0  (
+	.D(\u_busmatrix16/uOutputstage0/n177_6 ),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uOutputstage0/HselLock_8 ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uOutputstage0/HselLock )
+);
+defparam \u_busmatrix16/uOutputstage0/HselLock_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uOutputstage0/SlaveSel_s1  (
+	.D(\u_busmatrix16/uOutputstage0/SHSELM0_d_10 ),
+	.CLK(HCLK),
+	.CE(VCC),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/SlaveSel )
+);
+defparam \u_busmatrix16/uOutputstage0/SlaveSel_s1 .INIT=1'b0;
+MUX2_LUT5 \u_busmatrix16/uOutputstage0/n113_s21  (
+	.I0(\u_busmatrix16/uOutputstage0/BurstInt_2_2 ),
+	.I1(\u_busmatrix16/uOutputstage0/BurstInt_2_2_8 ),
+	.S0(\u_busmatrix16/AddrInPort [0]),
+	.O(\u_busmatrix16/uOutputstage0/n113_31 )
+);
+MUX2_LUT5 \u_busmatrix16/uOutputstage0/n114_s21  (
+	.I0(\u_busmatrix16/uOutputstage0/BurstInt_1_2 ),
+	.I1(\u_busmatrix16/uOutputstage0/BurstInt_1_2_9 ),
+	.S0(\u_busmatrix16/AddrInPort [0]),
+	.O(\u_busmatrix16/uOutputstage0/n114_31 )
+);
+MUX2_LUT5 \u_busmatrix16/uOutputstage0/n115_s21  (
+	.I0(\u_busmatrix16/uOutputstage0/BurstInt_0_2 ),
+	.I1(\u_busmatrix16/uOutputstage0/BurstInt_0_2_10 ),
+	.S0(\u_busmatrix16/AddrInPort [0]),
+	.O(\u_busmatrix16/uOutputstage0/n115_31 )
+);
+MUX2_LUT5 \u_busmatrix16/uOutputstage0/n124_s21  (
+	.I0(\u_busmatrix16/uOutputstage0/Mastlock0_1 ),
+	.I1(\u_busmatrix16/uOutputstage0/Mastlock1_1 ),
+	.S0(\u_busmatrix16/AddrInPort [0]),
+	.O(\u_busmatrix16/uOutputstage0/n124_31 )
+);
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_s2  (
+	.I0(\u_busmatrix16/uOutputstage0/BurstCount_2_7 ),
+	.I1(SHTRANSM0[1]),
+	.I2(SHTRANSM0[0]),
+	.I3(SHREADYMUXM0),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_6 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_s2 .INIT=16'hEF00;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s4  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_8 ),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_9 ),
+	.I2(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_19 ),
+	.I3(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_11 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_0_6 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s4 .INIT=16'hA300;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/n22_s7  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [0]),
+	.I1(SHTRANSM0[0]),
+	.I2(\u_busmatrix16/uOutputstage0/uOutputArb/n22_16 ),
+	.I3(\u_busmatrix16/uOutputstage0/n177_4 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/n22_15 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/n22_s7 .INIT=16'hF400;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/n21_s6  (
+	.I0(SHTRANSM0[0]),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/n21_15 ),
+	.I2(\u_busmatrix16/uOutputstage0/uOutputArb/n22_16 ),
+	.I3(\u_busmatrix16/uOutputstage0/n177_4 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/n21_14 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/n21_s6 .INIT=16'hF200;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/n20_s6  (
+	.I0(SHBURSTM0[2]),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/n20_15 ),
+	.I2(SHTRANSM0[0]),
+	.I3(\u_busmatrix16/uOutputstage0/n177_4 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/n20_14 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/n20_s6 .INIT=16'h3A00;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/n19_s6  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/n19_15 ),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/n19_16 ),
+	.I2(SHTRANSM0[0]),
+	.I3(\u_busmatrix16/uOutputstage0/n177_4 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/n19_14 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/n19_s6 .INIT=16'h5C00;
+LUT2 \u_busmatrix16/uOutputstage0/uOutputArb/n224_s3  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_19 ),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_9 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/n192_6 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/n224_s3 .INIT=4'h4;
+LUT2 \u_busmatrix16/uOutputstage0/uOutputArb/n28_s1  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_8 ),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_19 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/n28_6 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/n28_s1 .INIT=4'h4;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/NoPortNext_s1  (
+	.I0(\u_busmatrix16/uOutputstage0/BurstCount_2_7 ),
+	.I1(\u_busmatrix16/n115_4 ),
+	.I2(\u_busmatrix16/uOutputstage0/uOutputArb/NoPortNext_7 ),
+	.I3(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_9 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/NoPortNext )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/NoPortNext_s1 .INIT=16'hB000;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_s3  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_8 ),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_9 ),
+	.I2(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_10 ),
+	.I3(\u_busmatrix16/uOutputstage0/uOutputArb/n230_10 ),
+	.F(\u_busmatrix16/uOutputstage0/BurstCount_2_7 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_s3 .INIT=16'h007F;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s5  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_12 ),
+	.I1(\u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_5 ),
+	.I2(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_13 ),
+	.I3(SHTRANSM0[0]),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_8 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s5 .INIT=16'h0FBB;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s6  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_21 ),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_8 ),
+	.I2(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_10 ),
+	.I3(\u_busmatrix16/uOutputstage0/uOutputArb/n230_11 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_9 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s6 .INIT=16'h00BF;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s8  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/n230_10 ),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_16 ),
+	.I2(SHMASTLOCKM0),
+	.I3(SHREADYMUXM0),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_11 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s8 .INIT=16'h4F00;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/n22_s8  (
+	.I0(\u_busmatrix16/uOutputstage0/n113_31 ),
+	.I1(\u_busmatrix16/uOutputstage0/n114_31 ),
+	.I2(SHTRANSM0[0]),
+	.I3(\u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_5 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/n22_16 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/n22_s8 .INIT=16'h0E00;
+LUT2 \u_busmatrix16/uOutputstage0/uOutputArb/n21_s7  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [0]),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [1]),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/n21_15 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/n21_s7 .INIT=4'h6;
+LUT3 \u_busmatrix16/uOutputstage0/uOutputArb/n20_s7  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [0]),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [1]),
+	.I2(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [2]),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/n20_15 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/n20_s7 .INIT=8'h1E;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/n19_s7  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [0]),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [1]),
+	.I2(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [2]),
+	.I3(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [3]),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/n19_15 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/n19_s7 .INIT=16'h01FE;
+LUT3 \u_busmatrix16/uOutputstage0/uOutputArb/n19_s8  (
+	.I0(\u_busmatrix16/uOutputstage0/n114_31 ),
+	.I1(\u_busmatrix16/uOutputstage0/n113_31 ),
+	.I2(\u_busmatrix16/uOutputstage0/SHBURSTM0_d_0_5 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/n19_16 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/n19_s8 .INIT=8'h80;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/n230_s5  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/n230_12 ),
+	.I1(\u_busmatrix16/AddrInPort [0]),
+	.I2(\u_busmatrix16/uOutputstage0/uOutputArb/n230_13 ),
+	.I3(\u_busmatrix16/uOutputstage0/uOutputArb/n230_14 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/n230_10 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/n230_s5 .INIT=16'h1000;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/n230_s6  (
+	.I0(\u_busmatrix16/LoadReg ),
+	.I1(\u_busmatrix16/PendTranReg ),
+	.I2(\u_busmatrix16/uOutputstage0/uOutputArb/n230_13 ),
+	.I3(\u_busmatrix16/uOutputstage0/uOutputArb/n230_14 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/n230_11 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/n230_s6 .INIT=16'hE000;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/NoPortNext_s2  (
+	.I0(SHREADYMUXM0),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/BurstHold ),
+	.I2(\u_busmatrix16/uOutputstage0/HselLock ),
+	.I3(SHMASTLOCKM0),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/NoPortNext_7 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/NoPortNext_s2 .INIT=16'h0BBB;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_s4  (
+	.I0(\u_busmatrix16/uOutputstage0/SHADDRM0_d_27_6 ),
+	.I1(\u_busmatrix16/uOutputstage0/SHADDRM0_d_26_6 ),
+	.I2(\u_busmatrix16/uOutputstage0/SHADDRM0_d_24_6 ),
+	.I3(\u_busmatrix16/uOutputstage0/SHADDRM0_d_25_6 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_8 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_s4 .INIT=16'h8000;
+LUT3 \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_s5  (
+	.I0(\u_busmatrix16/PendTranReg_14 ),
+	.I1(MHSELS1),
+	.I2(\u_busmatrix16/AddrInPort [0]),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_9 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_s5 .INIT=8'hE0;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_s6  (
+	.I0(\u_busmatrix16/uOutputstage0/SHADDRM0_d_30_6 ),
+	.I1(\u_busmatrix16/uOutputstage0/SHADDRM0_d_29_6 ),
+	.I2(\u_busmatrix16/uOutputstage0/SHADDRM0_d_28_6 ),
+	.I3(\u_busmatrix16/uOutputstage0/SHADDRM0_d_31_6 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_10 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_s6 .INIT=16'h0080;
+LUT2 \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s9  (
+	.I0(\u_busmatrix16/uOutputstage0/n114_31 ),
+	.I1(\u_busmatrix16/uOutputstage0/n113_31 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_12 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s9 .INIT=4'h1;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s10  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [0]),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_17 ),
+	.I2(SHTRANSM0[1]),
+	.I3(\u_busmatrix16/uOutputstage0/uOutputArb/BurstHold ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_13 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s10 .INIT=16'h7F00;
+LUT3 \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s12  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_10 ),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_8 ),
+	.I2(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_9 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_15 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s12 .INIT=8'h80;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s13  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_10 ),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_8 ),
+	.I2(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_9 ),
+	.I3(\u_busmatrix16/uOutputstage0/HselLock ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_16 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s13 .INIT=16'h007F;
+LUT2 \u_busmatrix16/uOutputstage0/uOutputArb/n230_s7  (
+	.I0(MHSELS0),
+	.I1(\u_busmatrix16/PendTranReg ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/n230_12 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/n230_s7 .INIT=4'h1;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/n230_s8  (
+	.I0(\u_busmatrix16/uOutputstage0/SHADDRM0_d_26_5 ),
+	.I1(\u_busmatrix16/uOutputstage0/SHADDRM0_d_25_5 ),
+	.I2(\u_busmatrix16/uOutputstage0/SHADDRM0_d_24_5 ),
+	.I3(\u_busmatrix16/uOutputstage0/SHADDRM0_d_27_5 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/n230_13 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/n230_s8 .INIT=16'h8000;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/n230_s9  (
+	.I0(\u_busmatrix16/uOutputstage0/SHADDRM0_d_29_5 ),
+	.I1(\u_busmatrix16/uOutputstage0/SHADDRM0_d_28_5 ),
+	.I2(\u_busmatrix16/uOutputstage0/SHADDRM0_d_30_5 ),
+	.I3(\u_busmatrix16/uOutputstage0/SHADDRM0_d_31_5 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/n230_14 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/n230_s9 .INIT=16'h0080;
+LUT3 \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s14  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [1]),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [2]),
+	.I2(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [3]),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_17 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s14 .INIT=8'h01;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s15  (
+	.I0(\u_busmatrix16/uOutputstage0/uOutputArb/n230_10 ),
+	.I1(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_15 ),
+	.I2(SHTRANSM0[1]),
+	.I3(SHTRANSM0[0]),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_19 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s15 .INIT=16'hEEE0;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/n230_s10  (
+	.I0(SHTRANSM0[1]),
+	.I1(SHTRANSM0[0]),
+	.I2(\u_busmatrix16/uOutputstage0/uOutputArb/n230_10 ),
+	.I3(\u_busmatrix16/uOutputstage0/uOutputArb/n230_11 ),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/n230_16 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/n230_s10 .INIT=16'h001F;
+LUT4 \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s16  (
+	.I0(\u_busmatrix16/PendTranReg_14 ),
+	.I1(MHREADYS1),
+	.I2(MHSELS1),
+	.I3(MHTRANSS1[1]),
+	.F(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_21 )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s16 .INIT=16'h1555;
+DFFCE \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_s0  (
+	.D(\u_busmatrix16/uOutputstage0/uOutputArb/n20_14 ),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_6 ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [2])
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_1_s0  (
+	.D(\u_busmatrix16/uOutputstage0/uOutputArb/n21_14 ),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_6 ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [1])
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_1_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_0_s0  (
+	.D(\u_busmatrix16/uOutputstage0/uOutputArb/n22_15 ),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_6 ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [0])
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_0_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uOutputstage0/uOutputArb/BurstHold_s0  (
+	.D(\u_busmatrix16/uOutputstage0/uOutputArb/n28_6 ),
+	.CLK(HCLK),
+	.CE(SHREADYMUXM0),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uOutputstage0/uOutputArb/BurstHold )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/BurstHold_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s0  (
+	.D(\u_busmatrix16/uOutputstage0/uOutputArb/n192_6 ),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_0_6 ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/AddrInPort [3])
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_3_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_0_s0  (
+	.D(\u_busmatrix16/uOutputstage0/uOutputArb/n230_16 ),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_0_6 ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/AddrInPort [0])
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/iAddrInPort_0_s0 .INIT=1'b0;
+DFFCE \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_3_s0  (
+	.D(\u_busmatrix16/uOutputstage0/uOutputArb/n19_14 ),
+	.CLK(HCLK),
+	.CE(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_2_6 ),
+	.CLEAR(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/uOutputstage0/uOutputArb/BurstCount [3])
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/BurstCount_3_s0 .INIT=1'b0;
+DFFPE \u_busmatrix16/uOutputstage0/uOutputArb/iNoPort_s0  (
+	.D(\u_busmatrix16/uOutputstage0/uOutputArb/NoPortNext ),
+	.CLK(HCLK),
+	.CE(SHREADYMUXM0),
+	.PRESET(\u_busmatrix16/n6_6 ),
+	.Q(\u_busmatrix16/NoPort )
+);
+defparam \u_busmatrix16/uOutputstage0/uOutputArb/iNoPort_s0 .INIT=1'b1;
+endmodule
