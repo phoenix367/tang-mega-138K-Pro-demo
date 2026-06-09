@@ -28,6 +28,8 @@
 #define ETH_MDIO_CTRL  0x58   /* write [0]->MDIO read  [1]->MDIO write       */
 #define ETH_MDIO_ST    0x5C   /* [15:0] rddata [16] rd_valid [17] busy (ro)  */
 #define ETH_MODE       0x60   /* [1:0] 0=10 1=100 2=1000M, [2] full-duplex   */
+#define ETH_TX_DBG     0x70   /* [0] TX ahb_master busy, [31:16] cmd_done cnt */
+#define ETH_RX_DBG     0x74   /* [0] RX ahb_master busy, [31:16] cmd_done cnt */
 
 /* CTRL bits */
 #define ETH_CTRL_RX_EN (1u << 0)

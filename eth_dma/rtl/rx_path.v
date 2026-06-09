@@ -35,6 +35,7 @@ module rx_path #(
     output wire [15:0] drop_cnt,
     output wire        irq,
     output wire        busy,           // AHB master command in progress (for arbiter)
+    output wire        dbg_done,        // debug: ahb_master cmd_done pulse
     // AHB-lite master port (bus domain) -> DRAM via EXTM
     output wire [31:0] haddr,
     output wire [1:0]  htrans,
@@ -107,6 +108,8 @@ module rx_path #(
         .haddr(haddr), .htrans(htrans), .hwrite(hwrite), .hsize(hsize),
         .hburst(hburst), .hwdata(hwdata), .hrdata(hrdata), .hready(hready), .hresp(hresp)
     );
+
+    assign dbg_done = cmd_done;
 
     // (input_ready of the FIFOs is unused: the MAC cannot backpressure, so the
     //  data FIFO must be sized >= worst-case bus latency; overflow == loss.)

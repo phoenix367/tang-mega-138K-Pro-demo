@@ -331,8 +331,10 @@ static void test_platform_init(void)
 /* ---- gw_eth_dma bare-metal self-test ------------------------------------ *
  * Validates the DMA gateware (CSR, MDIO, and the full TX->MAC->PHY-loopback->RX
  * datapath) plus the non-coherent cache recipe, before handing off to Linux.   */
-static uint8_t eth_rx_ring[ETH_RING_LEN * ETH_BUF_SIZE] __attribute__((aligned(ETH_BUF_SIZE)));
-static uint8_t eth_tx_ring[ETH_RING_LEN * ETH_BUF_SIZE] __attribute__((aligned(ETH_BUF_SIZE)));
+/* DMA rings at a high, unambiguous DRAM address (the linker's low .bss address
+ * 0x800 may not map to DRAM through the EXTM master). DRAM is >=128 MB here
+ * (the firmware stack lives at 0x08000000), so 0x04000000 is valid + free. */
+#define ETH_DMA_PHYS 0x04000000u
 
 #define ETH_PHY_ADDR 0
 
@@ -383,8 +385,8 @@ static int dma_selftest(void)
 
 	/* [3] DMA loopback: CPU -> TX ring -> MAC -> PHY loopback -> RX ring -> CPU. */
 	{
-		uint32_t rxb = (uint32_t)(uintptr_t)eth_rx_ring;
-		uint32_t txb = (uint32_t)(uintptr_t)eth_tx_ring;
+		uint32_t rxb = ETH_DMA_PHYS;            /* RX ring pool */
+		uint32_t txb = ETH_DMA_PHYS + 0x10000u; /* TX ring pool (+64 KB) */
 		volatile uint32_t *txh = (volatile uint32_t *)(uintptr_t)txb;
 		uint8_t *txd = (uint8_t *)(uintptr_t)(txb + 4);
 
@@ -408,11 +410,21 @@ static int dma_selftest(void)
 		ETH_REG(ETH_CTRL)    = ETH_CTRL_RX_EN | ETH_CTRL_TX_EN;
 		ETH_REG(ETH_TX_TAIL) = 1;                      /* queue the frame */
 
-		{ uint32_t to = 8000000; while (ETH_REG(ETH_RX_HEAD) == 0 && --to) ; }
-
-		printf(" [3] tx_fetch=%u tx_head=%u rx_head=%u drop=%u\r\n",
-		       (unsigned)ETH_REG(ETH_TX_FETCH), (unsigned)ETH_REG(ETH_TX_HEAD),
-		       (unsigned)ETH_REG(ETH_RX_HEAD), (unsigned)ETH_REG(ETH_RX_DROP));
+		/* confirm the enables/tail actually landed (rules out a CSR-write issue) */
+		printf(" [3] CTRL=%u TX_TAIL=%u RX_LEN=%u TX_BASE=%08x\r\n",
+		       (unsigned)ETH_REG(ETH_CTRL), (unsigned)ETH_REG(ETH_TX_TAIL),
+		       (unsigned)ETH_REG(ETH_RX_LEN), (unsigned)ETH_REG(ETH_TX_BASE));
+		/* poll: is the DMA progressing at all, or wedged on the EXTM access? */
+		{ int k; for (k = 0; k < 4; k++) {
+			eth_busy_wait(2000000);
+			printf("     poll%d tx_fetch=%u tx_head=%u rx_head=%u drop=%u\r\n", k,
+			       (unsigned)ETH_REG(ETH_TX_FETCH), (unsigned)ETH_REG(ETH_TX_HEAD),
+			       (unsigned)ETH_REG(ETH_RX_HEAD), (unsigned)ETH_REG(ETH_RX_DROP));
+		} }
+		{ uint32_t td = ETH_REG(ETH_TX_DBG), rdv = ETH_REG(ETH_RX_DBG);
+		  printf(" [3] TX ahb busy=%u cmd_done=%u | RX ahb busy=%u cmd_done=%u\r\n",
+		         (unsigned)(td & 1), (unsigned)(td >> 16),
+		         (unsigned)(rdv & 1), (unsigned)(rdv >> 16)); }
 
 		if (ETH_REG(ETH_RX_HEAD) == 0) {
 			printf("     no RX frame (PHY loopback / link not up) : FAIL\r\n");

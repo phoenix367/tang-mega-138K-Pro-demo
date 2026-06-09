@@ -54,7 +54,7 @@ module gw_eth_dma_core (
         .receiving_clock(bus_clk), .reset_in(arst_n), .reset_out(bus_rstn)
     );
 
-    wire        rx_en, tx_en, rx_irq, tx_irq;
+    wire        rx_en, tx_en, rx_irq, tx_irq, rx_dbg_done, tx_dbg_done;
     wire [31:0] rx_base, tx_base;
     wire [15:0] rx_ring_len, rx_tail, tx_ring_len, tx_tail;
     wire [15:0] rx_head, rx_drop, tx_head, tx_fetch;
@@ -71,7 +71,8 @@ module gw_eth_dma_core (
         .rx_irq_set(rx_irq), .tx_irq_set(tx_irq), .irq(irq),
         .miim_phyad(miim_phyad), .miim_regad(miim_regad), .miim_wrdata(miim_wrdata),
         .miim_wren(miim_wren), .miim_rden(miim_rden), .miim_rddata(miim_rddata),
-        .miim_rddata_valid(miim_rddata_valid), .miim_busy(miim_busy), .eth_mode(eth_mode)
+        .miim_rddata_valid(miim_rddata_valid), .miim_busy(miim_busy), .eth_mode(eth_mode),
+        .rx_busy(m0_busy), .tx_busy(m1_busy), .rx_done(rx_dbg_done), .tx_done(tx_dbg_done)
     );
 
     rx_path u_rx (
@@ -79,7 +80,7 @@ module gw_eth_dma_core (
         .rx_mac_last(rx_mac_last), .rx_mac_error(rx_mac_error),
         .bus_clk(bus_clk), .arst_n(arst_n),
         .rx_en(rx_en), .buf_base(rx_base), .ring_len(rx_ring_len), .rx_tail(rx_tail),
-        .rx_head(rx_head), .drop_cnt(rx_drop), .irq(rx_irq), .busy(m0_busy),
+        .rx_head(rx_head), .drop_cnt(rx_drop), .irq(rx_irq), .busy(m0_busy), .dbg_done(rx_dbg_done),
         .haddr(m0_haddr), .htrans(m0_htrans), .hwrite(m0_hwrite), .hsize(m0_hsize),
         .hburst(m0_hburst), .hwdata(m0_hwdata), .hrdata(m0_hrdata), .hready(m0_hready), .hresp(m0_hresp)
     );
@@ -89,7 +90,7 @@ module gw_eth_dma_core (
         .tx_mac_last(tx_mac_last), .tx_mac_ready(tx_mac_ready),
         .bus_clk(bus_clk), .arst_n(arst_n),
         .tx_en(tx_en), .buf_base(tx_base), .ring_len(tx_ring_len), .tx_tail(tx_tail),
-        .tx_head(tx_head), .tx_fetch(tx_fetch), .tx_irq(tx_irq), .busy(m1_busy),
+        .tx_head(tx_head), .tx_fetch(tx_fetch), .tx_irq(tx_irq), .busy(m1_busy), .dbg_done(tx_dbg_done),
         .haddr(m1_haddr), .htrans(m1_htrans), .hwrite(m1_hwrite), .hsize(m1_hsize),
         .hburst(m1_hburst), .hwdata(m1_hwdata), .hrdata(m1_hrdata), .hready(m1_hready), .hresp(m1_hresp)
     );

@@ -32,6 +32,7 @@ module tx_path #(
     output wire [15:0] tx_fetch,
     output wire        tx_irq,          // 1-cycle pulse per frame transmitted
     output wire        busy,            // AHB master command in progress (for arbiter)
+    output wire        dbg_done,        // debug: ahb_master cmd_done pulse
     // AHB-lite master port (read) -> DRAM via EXTM
     output wire [31:0] haddr,
     output wire [1:0]  htrans,
@@ -127,6 +128,8 @@ module tx_path #(
     assign tx_head_cnt = tx_head_r;
     assign tx_head     = tx_head_r;
     assign tx_irq      = done_tog_bus ^ done_tog_bus_d;
+
+    assign dbg_done = cmd_done;
 
     wire _unused = &{data_in_ready, hrdata[0], 1'b0};
 endmodule

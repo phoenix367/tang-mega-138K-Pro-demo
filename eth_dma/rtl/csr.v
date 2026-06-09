@@ -64,10 +64,17 @@ module csr (
     input  wire        miim_rddata_valid,
     input  wire        miim_busy,
     // MAC mode
-    output reg  [2:0]  eth_mode
+    output reg  [2:0]  eth_mode,
+    // debug: per-direction AHB master activity (EXTM bring-up)
+    input  wire        rx_busy,
+    input  wire        tx_busy,
+    input  wire        rx_done,         // ahb_master cmd_done pulse (RX)
+    input  wire        tx_done          // ahb_master cmd_done pulse (TX)
 );
     assign hready = 1'b1;
     assign hresp  = 1'b0;
+
+    reg [15:0] rx_done_cnt, tx_done_cnt;
 
     // address-phase capture
     reg [5:0] a_off;
@@ -87,9 +94,14 @@ module csr (
             irq_stat<=0; irq_en<=0; eth_mode<=0;
             miim_phyad<=0; miim_regad<=0; miim_wrdata<=0; miim_wren<=0; miim_rden<=0;
             mdio_rdata<=0; mdio_rvalid<=0;
+            rx_done_cnt<=0; tx_done_cnt<=0;
         end else begin
             a_off <= haddr[7:2]; a_wr <= hwrite; a_sel <= a_active;
             miim_wren <= 1'b0; miim_rden <= 1'b0;     // pulses
+
+            // debug: count completed AHB master transactions per direction
+            if (rx_done) rx_done_cnt <= rx_done_cnt + 16'd1;
+            if (tx_done) tx_done_cnt <= tx_done_cnt + 16'd1;
 
             // latch IRQ sources
             if (rx_irq_set) irq_stat[0] <= 1'b1;
@@ -140,6 +152,8 @@ module csr (
             6'h15: rd = {16'b0, miim_wrdata};
             6'h17: rd = {14'b0, miim_busy, mdio_rvalid, mdio_rdata};
             6'h18: rd = {29'b0, eth_mode};
+            6'h1C: rd = {tx_done_cnt, 15'b0, tx_busy};   // 0x70 TX_DBG
+            6'h1D: rd = {rx_done_cnt, 15'b0, rx_busy};   // 0x74 RX_DBG
             default: rd = 32'h0;
         endcase
     end
