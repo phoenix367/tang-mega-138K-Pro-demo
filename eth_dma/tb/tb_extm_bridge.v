@@ -43,7 +43,7 @@ module tb_extm_bridge;
     extm_bridge br (
         .hclk(clk), .hresetn(rstn),
         .a_haddr(a_haddr), .a_htrans(a_htrans), .a_hwrite(a_hwrite), .a_hsize(a_hsize),
-        .a_hburst(a_hburst), .a_hwdata(a_hwdata), .a_active(busy),
+        .a_hburst(a_hburst), .a_hwdata(a_hwdata), .a_active(busy), .a_hready_in(e_hreadyout),
         .a_hrdata(a_hrdata), .a_hready(a_hready), .a_hresp(a_hresp),
         .extm_haddr(e_haddr), .extm_htrans(e_htrans), .extm_hwrite(e_hwrite), .extm_hsize(e_hsize),
         .extm_hburst(e_hburst), .extm_hprot(e_hprot), .extm_hwdata(e_hwdata), .extm_hsel(e_hsel),

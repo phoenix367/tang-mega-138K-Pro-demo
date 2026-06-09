@@ -153,7 +153,7 @@ wire [1:0]  m0_hresp, m1_hresp;        // Gowin arbiter HRESP is 2-bit
 wire [2:0]  m0_hsize, m0_hburst, m1_hsize, m1_hburst;
 wire [31:0] arb_haddr, arb_hwdata, arb_hrdata;
 wire [1:0]  arb_htrans;
-wire        arb_hwrite, arb_hready, arb_hresp, arb_active;
+wire        arb_hwrite, arb_hready, arb_hresp, arb_active, arb_hready_mux;
 wire [2:0]  arb_hsize, arb_hburst;
 wire [31:0] extm_haddr;   wire [1:0] extm_htrans;  wire extm_hwrite;
 wire [2:0]  extm_hsize, extm_hburst;   wire [3:0] extm_hprot;
@@ -441,7 +441,7 @@ Eth_AHB_Arbiter_Top u_eth_ahb_arbiter
     // shared master -> extm_bridge
     .SHSELM0(arb_active), .SHADDRM0(arb_haddr), .SHTRANSM0(arb_htrans), .SHWRITEM0(arb_hwrite),
     .SHSIZEM0(arb_hsize), .SHBURSTM0(arb_hburst), .SHPROTM0(), .SHMASTERM0(),
-    .SHWDATAM0(arb_hwdata), .SHMASTLOCKM0(), .SHREADYMUXM0(),
+    .SHWDATAM0(arb_hwdata), .SHMASTLOCKM0(), .SHREADYMUXM0(arb_hready_mux),
     .SHRDATAM0(arb_hrdata), .SHREADYOUTM0(arb_hready), .SHRESPM0({1'b0, arb_hresp})
 );
 
@@ -450,7 +450,7 @@ extm_bridge u_extm_bridge
 (
     .hclk(EXTS_HCLK), .hresetn(EXTS_HRSTN),
     .a_haddr(arb_haddr), .a_htrans(arb_htrans), .a_hwrite(arb_hwrite), .a_hsize(arb_hsize),
-    .a_hburst(arb_hburst), .a_hwdata(arb_hwdata), .a_active(arb_active),
+    .a_hburst(arb_hburst), .a_hwdata(arb_hwdata), .a_active(arb_active), .a_hready_in(arb_hready_mux),
     .a_hrdata(arb_hrdata), .a_hready(arb_hready), .a_hresp(arb_hresp),
     .extm_haddr(extm_haddr), .extm_htrans(extm_htrans), .extm_hwrite(extm_hwrite),
     .extm_hsize(extm_hsize), .extm_hburst(extm_hburst), .extm_hprot(extm_hprot),

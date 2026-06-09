@@ -22,6 +22,7 @@ module extm_bridge (
     input  wire [2:0]  a_hburst,
     input  wire [31:0] a_hwdata,
     input  wire        a_active,          // a master is busy -> drive HSEL
+    input  wire        a_hready_in,       // bus HREADY from the arbiter (SHREADYMUX)
     output wire [31:0] a_hrdata,
     output wire        a_hready,
     output wire        a_hresp,
@@ -47,13 +48,13 @@ module extm_bridge (
     assign extm_hprot   = 4'b0011;                  // data, privileged, non-cache, non-buf
     assign extm_hsel    = a_active;
     assign extm_hwdata  = {a_hwdata, a_hwdata};     // replicate to both 32-bit lanes
-    assign extm_hready  = extm_hreadyout;           // single slave: feed ready back
+    assign extm_hready  = a_hready_in;              // bus HREADYIN from the arbiter
 
     // register HADDR[2] at the accepted address phase for the data-phase read mux
     reg addr2_d;
     always @(posedge hclk or negedge hresetn)
-        if (!hresetn)                                        addr2_d <= 1'b0;
-        else if (extm_hsel && a_htrans[1] && extm_hreadyout) addr2_d <= a_haddr[2];
+        if (!hresetn)                                       addr2_d <= 1'b0;
+        else if (extm_hsel && a_htrans[1] && a_hready_in)   addr2_d <= a_haddr[2];
 
     assign a_hrdata = addr2_d ? extm_hrdata[63:32] : extm_hrdata[31:0];
     assign a_hready = extm_hreadyout;
