@@ -16,6 +16,8 @@
 #include "uart.h"
 #include "delay.h"
 #include "config.h"
+#include "cache.h"
+#include "gw_eth_dma.h"
 #include <stdio.h>
 #include <stdint.h>
 
@@ -326,6 +328,113 @@ static void test_platform_init(void)
 	}
 }
 
+/* ---- gw_eth_dma bare-metal self-test ------------------------------------ *
+ * Validates the DMA gateware (CSR, MDIO, and the full TX->MAC->PHY-loopback->RX
+ * datapath) plus the non-coherent cache recipe, before handing off to Linux.   */
+static uint8_t eth_rx_ring[ETH_RING_LEN * ETH_BUF_SIZE] __attribute__((aligned(ETH_BUF_SIZE)));
+static uint8_t eth_tx_ring[ETH_RING_LEN * ETH_BUF_SIZE] __attribute__((aligned(ETH_BUF_SIZE)));
+
+#define ETH_PHY_ADDR 0
+
+static void eth_busy_wait(volatile uint32_t n) { while (n--) __asm__ volatile(""); }
+
+static uint32_t eth_mdio_read(int phy, int reg)
+{
+	ETH_REG(ETH_MDIO_ADDR) = ((reg & 0x1F) << 5) | (phy & 0x1F);
+	ETH_REG(ETH_MDIO_CTRL) = ETH_MDIO_READ;
+	uint32_t st, to = 2000000;
+	do { st = ETH_REG(ETH_MDIO_ST); } while (!(st & ETH_MDIO_RVALID) && --to);
+	return st & 0xFFFF;
+}
+
+static void eth_mdio_write(int phy, int reg, uint16_t val)
+{
+	ETH_REG(ETH_MDIO_ADDR) = ((reg & 0x1F) << 5) | (phy & 0x1F);
+	ETH_REG(ETH_MDIO_WD)   = val;
+	ETH_REG(ETH_MDIO_CTRL) = ETH_MDIO_WRITE;
+	uint32_t to = 2000000;
+	while ((ETH_REG(ETH_MDIO_ST) & ETH_MDIO_BUSY) && --to) ;
+}
+
+static int dma_selftest(void)
+{
+	const unsigned len = 64;
+	unsigned i;
+	int fail = 0;
+
+	printf("\r\n=== gw_eth_dma self-test (CSR @ 0x%08x) ===\r\n", (unsigned)ETH_DMA_BASE);
+
+	/* [1] CSR read/write-back: proves the EXTS slave + register block are alive. */
+	ETH_REG(ETH_RX_BASE) = 0xCAFE0000u;
+	ETH_REG(ETH_TX_BASE) = 0xBEEF1000u;
+	{
+		uint32_t a = ETH_REG(ETH_RX_BASE), b = ETH_REG(ETH_TX_BASE);
+		printf(" [1] CSR  RX_BASE=%08x TX_BASE=%08x : %s\r\n", (unsigned)a, (unsigned)b,
+		       (a == 0xCAFE0000u && b == 0xBEEF1000u) ? "OK" : (fail++, "FAIL"));
+	}
+
+	/* [2] MDIO: read PHY identifier registers (2,3). */
+	{
+		uint32_t id2 = eth_mdio_read(ETH_PHY_ADDR, 2);
+		uint32_t id3 = eth_mdio_read(ETH_PHY_ADDR, 3);
+		printf(" [2] MDIO PHY id = %04x.%04x : %s\r\n", (unsigned)id2, (unsigned)id3,
+		       (id2 != 0 && id2 != 0xFFFF) ? "OK" : (fail++, "FAIL (no PHY?)"));
+	}
+
+	/* [3] DMA loopback: CPU -> TX ring -> MAC -> PHY loopback -> RX ring -> CPU. */
+	{
+		uint32_t rxb = (uint32_t)(uintptr_t)eth_rx_ring;
+		uint32_t txb = (uint32_t)(uintptr_t)eth_tx_ring;
+		volatile uint32_t *txh = (volatile uint32_t *)(uintptr_t)txb;
+		uint8_t *txd = (uint8_t *)(uintptr_t)(txb + 4);
+
+		ETH_REG(ETH_RX_BASE) = rxb; ETH_REG(ETH_RX_LEN) = ETH_RING_LEN; ETH_REG(ETH_RX_TAIL) = 0;
+		ETH_REG(ETH_TX_BASE) = txb; ETH_REG(ETH_TX_LEN) = ETH_RING_LEN;
+
+		/* broadcast test frame so MAC RX address-filtering accepts the loop-back */
+		txh[0] = len;                                  /* TX descriptor header = length */
+		for (i = 0; i < len; i++) txd[i] = (i < 6) ? 0xFF : (uint8_t)(0x10 + i);
+
+		eth_mdio_write(ETH_PHY_ADDR, 0, 0x4140);       /* BMCR: loopback + 1000M/FD, AN off */
+		ETH_REG(ETH_MODE) = ETH_MODE_1000_FD;
+		eth_busy_wait(8000000);                        /* let the PHY loopback settle */
+
+		ae350_dma_writeback_range((unsigned long)txb, ETH_BUF_SIZE);  /* flush TX to DRAM */
+
+		ETH_REG(ETH_CTRL)    = ETH_CTRL_RX_EN | ETH_CTRL_TX_EN;
+		ETH_REG(ETH_TX_TAIL) = 1;                      /* queue the frame */
+
+		{ uint32_t to = 8000000; while (ETH_REG(ETH_RX_HEAD) == 0 && --to) ; }
+
+		printf(" [3] tx_head=%u rx_head=%u drop=%u\r\n",
+		       (unsigned)ETH_REG(ETH_TX_HEAD), (unsigned)ETH_REG(ETH_RX_HEAD),
+		       (unsigned)ETH_REG(ETH_RX_DROP));
+
+		if (ETH_REG(ETH_RX_HEAD) == 0) {
+			printf("     no RX frame (PHY loopback / link not up) : FAIL\r\n");
+			fail++;
+		} else {
+			ae350_dma_invalidate_range((unsigned long)rxb, ETH_BUF_SIZE); /* drop stale cache */
+			volatile uint32_t *rxh = (volatile uint32_t *)(uintptr_t)rxb;
+			uint8_t *rxd = (uint8_t *)(uintptr_t)(rxb + 4);
+			unsigned rlen = rxh[0] & 0xFFFF;
+			int bad = (rlen != len);
+			for (i = 0; i < len && !bad; i++)
+				if (rxd[i] != ((i < 6) ? 0xFF : (uint8_t)(0x10 + i))) bad = 1;
+			printf(" [3] RX len=%u : %s\r\n", rlen, bad ? "DATA MISMATCH" : "data MATCHES");
+			if (bad) fail++;
+		}
+	}
+
+	/* cleanup: stop the DMA and take the PHY out of loopback so Linux boots clean */
+	ETH_REG(ETH_CTRL) = 0;
+	eth_mdio_write(ETH_PHY_ADDR, 0, 0x8000);           /* PHY soft reset */
+	eth_busy_wait(2000000);
+
+	printf("=== gw_eth_dma self-test %s ===\r\n\r\n", fail ? "FAILED" : "PASSED");
+	return fail;
+}
+
 int main(void)
 {
 	AE350_DRIVER_GPIO *gpio = &Driver_GPIO;
@@ -346,6 +455,7 @@ int main(void)
 	dump_config();
 	test_amo();
 	test_amo_cold();
+	dma_selftest();		/* validate the gw_eth_dma gateware before handing off */
 	printf("\r\n");
 	boot_opensbi();		/* load OpenSBI (soft-atomics) from flash and jump */
 
