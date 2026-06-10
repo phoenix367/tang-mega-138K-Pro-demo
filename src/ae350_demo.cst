@@ -159,5 +159,3 @@ IO_LOC "MDC"           K23;
 IO_LOC "MDIO"          K22;//EXTM handshake debug probe (logic analyzer): {hresp,hreadyout,htrans1,hsel}
 IO_LOC "DBG[0]" U16;
 IO_LOC "DBG[1]" U15;
-IO_LOC "DBG[2]" W21;
-IO_LOC "DBG[3]" P21;

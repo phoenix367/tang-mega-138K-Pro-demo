@@ -51,7 +51,7 @@ module ae350_demo_top
     input  [3:0] RGMII_RXD,
     output MDC,
     inout  MDIO,
-    output [3:0] DBG            // EXTM handshake probe: {hresp,hreadyout,htrans1,hsel}
+    output [1:0] DBG            // EXTM probe: {hreadyout, hsel} (W21/P21 are JTAG)
 );
 
 
@@ -177,7 +177,7 @@ assign eth_rstn = EXTS_HRSTN;
 // EXTM handshake probe -> debug pins (and CSR EXTM_DBG): is the SoC EXTM
 // responding to the DMA's AHB read?  {hresp, hreadyout, htrans-active, hsel}
 wire [3:0] dbg_extm = {extm_hresp, extm_hreadyout, extm_htrans[1], extm_hsel};
-assign DBG = dbg_extm;
+assign DBG = {extm_hreadyout, extm_hsel};   // U16=hsel, U15=hreadyout
 
 // Dedicated Ethernet PLL: clkout1 = 125 MHz (GTX), clkout3 = 25 MHz (PHY ref).
 // (Same Gowin_PLL IP as the SDK ae350_ext_ethernet example; VCO 1000 MHz.
