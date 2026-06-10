@@ -401,8 +401,8 @@ static int dma_selftest(void)
 		txh[0] = len;                                  /* TX descriptor header = length */
 		for (i = 0; i < len; i++) txd[i] = (i < 6) ? 0xFF : (uint8_t)(0x10 + i);
 
-		eth_mdio_write(ETH_PHY_ADDR, 0, 0x6100);       /* BMCR: loopback + 100M/FD, AN off */
-		ETH_REG(ETH_MODE) = ETH_MODE_100_FD;
+		eth_mdio_write(ETH_PHY_ADDR, 0, 0x4140);       /* BMCR: loopback + 1000M/FD, AN off */
+		ETH_REG(ETH_MODE) = ETH_MODE_1000_FD;
 		eth_busy_wait(8000000);                        /* let the PHY loopback settle */
 
 		{ uint32_t bmsr = eth_mdio_read(ETH_PHY_ADDR, 1);
@@ -433,6 +433,16 @@ static int dma_selftest(void)
 		  printf(" [3] EXTM hsel=%u htrans=%u hreadyout=%u hresp=%u\r\n",
 		         (unsigned)(ed & 1), (unsigned)((ed >> 1) & 1),
 		         (unsigned)((ed >> 2) & 1), (unsigned)((ed >> 3) & 1)); }
+		/* dump what the DMA actually moved: TX buf (what CPU wrote) vs RX ring (what DMA wrote) */
+		{ volatile uint32_t *h = (volatile uint32_t *)(uintptr_t)txb;
+		  printf("     TX  buf hdr=%08x d0=%08x d1=%08x (expect hdr=00000040)\r\n",
+		         (unsigned)h[0], (unsigned)h[1], (unsigned)h[2]); }
+		ae350_dma_invalidate_range((unsigned long)rxb, ETH_RING_LEN * ETH_BUF_SIZE);
+		for (i = 0; i < 4; i++) {
+			volatile uint32_t *h = (volatile uint32_t *)(uintptr_t)(rxb + i*ETH_BUF_SIZE);
+			printf("     RX[%u] hdr=%08x d0=%08x d1=%08x\r\n", i,
+			       (unsigned)h[0], (unsigned)h[1], (unsigned)h[2]);
+		}
 
 		if (ETH_REG(ETH_RX_HEAD) == 0) {
 			printf("     no RX frame (PHY loopback / link not up) : FAIL\r\n");
