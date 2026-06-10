@@ -47,6 +47,7 @@ LDFLAGS := $(ARCH) -nostartfiles -T $(LDSCRIPT) \
 # Sources: startup + BSP runtime + console lib + GPIO driver + our main.
 CSRCS := \
 	$(SRCDIR)/main.c \
+	$(SRCDIR)/puff.c \
 	$(wildcard $(BSP)/ae350/*.c) \
 	$(wildcard $(BSP)/lib/*.c) \
 	$(BSP)/driver/ae350/gpio_ae350.c

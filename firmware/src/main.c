@@ -18,6 +18,7 @@
 #include "config.h"
 #include "cache.h"
 #include "gw_eth_dma.h"
+#include "puff.h"
 #include <stdio.h>
 #include <stdint.h>
 
@@ -273,25 +274,33 @@ extern void ae350_icache_invalidate_all(void);
  */
 static void boot_opensbi(void)
 {
-	const volatile unsigned int *src = (const volatile unsigned int *)0x80200000u;
-	volatile unsigned int *dst = (volatile unsigned int *)0x00000000u;
-	unsigned int words = 0x410000u / 4u;	/* ~4.25 MB, covers the 4.2 MB payload */
-	unsigned int i;
+	/* fw_payload.bin.gz (OpenSBI@0x0 + kernel@0x400000) lives in XIP flash at
+	 * 0x80200000 (= SPI flash 0x800000), gzip-compressed. Inflate it into a high
+	 * DRAM scratch (the firmware's own .data/.bss sit at 0x0, so we cannot inflate
+	 * there directly), then a register-only word copy moves it down to 0x0 and we
+	 * jump -- exactly what U-Boot's `unzip 0x80200000 0 ...` does. */
+	const unsigned char *gz = (const unsigned char *)0x80200000u;
+	unsigned char       *scratch = (unsigned char *)0x02000000u;   /* 32 MB: inflate here */
+	unsigned int        *d  = (unsigned int *)0x00000000u;
+	const unsigned int  *sc = (const unsigned int *)0x02000000u;
+	unsigned long outlen = 0x04000000u;                            /* 64 MB output cap */
+	unsigned long i;
 	void (*fw)(unsigned long, unsigned long);
+	int err;
 
-	printf(" Loading OpenSBI 0x80200000 -> DDR 0x0 (%u KB)...\r\n",
-	       (unsigned)((words * 4u) / 1024u));
-	for (i = 0; i < words; i++)
-		dst[i] = src[i];
+	printf(" Inflating OpenSBI+kernel (gzip @0x80200000)...\r\n");
+	err = gunzip(scratch, &outlen, gz, 0x00800000u);
+	if (err != 0) { printf(" !! gunzip failed: %d\r\n", err); return; }
+	printf(" Inflated %u KB -> copy to 0x0 + jump\r\n\r\n", (unsigned)(outlen / 1024u));
 
-	ae350_dcache_flush_all();		/* push copied code out to DDR  */
+	for (i = 0; i < (outlen + 3u) / 4u; i++) d[i] = sc[i];          /* move to 0x0 (no .bss) */
+
+	ae350_dcache_flush_all();		/* push the image out to DDR    */
 	ae350_icache_invalidate_all();		/* drop stale I-cache lines     */
 	__asm__ volatile ("fence" ::: "memory");
 
-	printf(" Jump -> OpenSBI @ 0x0 (a0=0, a1=0)\r\n\r\n");
 	fw = (void (*)(unsigned long, unsigned long))0x0u;
 	fw(0, 0);
-	printf(" !! OpenSBI returned unexpectedly\r\n");
 }
 
 /* Re-apply the SDK __platform_init cache-enable sequence verbatim, printing
