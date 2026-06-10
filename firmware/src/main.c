@@ -411,10 +411,10 @@ static void eth_wait_txhead(unsigned target)
 }
 static uint64_t eth_rdcycle(void)
 {
-	uint32_t lo, hi, hi2;
-	do { __asm__ volatile ("rdcycleh %0" : "=r"(hi));
-	     __asm__ volatile ("rdcycle  %0" : "=r"(lo));
-	     __asm__ volatile ("rdcycleh %0" : "=r"(hi2)); } while (hi != hi2);
+	uint32_t lo, hi, hi2;   /* mcycle (0xB00), not rdcycle/0xC00 which traps in M-mode */
+	do { __asm__ volatile ("csrr %0, mcycleh" : "=r"(hi));
+	     __asm__ volatile ("csrr %0, mcycle"  : "=r"(lo));
+	     __asm__ volatile ("csrr %0, mcycleh" : "=r"(hi2)); } while (hi != hi2);
 	return ((uint64_t)hi << 32) | lo;
 }
 
