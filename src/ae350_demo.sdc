@@ -14,10 +14,12 @@ create_clock -name ae350_apb_clk -period 20 -waveform {0 10} [get_pins {u_Gowin_
 create_clock -name flash_spi_clk_i -period 20 -waveform {0 10} [get_pins {u_RiscV_AE350_SOC_Top/FLASH_SPI_CLK_iobuf/I}]
 create_clock -name flash_spi_clk -period 20 -waveform {0 10} [get_ports {FLASH_SPI_CLK}]
 // Ethernet: GTX TX clock 125 MHz (eth PLL CLKOUT1) + RGMII RX clock from PHY.
-// NOTE: rgmii_rxclk uses the example's 20 ns; for verified 1000BASE-T tighten to
-// 8 ns (125 MHz) and confirm the RGMII RX delay (PHY RGMII-ID straps).
+// rgmii_rxclk = 8 ns (125 MHz), the 1000BASE-T RGMII RX clock from the PHY. The
+// RX/TX clock-to-data skew is supplied by the PHY (RGMII-ID mode, internal
+// delay), so no fabric IODELAY is needed; this constraint just makes PnR time
+// the RGMII RX capture path at the real 125 MHz instead of the example's 50 MHz.
 create_clock -name gtx_clk -period 8 -waveform {0 4} [get_pins {u_Gowin_PLL_ETH/PLL_inst/CLKOUT1}]
-create_clock -name rgmii_rxclk -period 20 -waveform {0 10} [get_ports {RGMII_RXC}]
+create_clock -name rgmii_rxclk -period 8 -waveform {0 4} [get_ports {RGMII_RXC}]
 set_clock_groups -exclusive -group [get_clocks {flash_sysclk}] -group [get_clocks {ae350_ahb_clk}] -group [get_clocks {ae350_apb_clk}] -group [get_clocks {ae350_ddr_clk}] -group [get_clocks {gtx_clk}] -group [get_clocks {rgmii_rxclk}]
 set_clock_groups -asynchronous -group [get_clocks {ddr3_clkin}] -group [get_clocks {ddr3_sysclk}]
 set_clock_groups -asynchronous -group [get_clocks {ddr3_sysclk}] -group [get_clocks {ddr3_memory_clk}]
