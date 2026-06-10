@@ -510,14 +510,16 @@ static int dma_selftest(void)
 	  txq += 2 * ETH_RING_LEN; }
 
 	/* [7] loopback round-trip throughput (informational; ring-depth + poll bound) */
-	{ unsigned NB = 64, n, b; uint64_t c0, c1, cyc; uint32_t mbps;
+	{ unsigned NB = 64, n, b, rxexp = ETH_REG(ETH_RX_HEAD) & 0xFFFF;  /* rx_head != txq after drops */
+	  uint64_t c0, c1, cyc; uint32_t mbps;
 	  c0 = eth_rdcycle();
 	  for (n = 0; n < NB; n += ETH_RING_LEN) {
 		unsigned batch = (NB - n > ETH_RING_LEN) ? ETH_RING_LEN : (NB - n);
 		for (b = 0; b < batch; b++) eth_tx_put(txq + n + b, 256);
 		ETH_REG(ETH_TX_TAIL) = txq + n + batch;
-		eth_wait_rxhead(txq + n + batch);
-		ETH_REG(ETH_RX_TAIL) = txq + n + batch;
+		rxexp += batch;
+		if (!eth_wait_rxhead(rxexp)) { printf(" [7] TIMEOUT @ frame %u\r\n", n); break; }
+		ETH_REG(ETH_RX_TAIL) = rxexp;
 	  }
 	  c1 = eth_rdcycle(); cyc = c1 - c0;
 	  mbps = cyc ? (uint32_t)(((uint64_t)NB * 256u * 8u * 800u) / cyc) : 0;
