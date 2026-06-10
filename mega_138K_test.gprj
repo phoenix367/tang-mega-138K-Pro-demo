@@ -10,6 +10,7 @@
         <File path="eth_dma/rtl/rx_path.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/tx_path.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/rx_capture.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/rtl/rx_sf_buffer.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/rx_ring_writer.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/tx_unpack.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/tx_ring_reader.v" type="file.verilog" enable="1"/>
