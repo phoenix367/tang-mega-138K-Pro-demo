@@ -149,12 +149,11 @@ wire mdio_in, mdio_out, mdio_oen;
 wire [2:0]  eth_mode;
 wire [31:0] m0_haddr, m0_hwdata, m0_hrdata, m1_haddr, m1_hwdata, m1_hrdata;
 wire [1:0]  m0_htrans, m1_htrans;
-wire        m0_hwrite, m0_hready, m0_busy, m1_hwrite, m1_hready, m1_busy;
-wire [1:0]  m0_hresp, m1_hresp;        // Gowin arbiter HRESP is 2-bit
+wire        m0_hwrite, m0_hready, m0_hresp, m0_busy, m1_hwrite, m1_hready, m1_hresp, m1_busy;
 wire [2:0]  m0_hsize, m0_hburst, m1_hsize, m1_hburst;
 wire [31:0] arb_haddr, arb_hwdata, arb_hrdata;
 wire [1:0]  arb_htrans;
-wire        arb_hwrite, arb_hready, arb_hresp, arb_active, arb_hready_mux;
+wire        arb_hwrite, arb_hready, arb_hresp, arb_active;
 wire [2:0]  arb_hsize, arb_hburst;
 wire [31:0] extm_haddr;   wire [1:0] extm_htrans;  wire extm_hwrite;
 wire [2:0]  extm_hsize, extm_hburst;   wire [3:0] extm_hprot;
@@ -416,11 +415,11 @@ gw_eth_dma_core u_gw_eth_dma_core
     // EXTM master 0 (RX write)
     .m0_haddr(m0_haddr), .m0_htrans(m0_htrans), .m0_hwrite(m0_hwrite), .m0_hsize(m0_hsize),
     .m0_hburst(m0_hburst), .m0_hwdata(m0_hwdata), .m0_hrdata(m0_hrdata), .m0_hready(m0_hready),
-    .m0_hresp(m0_hresp[0]), .m0_busy(m0_busy),
+    .m0_hresp(m0_hresp), .m0_busy(m0_busy),
     // EXTM master 1 (TX read)
     .m1_haddr(m1_haddr), .m1_htrans(m1_htrans), .m1_hwrite(m1_hwrite), .m1_hsize(m1_hsize),
     .m1_hburst(m1_hburst), .m1_hwdata(m1_hwdata), .m1_hrdata(m1_hrdata), .m1_hready(m1_hready),
-    .m1_hresp(m1_hresp[0]), .m1_busy(m1_busy),
+    .m1_hresp(m1_hresp), .m1_busy(m1_busy),
     // MDIO management -> TSE MAC
     .miim_phyad(miim_phyad), .miim_regad(miim_regad), .miim_wrdata(miim_wrdata),
     .miim_wren(miim_wren), .miim_rden(miim_rden), .miim_rddata(miim_rddata),
@@ -431,25 +430,21 @@ gw_eth_dma_core u_gw_eth_dma_core
     .dbg_extm(dbg_extm)
 );
 
-// Gowin AHBBusArbiter IP (src/gowin_ahb_arbiter): fixed priority master0(RX) > master1(TX).
-Eth_AHB_Arbiter_Top u_eth_ahb_arbiter
+// Custom 2-master AHB arbiter: full 32-bit address space, fixed priority RX>TX.
+// (The Gowin AHBBusArbiter only forwards a 0x80000000 register window -- not a
+//  DMA fabric; see eth_dma/rtl/eth_ahb_arbiter.v.)
+eth_ahb_arbiter u_eth_ahb_arbiter
 (
-    .HCLK(EXTS_HCLK), .HRESETn(EXTS_HRSTN),
-    // master 0 = RX write
-    .MHSELS0(m0_busy), .MHADDRS0(m0_haddr), .MHTRANSS0(m0_htrans), .MHWRITES0(m0_hwrite),
-    .MHSIZES0(m0_hsize), .MHBURSTS0(m0_hburst), .MHPROTS0(4'b0011), .MHMASTERS0(4'b0),
-    .MHWDATAS0(m0_hwdata), .MHMASTLOCKS0(1'b0), .MHREADYS0(m0_hready),
-    .MHRDATAS0(m0_hrdata), .MHREADYOUTS0(m0_hready), .MHRESPS0(m0_hresp),
-    // master 1 = TX read
-    .MHSELS1(m1_busy), .MHADDRS1(m1_haddr), .MHTRANSS1(m1_htrans), .MHWRITES1(m1_hwrite),
-    .MHSIZES1(m1_hsize), .MHBURSTS1(m1_hburst), .MHPROTS1(4'b0011), .MHMASTERS1(4'b0),
-    .MHWDATAS1(m1_hwdata), .MHMASTLOCKS1(1'b0), .MHREADYS1(m1_hready),
-    .MHRDATAS1(m1_hrdata), .MHREADYOUTS1(m1_hready), .MHRESPS1(m1_hresp),
-    // shared master -> extm_bridge
-    .SHSELM0(arb_active), .SHADDRM0(arb_haddr), .SHTRANSM0(arb_htrans), .SHWRITEM0(arb_hwrite),
-    .SHSIZEM0(arb_hsize), .SHBURSTM0(arb_hburst), .SHPROTM0(), .SHMASTERM0(),
-    .SHWDATAM0(arb_hwdata), .SHMASTLOCKM0(), .SHREADYMUXM0(arb_hready_mux),
-    .SHRDATAM0(arb_hrdata), .SHREADYOUTM0(arb_hready), .SHRESPM0({1'b0, arb_hresp})
+    .clk(EXTS_HCLK), .rstn(EXTS_HRSTN),
+    .m0_busy(m0_busy), .m0_haddr(m0_haddr), .m0_htrans(m0_htrans), .m0_hwrite(m0_hwrite),
+    .m0_hsize(m0_hsize), .m0_hburst(m0_hburst), .m0_hwdata(m0_hwdata),
+    .m0_hrdata(m0_hrdata), .m0_hready(m0_hready), .m0_hresp(m0_hresp),
+    .m1_busy(m1_busy), .m1_haddr(m1_haddr), .m1_htrans(m1_htrans), .m1_hwrite(m1_hwrite),
+    .m1_hsize(m1_hsize), .m1_hburst(m1_hburst), .m1_hwdata(m1_hwdata),
+    .m1_hrdata(m1_hrdata), .m1_hready(m1_hready), .m1_hresp(m1_hresp),
+    .active(arb_active), .haddr(arb_haddr), .htrans(arb_htrans), .hwrite(arb_hwrite),
+    .hsize(arb_hsize), .hburst(arb_hburst), .hwdata(arb_hwdata),
+    .hrdata(arb_hrdata), .hready(arb_hready), .hresp(arb_hresp)
 );
 
 // 32-bit arbiter master -> 64-bit SoC EXTM slave port
@@ -457,7 +452,7 @@ extm_bridge u_extm_bridge
 (
     .hclk(EXTS_HCLK), .hresetn(EXTS_HRSTN),
     .a_haddr(arb_haddr), .a_htrans(arb_htrans), .a_hwrite(arb_hwrite), .a_hsize(arb_hsize),
-    .a_hburst(arb_hburst), .a_hwdata(arb_hwdata), .a_active(arb_active), .a_hready_in(arb_hready_mux),
+    .a_hburst(arb_hburst), .a_hwdata(arb_hwdata), .a_active(arb_active), .a_hready_in(extm_hreadyout),
     .a_hrdata(arb_hrdata), .a_hready(arb_hready), .a_hresp(arb_hresp),
     .extm_haddr(extm_haddr), .extm_htrans(extm_htrans), .extm_hwrite(extm_hwrite),
     .extm_hsize(extm_hsize), .extm_hburst(extm_hburst), .extm_hprot(extm_hprot),

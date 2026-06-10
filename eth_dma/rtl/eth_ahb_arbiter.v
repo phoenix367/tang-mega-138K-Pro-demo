@@ -1,19 +1,25 @@
 `default_nettype none
 //============================================================================
-// eth_ahb_arbiter.v -- synthesizable 2-master AHB-lite arbiter, fixed priority
-// (master 0 = RX write wins over master 1 = TX read).
+// eth_ahb_arbiter.v -- 2-master AHB-lite arbiter for the gw_eth_dma EXTM port.
 //
-// Drop-in for the Gowin AHBBusArbiter IP (Gowin_AHB_Arbiter_Top, 16 masters):
-// to use the vendor IP instead, generate it (fixed priority, 32-bit, 2 masters)
-// and replace this instance -- the function is identical for our two masters.
+// Replaces the Gowin AHBBusArbiter IP, which is a peripheral-register
+// interconnect: it only forwards a fixed ~1 MB window at 0x80000000 and passes
+// the address through unchanged -- unusable as a DMA fabric.  This arbiter
+// forwards the FULL 32-bit address space, so the DMA masters reach DRAM at 0x0
+// directly (no window, no address remap).
 //
-// Grants per-command using each master's `busy` (high for a whole command, so
-// no mid-command switching with the single-beat masters), exactly as verified
-// in the full-core loopback.  Combinational; the AHB runs at the 50 MHz bus
-// clock so the mux delay is comfortably met.
+// Fixed priority: master 0 (RX write) > master 1 (TX read) -- RX wins because
+// the MAC cannot be back-pressured.  Grant is REGISTERED and held for the whole
+// of a master's command (its `busy`), so an in-flight transfer is never
+// preempted (AMBA AHB requires a started transfer to complete).  Re-arbitration
+// happens only when the granted master goes idle.  The slave's HREADY paces the
+// granted master; non-granted masters are stalled (HREADY=0) and hold their
+// address phase.  Single-slave: the address is forwarded verbatim.
 //============================================================================
 module eth_ahb_arbiter (
-    // master 0 (priority -- RX write)
+    input  wire        clk,
+    input  wire        rstn,
+    // master 0 (RX write, priority)
     input  wire        m0_busy,
     input  wire [31:0] m0_haddr,
     input  wire [1:0]  m0_htrans,
@@ -35,7 +41,7 @@ module eth_ahb_arbiter (
     output wire [31:0] m1_hrdata,
     output wire        m1_hready,
     output wire        m1_hresp,
-    // merged master (-> extm_bridge -> EXTM)
+    // merged master -> extm_bridge -> EXTM
     output wire        active,
     output wire [31:0] haddr,
     output wire [1:0]  htrans,
@@ -47,10 +53,20 @@ module eth_ahb_arbiter (
     input  wire        hready,
     input  wire        hresp
 );
-    wire g0 = m0_busy;
-    wire g1 = ~m0_busy & m1_busy;
+    localparam [1:0] NONE = 2'd0, M0 = 2'd1, M1 = 2'd2;
 
-    assign active = m0_busy | m1_busy;
+    reg  [1:0] grant;
+    wire holding = (grant == M0 && m0_busy) || (grant == M1 && m1_busy);
+
+    always @(posedge clk or negedge rstn)
+        if (!rstn)        grant <= NONE;
+        else if (!holding) grant <= m0_busy ? M0 : (m1_busy ? M1 : NONE);
+        // else hold the grant: never preempt an in-flight transfer
+
+    wire g0 = (grant == M0);
+    wire g1 = (grant == M1);
+
+    assign active = (grant != NONE);
     assign haddr  = g0 ? m0_haddr  : m1_haddr;
     assign htrans = g0 ? m0_htrans : (g1 ? m1_htrans : 2'b00);
     assign hwrite = g0 ? m0_hwrite : m1_hwrite;
@@ -58,7 +74,7 @@ module eth_ahb_arbiter (
     assign hburst = g0 ? m0_hburst : m1_hburst;
     assign hwdata = g0 ? m0_hwdata : m1_hwdata;
 
-    assign m0_hready = g0 ? hready : 1'b0;
+    assign m0_hready = g0 ? hready : 1'b0;   // stall non-granted master
     assign m1_hready = g1 ? hready : 1'b0;
     assign m0_hrdata = hrdata;
     assign m1_hrdata = hrdata;

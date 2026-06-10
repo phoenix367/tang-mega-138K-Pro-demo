@@ -61,14 +61,15 @@ module tb_gw_eth_dma;
         .miim_rddata_valid(1'b0), .miim_busy(1'b0), .irq(irq), .eth_mode(eth_mode)
     );
 
-    ahb_arbiter_beh arb (
+    eth_ahb_arbiter arb (
+        .clk(bus_clk), .rstn(arst_n),
         .m0_busy(m0_busy), .m0_haddr(m0_haddr), .m0_htrans(m0_htrans), .m0_hwrite(m0_hwrite),
         .m0_hsize(m0_hsize), .m0_hburst(m0_hburst), .m0_hwdata(m0_hwdata),
         .m0_hrdata(m0_hrdata), .m0_hready(m0_hready), .m0_hresp(m0_hresp),
         .m1_busy(m1_busy), .m1_haddr(m1_haddr), .m1_htrans(m1_htrans), .m1_hwrite(m1_hwrite),
         .m1_hsize(m1_hsize), .m1_hburst(m1_hburst), .m1_hwdata(m1_hwdata),
         .m1_hrdata(m1_hrdata), .m1_hready(m1_hready), .m1_hresp(m1_hresp),
-        .haddr(e_haddr), .htrans(e_htrans), .hwrite(e_hwrite), .hsize(e_hsize), .hburst(e_hburst),
+        .active(), .haddr(e_haddr), .htrans(e_htrans), .hwrite(e_hwrite), .hsize(e_hsize), .hburst(e_hburst),
         .hwdata(e_hwdata), .hrdata(e_hrdata), .hready(e_hready), .hresp(e_hresp)
     );
     ahb_slave_ram #(.AW(14)) dram (

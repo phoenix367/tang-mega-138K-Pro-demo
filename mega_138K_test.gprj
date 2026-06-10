@@ -17,6 +17,7 @@
         <File path="eth_dma/rtl/ahb_master.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/csr.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/extm_bridge.v" type="file.verilog" enable="1"/>
+        <File path="eth_dma/rtl/eth_ahb_arbiter.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/lib/Adder_Subtractor_Binary.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/lib/CarryIn_Binary.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/lib/CDC_Bit_Synchronizer.v" type="file.verilog" enable="1"/>
@@ -36,7 +37,7 @@
         <File path="src/apb_sd_host/apb_sd_host.v" type="file.verilog" enable="1"/>
         <File path="src/apb_spi/apb_spi.v" type="file.verilog" enable="0"/>
         <File path="src/ddr3_memory_interface/ddr3_memory_interface.v" type="file.verilog" enable="1"/>
-        <File path="src/gowin_ahb_arbiter/eth_ahb_arbiter.v" type="file.verilog" enable="1"/>
+        <File path="src/gowin_ahb_arbiter/eth_ahb_arbiter.v" type="file.verilog" enable="0"/>
         <File path="src/gowin_pll/sd_pll.v" type="file.verilog" enable="1"/>
         <File path="src/gowin_pll/sd_pll_mod.v" type="file.verilog" enable="1"/>
         <File path="src/gowin_pll_ae350/gowin_pll_ae350.v" type="file.verilog" enable="1"/>

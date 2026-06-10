@@ -334,9 +334,8 @@ static void test_platform_init(void)
 /* DMA rings at a high, unambiguous DRAM address (the linker's low .bss address
  * 0x800 may not map to DRAM through the EXTM master). DRAM is >=128 MB here
  * (the firmware stack lives at 0x08000000), so 0x04000000 is valid + free. */
-#define ETH_DMA_PHYS 0x00010000u   /* low DRAM: arbiter slave window is 0x80000000+~1MB,
-                                    * and the arbiter passes the address through, so the
-                                    * DMA alias (|0x80000000) must stay under ~0x80100000 */
+#define ETH_DMA_PHYS 0x04000000u   /* DMA buffers in DRAM (64 MB in); the custom arbiter
+                                    * forwards the full address, so no 0x80000000 alias */
 
 #define ETH_PHY_ADDR 0
 
@@ -392,10 +391,8 @@ static int dma_selftest(void)
 		volatile uint32_t *txh = (volatile uint32_t *)(uintptr_t)txb;
 		uint8_t *txd = (uint8_t *)(uintptr_t)(txb + 4);
 
-		/* The Gowin AHB arbiter decodes its slave at 0x80000000, so the DMA must
-		 * use the 0x8xxxxxxx alias of DRAM; CPU access + cache ops stay low. */
-		ETH_REG(ETH_RX_BASE) = rxb | 0x80000000u; ETH_REG(ETH_RX_LEN) = ETH_RING_LEN; ETH_REG(ETH_RX_TAIL) = 0;
-		ETH_REG(ETH_TX_BASE) = txb | 0x80000000u; ETH_REG(ETH_TX_LEN) = ETH_RING_LEN;
+		ETH_REG(ETH_RX_BASE) = rxb; ETH_REG(ETH_RX_LEN) = ETH_RING_LEN; ETH_REG(ETH_RX_TAIL) = 0;
+		ETH_REG(ETH_TX_BASE) = txb; ETH_REG(ETH_TX_LEN) = ETH_RING_LEN;
 
 		/* broadcast test frame so MAC RX address-filtering accepts the loop-back */
 		txh[0] = len;                                  /* TX descriptor header = length */
