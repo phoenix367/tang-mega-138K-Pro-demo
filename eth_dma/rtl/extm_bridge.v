@@ -40,7 +40,9 @@ module extm_bridge (
     input  wire        extm_hreadyout,
     input  wire        extm_hresp
 );
-    assign extm_haddr   = a_haddr;
+    // The arbiter decodes its slave at 0x80000000 and passes the FULL address
+    // through; strip bit 31 so the EXTM sees the low DRAM address the CPU uses.
+    assign extm_haddr   = {1'b0, a_haddr[30:0]};
     assign extm_htrans  = a_htrans;
     assign extm_hwrite  = a_hwrite;
     assign extm_hsize   = a_hsize;
