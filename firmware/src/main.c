@@ -359,11 +359,70 @@ static void eth_mdio_write(int phy, int reg, uint16_t val)
 	while ((ETH_REG(ETH_MDIO_ST) & ETH_MDIO_BUSY) && --to) ;
 }
 
+/* ---- frame helpers for the DMA loopback tests (real cache ops each call) ---- */
+static uint32_t s_txb, s_rxb;               /* TX/RX ring pool bases (phys) */
+
+static uint8_t eth_fbyte(unsigned seed, unsigned i)
+{
+	return (i < 6) ? 0xFF : (uint8_t)(seed * 5u + i * 3u + 0x11u);  /* broadcast dst + per-frame body */
+}
+
+/* build frame for cumulative index `idx` into its TX ring slot, flush to DRAM */
+static void eth_tx_put(unsigned idx, unsigned len)
+{
+	uint32_t base = s_txb + (idx & (ETH_RING_LEN - 1)) * ETH_BUF_SIZE;
+	volatile uint32_t *h = (volatile uint32_t *)(uintptr_t)base;
+	uint8_t *d = (uint8_t *)(uintptr_t)(base + 4);
+	unsigned i;
+	h[0] = len;
+	for (i = 0; i < len; i++) d[i] = eth_fbyte(idx, i);
+	ae350_dma_writeback_range((unsigned long)base, ETH_BUF_SIZE);
+}
+
+/* invalidate + verify the RX frame for index `idx`: `exp_len` total bytes,
+ * `data_len` checked against the seed, the remainder must be zero pad. */
+static int eth_rx_get(unsigned idx, unsigned exp_len, unsigned data_len)
+{
+	uint32_t base = s_rxb + (idx & (ETH_RING_LEN - 1)) * ETH_BUF_SIZE;
+	volatile uint32_t *h;
+	uint8_t *d;
+	unsigned rlen, i;
+	int bad;
+	ae350_dma_invalidate_range((unsigned long)base, ETH_BUF_SIZE);
+	h = (volatile uint32_t *)(uintptr_t)base;
+	d = (uint8_t *)(uintptr_t)(base + 4);
+	rlen = h[0] & 0xFFFF;
+	bad = (rlen != exp_len);
+	for (i = 0; i < data_len; i++)        if (d[i] != eth_fbyte(idx, i)) bad++;
+	for (i = data_len; i < exp_len; i++)  if (d[i] != 0)                 bad++;
+	return bad;
+}
+
+static int eth_wait_rxhead(unsigned target)
+{
+	uint32_t spins = 20000000u;
+	while (spins--) if ((ETH_REG(ETH_RX_HEAD) & 0xFFFF) >= target) return 1;
+	return 0;
+}
+static void eth_wait_txhead(unsigned target)
+{
+	uint32_t spins = 20000000u;
+	while (spins-- && (ETH_REG(ETH_TX_HEAD) & 0xFFFF) < target) ;
+}
+static uint64_t eth_rdcycle(void)
+{
+	uint32_t lo, hi, hi2;
+	do { __asm__ volatile ("rdcycleh %0" : "=r"(hi));
+	     __asm__ volatile ("rdcycle  %0" : "=r"(lo));
+	     __asm__ volatile ("rdcycleh %0" : "=r"(hi2)); } while (hi != hi2);
+	return ((uint64_t)hi << 32) | lo;
+}
+
 static int dma_selftest(void)
 {
-	const unsigned len = 64;
-	unsigned i;
-	int fail = 0;
+	unsigned txq = 0;
+	int fail = 0, bad;
+	static const unsigned vsz[8] = { 64, 60, 96, 128, 100, 72, 256, 88 };
 
 	printf("\r\n=== gw_eth_dma self-test (CSR @ 0x%08x) ===\r\n", (unsigned)ETH_DMA_BASE);
 
@@ -384,80 +443,90 @@ static int dma_selftest(void)
 		       (id2 != 0 && id2 != 0xFFFF) ? "OK" : (fail++, "FAIL (no PHY?)"));
 	}
 
-	/* [3] DMA loopback: CPU -> TX ring -> MAC -> PHY loopback -> RX ring -> CPU. */
-	{
-		uint32_t rxb = ETH_DMA_PHYS;            /* RX ring pool */
-		uint32_t txb = ETH_DMA_PHYS + 0x10000u; /* TX ring pool (+64 KB) */
-		volatile uint32_t *txh = (volatile uint32_t *)(uintptr_t)txb;
-		uint8_t *txd = (uint8_t *)(uintptr_t)(txb + 4);
+	/* ring + PHY-loopback setup (shared by all loopback tests below) */
+	s_rxb = ETH_DMA_PHYS;
+	s_txb = ETH_DMA_PHYS + 0x10000u;
+	ETH_REG(ETH_RX_BASE) = s_rxb; ETH_REG(ETH_RX_LEN) = ETH_RING_LEN; ETH_REG(ETH_RX_TAIL) = 0;
+	ETH_REG(ETH_TX_BASE) = s_txb; ETH_REG(ETH_TX_LEN) = ETH_RING_LEN;
+	eth_mdio_write(ETH_PHY_ADDR, 0, 0x4140);           /* BMCR: loopback + 1000M/FD, AN off */
+	ETH_REG(ETH_MODE) = ETH_MODE_1000_FD;
+	eth_busy_wait(8000000);                            /* let the PHY loopback settle */
+	{ uint32_t bmsr = eth_mdio_read(ETH_PHY_ADDR, 1);
+	  bmsr = eth_mdio_read(ETH_PHY_ADDR, 1);           /* read twice: link bit is latch-low */
+	  printf(" [.] PHY BMSR=%04x link=%u\r\n", (unsigned)bmsr, (unsigned)((bmsr >> 2) & 1)); }
+	ETH_REG(ETH_CTRL) = ETH_CTRL_RX_EN | ETH_CTRL_TX_EN;
 
-		ETH_REG(ETH_RX_BASE) = rxb; ETH_REG(ETH_RX_LEN) = ETH_RING_LEN; ETH_REG(ETH_RX_TAIL) = 0;
-		ETH_REG(ETH_TX_BASE) = txb; ETH_REG(ETH_TX_LEN) = ETH_RING_LEN;
-
-		/* broadcast test frame so MAC RX address-filtering accepts the loop-back */
-		txh[0] = len;                                  /* TX descriptor header = length */
-		for (i = 0; i < len; i++) txd[i] = (i < 6) ? 0xFF : (uint8_t)(0x10 + i);
-
-		eth_mdio_write(ETH_PHY_ADDR, 0, 0x4140);       /* BMCR: loopback + 1000M/FD, AN off */
-		ETH_REG(ETH_MODE) = ETH_MODE_1000_FD;
-		eth_busy_wait(8000000);                        /* let the PHY loopback settle */
-
-		{ uint32_t bmsr = eth_mdio_read(ETH_PHY_ADDR, 1);
-		  bmsr = eth_mdio_read(ETH_PHY_ADDR, 1);       /* read twice: link bit is latch-low */
-		  printf(" [3] PHY BMSR=%04x link=%u\r\n", (unsigned)bmsr, (unsigned)((bmsr >> 2) & 1)); }
-
-		ae350_dma_writeback_range((unsigned long)txb, ETH_BUF_SIZE);  /* flush TX to DRAM */
-
-		ETH_REG(ETH_CTRL)    = ETH_CTRL_RX_EN | ETH_CTRL_TX_EN;
-		ETH_REG(ETH_TX_TAIL) = 1;                      /* queue the frame */
-
-		/* confirm the enables/tail actually landed (rules out a CSR-write issue) */
-		printf(" [3] CTRL=%u TX_TAIL=%u RX_LEN=%u TX_BASE=%08x\r\n",
-		       (unsigned)ETH_REG(ETH_CTRL), (unsigned)ETH_REG(ETH_TX_TAIL),
-		       (unsigned)ETH_REG(ETH_RX_LEN), (unsigned)ETH_REG(ETH_TX_BASE));
-		/* poll: is the DMA progressing at all, or wedged on the EXTM access? */
-		{ int k; for (k = 0; k < 4; k++) {
-			eth_busy_wait(2000000);
-			printf("     poll%d tx_fetch=%u tx_head=%u rx_head=%u drop=%u\r\n", k,
-			       (unsigned)ETH_REG(ETH_TX_FETCH), (unsigned)ETH_REG(ETH_TX_HEAD),
-			       (unsigned)ETH_REG(ETH_RX_HEAD), (unsigned)ETH_REG(ETH_RX_DROP));
-		} }
-		{ uint32_t td = ETH_REG(ETH_TX_DBG), rdv = ETH_REG(ETH_RX_DBG);
-		  printf(" [3] TX ahb busy=%u cmd_done=%u | RX ahb busy=%u cmd_done=%u\r\n",
-		         (unsigned)(td & 1), (unsigned)(td >> 16),
-		         (unsigned)(rdv & 1), (unsigned)(rdv >> 16)); }
-		{ uint32_t ed = ETH_REG(ETH_EXTM_DBG);
-		  printf(" [3] EXTM hsel=%u htrans=%u hreadyout=%u hresp=%u\r\n",
-		         (unsigned)(ed & 1), (unsigned)((ed >> 1) & 1),
-		         (unsigned)((ed >> 2) & 1), (unsigned)((ed >> 3) & 1)); }
-		/* dump what the DMA actually moved: TX buf (what CPU wrote) vs RX ring (what DMA wrote) */
-		{ volatile uint32_t *h = (volatile uint32_t *)(uintptr_t)txb;
-		  printf("     TX  buf hdr=%08x d0=%08x d1=%08x (expect hdr=00000040)\r\n",
-		         (unsigned)h[0], (unsigned)h[1], (unsigned)h[2]); }
-		ae350_dma_invalidate_range((unsigned long)rxb, ETH_RING_LEN * ETH_BUF_SIZE);
-		for (i = 0; i < 4; i++) {
-			volatile uint32_t *h = (volatile uint32_t *)(uintptr_t)(rxb + i*ETH_BUF_SIZE);
-			printf("     RX[%u] hdr=%08x d0=%08x d1=%08x\r\n", i,
-			       (unsigned)h[0], (unsigned)h[1], (unsigned)h[2]);
-		}
-
-		if (ETH_REG(ETH_RX_HEAD) == 0) {
-			printf("     no RX frame (PHY loopback / link not up) : FAIL\r\n");
-			fail++;
-		} else {
-			ae350_dma_invalidate_range((unsigned long)rxb, ETH_BUF_SIZE); /* drop stale cache */
-			volatile uint32_t *rxh = (volatile uint32_t *)(uintptr_t)rxb;
-			uint8_t *rxd = (uint8_t *)(uintptr_t)(rxb + 4);
-			unsigned rlen = rxh[0] & 0xFFFF;
-			int bad = (rlen != len);
-			for (i = 0; i < len && !bad; i++)
-				if (rxd[i] != ((i < 6) ? 0xFF : (uint8_t)(0x10 + i))) bad = 1;
-			printf(" [3] RX len=%u : %s\r\n", rlen, bad ? "DATA MISMATCH" : "data MATCHES");
-			if (bad) fail++;
-		}
+	/* [3] single 64B frame: CPU -> TX ring -> MAC -> PHY loopback -> RX ring -> CPU */
+	eth_tx_put(txq, 64); ETH_REG(ETH_TX_TAIL) = txq + 1;
+	if (!eth_wait_rxhead(txq + 1)) {
+		printf(" [3] no RX frame (PHY loopback / link down) : FAIL\r\n");
+		fail++; goto cleanup;
 	}
+	bad = eth_rx_get(txq, 64, 64);
+	printf(" [3] single 64B loopback         : %s\r\n", bad ? (fail++, "FAIL") : "PASS");
+	txq++; ETH_REG(ETH_RX_TAIL) = txq;
 
-	/* cleanup: stop the DMA and take the PHY out of loopback so Linux boots clean */
+	/* [4] stream 8 varied-size frames through the 4-deep ring -> wrap + NAPI consume */
+	{ unsigned sent = 0, b; int tb = 0;
+	  while (sent < 8) {
+		unsigned batch = (8 - sent > ETH_RING_LEN) ? ETH_RING_LEN : (8 - sent);
+		for (b = 0; b < batch; b++) eth_tx_put(txq + b, vsz[sent + b]);
+		ETH_REG(ETH_TX_TAIL) = txq + batch;
+		if (!eth_wait_rxhead(txq + batch)) tb++;
+		for (b = 0; b < batch; b++) tb += eth_rx_get(txq + b, vsz[sent + b], vsz[sent + b]);
+		ETH_REG(ETH_RX_TAIL) = txq + batch;
+		txq += batch; sent += batch;
+	  }
+	  printf(" [4] 8 varied frames + ring wrap : %s (drop=%u)\r\n",
+	         tb ? (fail++, "FAIL") : "PASS", (unsigned)(ETH_REG(ETH_RX_DROP) & 0xFFFF)); }
+
+	/* [5] corner cases: sub-60 payload (MAC pads to 60) + full 1500B MTU */
+	eth_tx_put(txq, 20); ETH_REG(ETH_TX_TAIL) = txq + 1; eth_wait_rxhead(txq + 1);
+	bad = eth_rx_get(txq, 60, 20);
+	printf(" [5a] 20B payload -> padded to 60: %s\r\n", bad ? (fail++, "FAIL") : "PASS");
+	txq++; ETH_REG(ETH_RX_TAIL) = txq;
+
+	eth_tx_put(txq, 1500); ETH_REG(ETH_TX_TAIL) = txq + 1;
+	bad = !eth_wait_rxhead(txq + 1);
+	bad += eth_rx_get(txq, 1500, 1500);
+	printf(" [5b] full 1500B MTU frame        : %s\r\n", bad ? (fail++, "FAIL") : "PASS");
+	txq++; ETH_REG(ETH_RX_TAIL) = txq;
+
+	/* [6] ring-full drop: fill the ring, send RING_LEN more without consuming */
+	{ unsigned h0 = ETH_REG(ETH_RX_HEAD) & 0xFFFF, d0 = ETH_REG(ETH_RX_DROP) & 0xFFFF, b, dropn;
+	  int kb = 0;
+	  for (b = 0; b < ETH_RING_LEN; b++) eth_tx_put(txq + b, 64);
+	  ETH_REG(ETH_TX_TAIL) = txq + ETH_RING_LEN;
+	  eth_wait_rxhead(h0 + ETH_RING_LEN); eth_wait_txhead(txq + ETH_RING_LEN);
+	  for (b = 0; b < ETH_RING_LEN; b++) eth_tx_put(txq + ETH_RING_LEN + b, 64);
+	  ETH_REG(ETH_TX_TAIL) = txq + 2 * ETH_RING_LEN;
+	  eth_busy_wait(8000000);
+	  dropn = (ETH_REG(ETH_RX_DROP) & 0xFFFF) - d0;
+	  for (b = 0; b < ETH_RING_LEN; b++) kb += eth_rx_get(txq + b, 64, 64);
+	  printf(" [6] ring-full drop              : drops=%u (exp %u) kept=%s : %s\r\n",
+	         dropn, (unsigned)ETH_RING_LEN, kb ? "CORRUPT" : "intact",
+	         (dropn == ETH_RING_LEN && kb == 0) ? "PASS" : (fail++, "FAIL"));
+	  ETH_REG(ETH_RX_TAIL) = h0 + ETH_RING_LEN;
+	  txq += 2 * ETH_RING_LEN; }
+
+	/* [7] loopback round-trip throughput (informational; ring-depth + poll bound) */
+	{ unsigned NB = 64, n, b; uint64_t c0, c1, cyc; uint32_t mbps;
+	  c0 = eth_rdcycle();
+	  for (n = 0; n < NB; n += ETH_RING_LEN) {
+		unsigned batch = (NB - n > ETH_RING_LEN) ? ETH_RING_LEN : (NB - n);
+		for (b = 0; b < batch; b++) eth_tx_put(txq + n + b, 256);
+		ETH_REG(ETH_TX_TAIL) = txq + n + batch;
+		eth_wait_rxhead(txq + n + batch);
+		ETH_REG(ETH_RX_TAIL) = txq + n + batch;
+	  }
+	  c1 = eth_rdcycle(); cyc = c1 - c0;
+	  mbps = cyc ? (uint32_t)(((uint64_t)NB * 256u * 8u * 800u) / cyc) : 0;
+	  printf(" [7] throughput: %u x 256B in %u kcyc ~ %u Mbps (loopback+poll bound)\r\n",
+	         NB, (unsigned)(cyc / 1000u), (unsigned)mbps);
+	  txq += NB; }
+
+cleanup:
+	/* stop the DMA and take the PHY out of loopback so Linux boots clean */
 	ETH_REG(ETH_CTRL) = 0;
 	eth_mdio_write(ETH_PHY_ADDR, 0, 0x8000);           /* PHY soft reset */
 	eth_busy_wait(2000000);
