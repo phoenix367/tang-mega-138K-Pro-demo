@@ -76,10 +76,31 @@ builtin-pf    1..32      6.0-6.1     (Zicbop prefetch.r: no change)
 load-ahead    1..32      6.0-5.8     (manual ahead-loads: no change, slightly worse)
 ```
 
-Neither helps at any distance -> the DDR path **serializes misses** (no
-memory-level parallelism), so the ~6 MB/s latency wall can't be hidden by
-prefetch/pipelining. Corroborates the earlier (no-effect) hardware-prefetcher
-result; only a gateware fix (multiple-outstanding / bursting DDR path) can move it.
+Neither helps **for pure sequential streaming** -> back-to-back data-line misses
+can't overlap (the DDR path fills one line at a time), so there is no window to
+hide and prefetch can't raise streaming bandwidth. That ~6 MB/s ceiling is real
+for bulk sequential access (corroborates the no-effect hardware-prefetcher result).
+
+BUT prefetch *does* work when there is something to overlap with. A second sweep
+inserts a tunable compute delay between consumptions and uses a **16 KB step**
+(a new sv32 page each access -> TLB miss + page walk, ~20 us/line):
+
+```
+  delay W       nopf   builtin-pf   load-ahead     hidden   (us/line)
+        0      20.82         8.51         6.61      14.21
+      300      16.66         6.90         6.64      10.02
+     1000      23.21        14.47        12.77      10.44
+     3000      43.10        39.83        32.87      10.24
+    30000     302.36       347.01       293.64       8.72
+```
+
+Prefetching one step ahead drops a strided cold access from ~21 to ~6-8 us/line --
+it **hides ~10-14 us/line**. The manual **load-ahead wins** (it always runs the
+real page-walk + fetch ahead); `prefetch.r` helps a bit less (the hint is likely
+dropped on a TLB miss). So the memory system is **not strictly one-transaction
+serial** -- prefetch can hide page-walk/latency given an overlap window; it just
+can't lift *sequential streaming bandwidth* (a serialized-fill bottleneck). Only a
+gateware fix (multiple-outstanding / bursting DDR path) lifts the streaming ceiling.
 
 ### atomic_test — the headline result
 On this **no-coherence-manager** A25, userspace hardware atomics:

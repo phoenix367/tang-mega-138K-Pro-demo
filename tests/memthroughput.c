@@ -108,6 +108,60 @@ static void bench_prefetch(void)
 	free((void *)a);
 }
 
+/* pure-compute, memory-free busy delay (LCG); `w` iters ~ a few cycles each */
+static uint32_t busyW(uint32_t x, int w)
+{
+	while (w-- > 0) x = x * 1664525u + 1013904223u;
+	return x;
+}
+
+/* One delay-loop run. mode: 0 = no prefetch, 1 = builtin prefetch.r 1 step
+ * ahead, 2 = manual load-ahead 1 step ahead. Each consumed line is a cold miss
+ * (16 KB step -> set conflict); the busy delay between consumptions is the
+ * window a prefetch can fill in. Returns the number of line-accesses. */
+static double run_delay(volatile uint32_t *a, size_t step_w, size_t lines,
+			int passes, int W, int mode)
+{
+	uint32_t acc = 0, j = 0x9e3779b9u, pf = 0;
+	for (int p = 0; p < passes; p++)
+		for (size_t i = 0; i < lines; i++) {
+			if (mode == 1 && i + 1 < lines)
+				__builtin_prefetch((const void *)&a[(i + 1) * step_w], 0, 0);
+			else if (mode == 2 && i + 1 < lines)
+				pf += a[(i + 1) * step_w];
+			j = busyW(j, W);		/* overlap window */
+			acc += a[i * step_w];		/* consume (was it prefetched in time?) */
+		}
+	sink = acc; sink2 = j + pf;
+	return (double)passes * lines;
+}
+
+/* Sweep the delay so the prefetch has time to fill: if prefetch works at all,
+ * the cold-miss latency gets hidden behind the compute delay (pf < nopf). */
+static void bench_prefetch_delay(void)
+{
+	size_t step_w = (16u << 10) / 4;	/* 16 KB step -> guaranteed cold misses */
+	size_t lines = 128;			/* 128 * 16 KB = 2 MB span */
+	size_t sz = (lines + 2) * step_w * 4;
+	int passes = 32;
+	volatile uint32_t *a = malloc(sz);
+	if (!a) return;
+	for (size_t i = 0; i < sz / 4; i++) a[i] = (uint32_t)i;
+	static const int Ws[] = { 0, 100, 300, 1000, 3000, 10000, 30000 };
+
+	printf("\nprefetch WITH delay (16 KB step, cold misses, 1 step ahead) -- us per line:\n");
+	printf("%9s %10s %12s %12s %10s\n", "delay W", "nopf", "builtin-pf", "load-ahead", "hidden");
+	for (unsigned k = 0; k < sizeof Ws / sizeof Ws[0]; k++) {
+		int W = Ws[k];
+		double t0, n;
+		t0 = now_s(); n = run_delay(a, step_w, lines, passes, W, 0); double tn = (now_s() - t0) / n * 1e6;
+		t0 = now_s();     run_delay(a, step_w, lines, passes, W, 1); double tb = (now_s() - t0) / n * 1e6;
+		t0 = now_s();     run_delay(a, step_w, lines, passes, W, 2); double tl = (now_s() - t0) / n * 1e6;
+		printf("%9d %10.2f %12.2f %12.2f %10.2f\n", W, tn, tb, tl, tn - (tb < tl ? tb : tl));
+	}
+	free((void *)a);
+}
+
 int main(void)
 {
 	static const size_t sizes[] = {
@@ -155,5 +209,6 @@ int main(void)
 	printf("(copy MB/s = bytes copied/s; bus traffic ~2x. all accesses volatile.)\n");
 
 	bench_prefetch();
+	bench_prefetch_delay();
 	return 0;
 }
