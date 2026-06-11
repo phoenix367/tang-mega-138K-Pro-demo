@@ -137,19 +137,21 @@ static double run_delay(volatile uint32_t *a, size_t step_w, size_t lines,
 }
 
 /* Sweep the delay so the prefetch has time to fill: if prefetch works at all,
- * the cold-miss latency gets hidden behind the compute delay (pf < nopf). */
-static void bench_prefetch_delay(void)
+ * the cold-miss latency gets hidden behind the compute delay (pf < nopf).
+ *   step_b large (e.g. 16 KB) -> a new page each access -> TLB miss + page walk.
+ *   step_b small + span <= TLB coverage -> same-page, cold DATA misses only.
+ * Comparing the two isolates the page-walk component from the raw data-fill. */
+static void prefetch_delay_sweep(const char *label, size_t step_b, size_t lines, int passes)
 {
-	size_t step_w = (16u << 10) / 4;	/* 16 KB step -> guaranteed cold misses */
-	size_t lines = 128;			/* 128 * 16 KB = 2 MB span */
+	size_t step_w = step_b / 4;
 	size_t sz = (lines + 2) * step_w * 4;
-	int passes = 32;
 	volatile uint32_t *a = malloc(sz);
-	if (!a) return;
+	if (!a) { printf("%s: alloc failed\n", label); return; }
 	for (size_t i = 0; i < sz / 4; i++) a[i] = (uint32_t)i;
-	static const int Ws[] = { 0, 100, 300, 1000, 3000, 10000, 30000 };
+	static const int Ws[] = { 0, 300, 1000, 3000, 10000 };
 
-	printf("\nprefetch WITH delay (16 KB step, cold misses, 1 step ahead) -- us per line:\n");
+	printf("\n%s\n  (step=%zuB, span=%s, %zu lines x %d passes) -- us per line:\n",
+	       label, step_b, human(sz), lines, passes);
 	printf("%9s %10s %12s %12s %10s\n", "delay W", "nopf", "builtin-pf", "load-ahead", "hidden");
 	for (unsigned k = 0; k < sizeof Ws / sizeof Ws[0]; k++) {
 		int W = Ws[k];
@@ -160,6 +162,17 @@ static void bench_prefetch_delay(void)
 		printf("%9d %10.2f %12.2f %12.2f %10.2f\n", W, tn, tb, tl, tn - (tb < tl ? tb : tl));
 	}
 	free((void *)a);
+}
+
+static void bench_prefetch_delay(void)
+{
+	/* page-walk + data-fill: 16 KB step crosses a page every access */
+	prefetch_delay_sweep("prefetch+delay, 16 KB step (TLB miss + page walk each access)",
+			     16u << 10, 128, 32);
+	/* data-fill only: 64 B step over a 128 KB span (32 pages, TLB-resident) ->
+	 * cold cache-line misses but no per-access page walk */
+	prefetch_delay_sweep("prefetch+delay, 64 B step, same-page (data-fill only, no page walk)",
+			     64, 2048, 4);
 }
 
 int main(void)

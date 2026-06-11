@@ -95,12 +95,28 @@ inserts a tunable compute delay between consumptions and uses a **16 KB step**
 ```
 
 Prefetching one step ahead drops a strided cold access from ~21 to ~6-8 us/line --
-it **hides ~10-14 us/line**. The manual **load-ahead wins** (it always runs the
-real page-walk + fetch ahead); `prefetch.r` helps a bit less (the hint is likely
-dropped on a TLB miss). So the memory system is **not strictly one-transaction
-serial** -- prefetch can hide page-walk/latency given an overlap window; it just
-can't lift *sequential streaming bandwidth* (a serialized-fill bottleneck). Only a
-gateware fix (multiple-outstanding / bursting DDR path) lifts the streaming ceiling.
+it **hides ~10-14 us/line**. A third sweep uses a **64 B step over a 128 KB span**
+(TLB-resident, so cold DATA misses but no per-access page walk) to isolate the
+data-fill from the page walk:
+
+```
+                            nopf   prefetched   hidden  (us/line, W=0)
+  16 KB step (walk+fill)   ~18        ~7         ~12
+  64 B  step (fill only)   ~10        ~5          ~5
+```
+
+So **both latencies are hideable** given an overlap window:
+- raw data-fill cold miss ~5 us, hidden ~5 us (matches the documented ~5 us/line);
+- page walks add ~8 us/access (18 vs 10) and are *also* hidden (~7 us more).
+- (the same-page nopf ~10 us > the ~5.3 us of pure *sequential* streaming because a
+  64 B stride defeats the HW prefetcher -> closer to the true unaided miss latency.)
+
+**Refined bottom line:** the memory system overlaps ONE outstanding prefetch (data
+fill *and* page walk) with compute -- it is NOT one-transaction-serial. The ~6 MB/s
+ceiling is specifically the **pure-streaming, zero-compute** case (a tight copy/scan
+has nothing to overlap the single in-flight fill with). A workload that interleaves
+real compute hides much of the latency; only a gateware fix (multiple-outstanding /
+bursting DDR path) lifts the *streaming* ceiling itself.
 
 ### atomic_test — the headline result
 On this **no-coherence-manager** A25, userspace hardware atomics:
