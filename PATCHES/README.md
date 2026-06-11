@@ -10,6 +10,7 @@ Apply each from the root of the corresponding tree:
 git apply 0001-opensbi-ae350-soft-atomics-and-priv110.patch     # in opensbi/
 git apply 0002-linux-riscv-ae350-soft-atomics.patch             # in linux/
 git apply 0003-uboot-ae350-sd-boot-and-cache.patch              # in u-boot/
+git apply 0004-linux-a25-cctl-cmo.patch                         # in linux/ (after 0002; needs 0003's CCTL_SUEN)
 ```
 (or `patch -p1 < <file>`). Base versions used: OpenSBI v1.8, Linux 6.12, U-Boot 2026.07-rc3.
 
@@ -45,6 +46,23 @@ git apply 0003-uboot-ae350-sd-boot-and-cache.patch              # in u-boot/
   env adaptation (ns16550 @0xf0300020, `ENV_IS_NOWHERE`, drop the unusable atcspi200 SD node).
 - **Not in the patch** (Kconfig): `CONFIG_BOOTCOMMAND="unzip 0x80200000 0 0x2000000; sdboot 0"`,
   `CONFIG_BOOTDELAY=2`.
+
+## 0004 — Linux A25 L1 CCTL non-coherent cache ops (depends on 0003)
+- `arch/riscv/mm/cmo-andes-a25.c` (new) + `Makefile`: registers
+  `riscv_nonstd_cache_ops` (wback / inv / wback_inv) for the A25 via the AndeStar
+  V5 **user CCTL CSRs** `ucctlbeginaddr` 0x80b / `ucctlcommand` 0x80c (commands
+  L1D_VA_WB=1 / _INVAL=0 / _WBINVAL=2, 32 B line), gated on
+  `of_machine_is_compatible("andestech,a25")` at `early_initcall`. Gives the
+  no-coherence-manager A25 explicit L1 D-cache maintenance for **non-coherent
+  streaming DMA**.
+- **Requires 0003's `CCTL_SUEN`**: without it the S-mode `csrw 0x80b` traps. The
+  provider does a one-shot self-check at registration (a `wback_inv` on a kmalloc
+  buffer); reaching its `pr_info` proves the CCTL path works. Verified on hardware:
+  `AE350 A25: registered L1 CCTL non-coherent cache ops (line=32 B, self-check OK)`.
+- Build gates (already set): `CONFIG_RISCV_DMA_NONCOHERENT=y`,
+  `CONFIG_RISCV_NONSTANDARD_CACHE_OPS=y`, errata/Zicbom CMO off. Note: this only
+  takes effect for drivers that use **streaming DMA** (`dma_map_*`); a driver on
+  `dma_alloc_coherent` (uncached) never calls these ops.
 
 ## Note on correctness
 The soft atomics are correct **only because the system is single-hart** (the only
