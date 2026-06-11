@@ -34,8 +34,13 @@ git apply 0003-uboot-ae350-sd-boot-and-cache.patch              # in u-boot/
 - `board/andestech/ae350/sdread.c` (new) + `Makefile`: `sdinit`/`sdread`/`sdboot`/`amotest`
   commands for the `apb_sd_top` SD-SPI controller and to jump to OpenSBI (a0=0,a1=0,
   cache-flush).
-- `arch/riscv/cpu/andes/cpu.c`: leave `mcache_ctl` with cache **ECC off** (ECC breaks
-  DDR AMO on this gateware).
+- `arch/riscv/cpu/andes/cpu.c`: set `mcache_ctl` with cache **ECC/prefetch/write-around
+  off** (ECC breaks DDR AMO on this gateware) but **`CCTL_SUEN` on** — the latter exposes
+  the AndeStar V5 CCTL cache-control CSRs (`ucctlbeginaddr` 0x80b / `ucctlcommand` 0x80c)
+  to S/U mode so the kernel can do explicit L1 cache maintenance (non-coherent DMA
+  wb/inval); without it an S-mode `csrw 0x80b` traps. (Unrelated to the AMO hang, which is
+  `DC_COHEN`/no-coherence-manager.) Verified on hardware: a U-mode `csrr 0x80b` no longer
+  SIGILLs.
 - `arch/riscv/dts/ae350_32.dts`, `ae350-u-boot.dtsi`, `include/configs/ae350.h`: DT/console/
   env adaptation (ns16550 @0xf0300020, `ENV_IS_NOWHERE`, drop the unusable atcspi200 SD node).
 - **Not in the patch** (Kconfig): `CONFIG_BOOTCOMMAND="unzip 0x80200000 0 0x2000000; sdboot 0"`,
