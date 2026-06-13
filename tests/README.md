@@ -13,7 +13,9 @@ $CC -static -O0 -march=rv32imafdc -mabi=ilp32d -o atomic_test    atomic_test.c
 $CC -static -O2 -march=rv32imafdc -mabi=ilp32d -o memthroughput memthroughput.c
 $CC -static -O2 -march=rv32imafdc -mabi=ilp32d -fno-math-errno -ffp-contract=fast \
                                                  -o compute_bench compute_bench.c -lm
+$CC -static -O2 -march=rv32imafdc -mabi=ilp32d -o dsp_probe     dsp_probe.c
 $CC -static -O2                                  -o cctl_probe    cctl_probe.c
+# (or just: make)
 # sanity: the atomic test really contains hardware atomics
 $TC/bin/riscv32-buildroot-linux-musl-objdump -d atomic_test | grep -E 'amoadd|lr\.w|sc\.w'
 ```
@@ -26,6 +28,7 @@ ssh ae350@192.168.200.2
   /tmp/cctl_probe              # CCTL register access (expects: "CCTL_SUEN OK ...")
   /tmp/memthroughput            # safe: read/write/copy bandwidth vs chunk size
   /tmp/compute_bench            # safe: core int/FP throughput (register-resident)
+  /tmp/dsp_probe                # safe: does the A25 run Andes DSP/P-ext? (SIGILL-guarded)
   /tmp/atomic_test hot          # amoadd.w on a cached line
   /tmp/atomic_test lrsc          # bounded lr.w/sc.w on a cold line
   /tmp/atomic_test amo           # amoadd.w on a cold line
@@ -141,6 +144,28 @@ so a workload only escapes the memory wall if it does **~500 FLOP per DDR word**
 almost nothing does, which is why everything that touches DDR is memory-bound (the
 target of the L2-cache analysis). Notes: single == double FP rate (no packed SIMD);
 divide/sqrt are slow iterative units; integer multiply ~3 cyc.
+
+### dsp_probe — DSP/P-ext is NOT usable here
+The core reports `EDSP` present (`mmsc_cfg` bit 29), so this probes whether Andes
+DSP / RISC-V P-ext packed-SIMD actually runs. The toolchain has no P support, so
+the instructions are emitted as raw `.insn r` (opcode 0x77, the older Andes DSP
+draft) and each is run once under a `SIGILL` guard + self-checked. Result (2026-06):
+
+```
+ADD8   SIGILL    (encoding verified vs MATCH_ADD8=0x48000077)
+ADD16  SIGILL
+SMAQA  SIGILL
+```
+
+**All three trap** — even ADD8 with the known-good encoding. So there is **no usable
+packed-SIMD path** on this part: no toolchain support, and the public RVP-draft
+encodings SIGILL from userspace. A trap can't distinguish (a) Andes' silicon uses a
+different proprietary DSP encoding than the public draft, (b) the unit needs an
+M-mode enable bit the kernel doesn't set, or (c) the Gowin AE350 config reports EDSP
+but omits the datapath. Resolving it needs the Andes DSP ISA manual and/or an M-mode
+enable check -- and it wouldn't help anyway (compute is already ~500x faster than
+DDR; everything here is memory-bound). The only compute path is scalar (compute_bench);
+RVV is absent (`misa` has no V).
 
 ### atomic_test — the headline result
 On this **no-coherence-manager** A25, userspace hardware atomics:
