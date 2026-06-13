@@ -34,3 +34,9 @@
 
 # --- Debug captures (transient artifacts) ---
 *.pcap
+
+# --- tests/ build products (rebuild with tests/Makefile) ---
+/tests/atomic_test
+/tests/memthroughput
+/tests/compute_bench
+/tests/cctl_probe
