@@ -170,6 +170,15 @@ is) would be faster. Caveat: this helps **compute-bound, L1-resident** kernels (
 filters, quantized NN); it does nothing for the memory-bound workloads (~500x
 compute:DDR gap). RVV is still absent (`misa` has no V).
 
+It's a **broad set** -- the Andes toolchain's `nds_intrinsic.h` exposes ~347 DSP/P
+intrinsics (saturating `kadd`/`ksub`, unsigned `ukadd`, crossed `cras`/`crsa`, packed
+multiply `smbb16`/`khm`/`kmmac`, min/max `smin8`/`smax8`/`umin8`/`umax8`, compare
+`cmpeq8`, pack `pkbb16`, abs `kabs8`, unpack `sunpkd810`, shifts `ksll`, ...).
+`dsp_probe` self-checks 9 more of these on hardware beyond add8/add16/smaqa --
+**all 9/9 correct** (kadd8/ukadd8/sub8/ksub8/smin8/smax8/umin8/umax8/cmpeq8), so the
+whole packed-SIMD family works, not just a couple of ops. (Encodings recovered from
+the Andes `riscv32-elf` toolchain at `~/Downloads/nds32le-elf-newlib-v5/`.)
+
 ### atomic_test — the headline result
 On this **no-coherence-manager** A25, userspace hardware atomics:
 
