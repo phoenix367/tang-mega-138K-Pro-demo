@@ -14,6 +14,7 @@ $CC -static -O2 -march=rv32imafdc -mabi=ilp32d -o memthroughput memthroughput.c
 $CC -static -O2 -march=rv32imafdc -mabi=ilp32d -fno-math-errno -ffp-contract=fast \
                                                  -o compute_bench compute_bench.c -lm
 $CC -static -O2 -march=rv32imafdc -mabi=ilp32d -o dsp_probe     dsp_probe.c
+$CC -static -O2 -march=rv32imafdc -mabi=ilp32d -o ext_probe     ext_probe.c
 $CC -static -O2                                  -o cctl_probe    cctl_probe.c
 # (or just: make)
 # sanity: the atomic test really contains hardware atomics
@@ -29,6 +30,7 @@ ssh ae350@192.168.200.2
   /tmp/memthroughput            # safe: read/write/copy bandwidth vs chunk size
   /tmp/compute_bench            # safe: core int/FP throughput (register-resident)
   /tmp/dsp_probe                # safe: does the A25 run Andes DSP/P-ext? (SIGILL-guarded)
+  /tmp/ext_probe                # safe: XAndesPerf (ffb/ffmism) + Zbb + prefetch probe
   /tmp/atomic_test hot          # amoadd.w on a cached line
   /tmp/atomic_test lrsc          # bounded lr.w/sc.w on a cold line
   /tmp/atomic_test amo           # amoadd.w on a cold line
@@ -186,6 +188,28 @@ dsp_probe round-trips the scalar BF16 conv on HW -> **SIGILL (XAndesBFHCvt absen
 the vector ones need RVV (absent). So the only FP path is the standard scalar F/D
 FPU (compute_bench: ~0.82 GFLOP/s, single==double, no packed float). The Andes float
 extensions are for the AI parts (NX27V-class), not this A25.
+
+### ext_probe — XAndesPerf works, Zbb absent, prefetch is a hint
+Probes three more extensions via raw `.word` (encodings from the Andes toolchain),
+each SIGILL-guarded; Zbb and XAndesPerf are self-checked. Result on hardware:
+
+```
+[Zbb]         clz/ctz/cpop/orcb/rev8/min/max/minu/maxu/andn/ror  -> 0/11 (all SIGILL)
+[XAndesPerf]  ffb / ffmism / flmism                              -> 6/6 OK
+[Zicbop]      prefetch.r                                          -> runs (hint)
+```
+
+- **Zbb (basic bit-manip) is ABSENT** -- every op SIGILLs. So no hardware clz/ctz/
+  popcount/min/max/rev8 here; the compiler must use software sequences.
+- **XAndesPerf (`ffb`/`ffmism`/`flmism`) WORKS** -- the string-search accelerators the
+  core advertises (EV5PE). Semantics (deduced + self-checked): **result = `byte_index-4`**
+  (a `-4..-1` negative offset back from the end of the word), `0` if equal/not-found.
+  `ffb` finds the byte `(rs2 & 0xff)` in `rs1`; `ffmism`/`flmism` = first/last differing
+  byte of `rs1` vs `rs2`. These accelerate `memchr`/`strlen` (`ffb`) and `memcmp`/`strcmp`
+  (`ffmism`) a word at a time -- genuinely useful for libc string routines.
+- **Zicbop `prefetch.r`** decodes to an ORI-hint, so it never traps (can't be detected by
+  SIGILL); its real effect was measured by the memthroughput delay sweep (hides latency
+  when there's an overlap window).
 
 ### atomic_test — the headline result
 On this **no-coherence-manager** A25, userspace hardware atomics:
