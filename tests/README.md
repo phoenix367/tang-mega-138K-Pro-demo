@@ -145,30 +145,30 @@ almost nothing does, which is why everything that touches DDR is memory-bound (t
 target of the L2-cache analysis). Notes: single == double FP rate (no packed SIMD);
 divide/sqrt are slow iterative units; integer multiply ~3 cyc.
 
-### dsp_probe — DSP/P-ext is NOT usable here
-The core reports `EDSP` present (`mmsc_cfg` bit 29), so this probes whether Andes
-DSP / RISC-V P-ext packed-SIMD actually runs. The toolchain has no P support, so
-the instructions are emitted as raw `.insn r` (opcode 0x77, the older Andes DSP
-draft) and each is run once under a `SIGILL` guard + self-checked. Result (2026-06):
+### dsp_probe — the Andes DSP WORKS (~5x packed-SIMD)
+The core reports `EDSP` present (`mmsc_cfg` bit 29). The toolchain has no P support,
+so the instructions are emitted as raw `.word` with the **real Andes encodings**
+(recovered from the Andes `riscv32-elf` toolchain): the P-draft v0.5 uses **major
+opcode 0x7F** (not the RVV 0x77 -- using 0x77 made an earlier probe SIGILL). Each op
+runs once under a `SIGILL` guard + self-check, then is benchmarked vs scalar. Result:
 
 ```
-ucode(0x801) READABLE (=0x0)   <- DSP state CSR exists from U-mode
-ADD8   SIGILL    (public RVP-draft enc 0x77/0x24)
-ADD16  SIGILL
-SMAQA  SIGILL
+ucode(0x801) present          <- DSP state CSR exists
+ADD8   OK   add8  a0,a0,a1 = 0x48b5057f   DSP 13.0 cyc/op   scalar 70.5  -> 5.4x
+ADD16  OK   add16        = 0x40b5057f     DSP 14.3 cyc/op   scalar 24.7  -> 1.7x
+SMAQA  OK   smaqa a0,a1,a2 = 0xc8c5857f   DSP  6.2 cyc/op (514 MMAC/s)   -> 4.9x
 ```
 
-**The DSP datapath IS present but the instruction encoding is wrong.** The `ucode`
-saturation CSR (0x801) reads fine from userspace, so the DSP state exists and needs no
-enabling; yet the packed ops SIGILL. So the cause is an **encoding mismatch** -- the A25
-uses Andes' proprietary DSP encoding, not the public RVP-draft `opcode 0x77/funct7 0x24`
-(which itself came from a binutils issue with a typo). It is **not** an M-mode enable
-problem: the Andes BSP for this SoC sets no DSP-enable bit (only `mmisc_ctl` non-blocking
-+ misaligned), `trap.c` only context-saves `ucode` under compile-time `#ifdef __riscv_dsp`,
-and `ucode` is already reachable from U-mode. To use the DSP you need the real Andes
-encodings (AndeStar V5 DSP ISA manual / the AndeSight `nds-gcc` `-mext-dsp` toolchain) --
-and it still wouldn't help here (everything is memory-bound; ~500x compute:DDR gap). The
-only practical compute path is scalar (compute_bench); RVV is absent (`misa` has no V).
+**The DSP is real and usable** -- ~5.4x on packed 4xint8 add and **4.9x on the int8
+MAC (SMAQA, ~514 MMAC/s)**, the quantized-inference primitive. The earlier "SIGILL"
+result was purely a wrong opcode (0x77 vs 0x7F); the datapath was always present
+(`ucode` readable) and there is **no M-mode enable bit** (the Andes BSP sets none;
+`trap.c` only context-saves `ucode`). These speedups are a conservative floor -- the
+raw `.word` + register pinning penalises the DSP side; a kernel built with the real
+Andes toolchain (`-mext-dsp` + `__nds__` intrinsics, as the SDK's INT8 MobileNet demo
+is) would be faster. Caveat: this helps **compute-bound, L1-resident** kernels (DSP
+filters, quantized NN); it does nothing for the memory-bound workloads (~500x
+compute:DDR gap). RVV is still absent (`misa` has no V).
 
 ### atomic_test — the headline result
 On this **no-coherence-manager** A25, userspace hardware atomics:
