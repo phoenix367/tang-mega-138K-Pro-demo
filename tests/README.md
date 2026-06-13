@@ -152,20 +152,23 @@ the instructions are emitted as raw `.insn r` (opcode 0x77, the older Andes DSP
 draft) and each is run once under a `SIGILL` guard + self-checked. Result (2026-06):
 
 ```
-ADD8   SIGILL    (encoding verified vs MATCH_ADD8=0x48000077)
+ucode(0x801) READABLE (=0x0)   <- DSP state CSR exists from U-mode
+ADD8   SIGILL    (public RVP-draft enc 0x77/0x24)
 ADD16  SIGILL
 SMAQA  SIGILL
 ```
 
-**All three trap** — even ADD8 with the known-good encoding. So there is **no usable
-packed-SIMD path** on this part: no toolchain support, and the public RVP-draft
-encodings SIGILL from userspace. A trap can't distinguish (a) Andes' silicon uses a
-different proprietary DSP encoding than the public draft, (b) the unit needs an
-M-mode enable bit the kernel doesn't set, or (c) the Gowin AE350 config reports EDSP
-but omits the datapath. Resolving it needs the Andes DSP ISA manual and/or an M-mode
-enable check -- and it wouldn't help anyway (compute is already ~500x faster than
-DDR; everything here is memory-bound). The only compute path is scalar (compute_bench);
-RVV is absent (`misa` has no V).
+**The DSP datapath IS present but the instruction encoding is wrong.** The `ucode`
+saturation CSR (0x801) reads fine from userspace, so the DSP state exists and needs no
+enabling; yet the packed ops SIGILL. So the cause is an **encoding mismatch** -- the A25
+uses Andes' proprietary DSP encoding, not the public RVP-draft `opcode 0x77/funct7 0x24`
+(which itself came from a binutils issue with a typo). It is **not** an M-mode enable
+problem: the Andes BSP for this SoC sets no DSP-enable bit (only `mmisc_ctl` non-blocking
++ misaligned), `trap.c` only context-saves `ucode` under compile-time `#ifdef __riscv_dsp`,
+and `ucode` is already reachable from U-mode. To use the DSP you need the real Andes
+encodings (AndeStar V5 DSP ISA manual / the AndeSight `nds-gcc` `-mext-dsp` toolchain) --
+and it still wouldn't help here (everything is memory-bound; ~500x compute:DDR gap). The
+only practical compute path is scalar (compute_bench); RVV is absent (`misa` has no V).
 
 ### atomic_test — the headline result
 On this **no-coherence-manager** A25, userspace hardware atomics:

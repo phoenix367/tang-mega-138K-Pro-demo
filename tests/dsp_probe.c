@@ -128,11 +128,28 @@ static void bench_add8_scalar(void)
 	       (double)N*8/t/1e6);
 }
 
+/* Read the Andes DSP saturation CSR `ucode` (0x801). It exists iff the DSP
+ * datapath is implemented -> distinguishes "wrong encoding" (ucode readable)
+ * from "no DSP datapath" (ucode traps). It is NOT an enable bit. */
+static int probe_ucode(void)
+{
+	trapped = 0;
+	if (sigsetjmp(jb, 1) == 0) {
+		unsigned long u;
+		__asm__ volatile("csrr %0, 0x801" : "=r"(u));
+		printf("  ucode(0x801) READABLE (=0x%lx) -> DSP state present; ADD8 SIGILL = encoding mismatch\n", u);
+		return 1;
+	}
+	printf("  ucode(0x801) SIGILL -> no DSP datapath in this config (enable bit would not help)\n");
+	return 0;
+}
+
 int main(void)
 {
 	signal(SIGILL, on_sigill);
 	printf("A25 Andes-DSP / P-extension probe (raw .insn, opcode 0x77)\n");
-	printf("[probe] execute + self-check each instruction:\n");
+	printf("[probe] DSP state CSR + execute/self-check each instruction:\n");
+	probe_ucode();
 	int a8 = probe_add8();
 	probe_add16();
 	probe_smaqa();
