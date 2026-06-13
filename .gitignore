@@ -41,4 +41,5 @@
 /tests/compute_bench
 /tests/dsp_probe
 /tests/ext_probe
+/tests/amo_probe
 /tests/cctl_probe

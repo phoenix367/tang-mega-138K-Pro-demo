@@ -15,6 +15,7 @@ $CC -static -O2 -march=rv32imafdc -mabi=ilp32d -fno-math-errno -ffp-contract=fas
                                                  -o compute_bench compute_bench.c -lm
 $CC -static -O2 -march=rv32imafdc -mabi=ilp32d -o dsp_probe     dsp_probe.c
 $CC -static -O2 -march=rv32imafdc -mabi=ilp32d -o ext_probe     ext_probe.c
+$CC -static -O2 -march=rv32imafdc -mabi=ilp32d -o amo_probe     amo_probe.c
 $CC -static -O2                                  -o cctl_probe    cctl_probe.c
 # (or just: make)
 # sanity: the atomic test really contains hardware atomics
@@ -31,6 +32,7 @@ ssh ae350@192.168.200.2
   /tmp/compute_bench            # safe: core int/FP throughput (register-resident)
   /tmp/dsp_probe                # safe: does the A25 run Andes DSP/P-ext? (SIGILL-guarded)
   /tmp/ext_probe                # safe: XAndesPerf (ffb/ffmism) + Zbb + prefetch probe
+  /tmp/amo_probe                # safe: amo hot-vs-cold (fork+timeout, no reboot)
   /tmp/atomic_test hot          # amoadd.w on a cached line
   /tmp/atomic_test lrsc          # bounded lr.w/sc.w on a cold line
   /tmp/atomic_test amo           # amoadd.w on a cold line
@@ -215,15 +217,26 @@ each SIGILL-guarded; Zbb and XAndesPerf are self-checked. Result on hardware:
 On this **no-coherence-manager** A25, userspace hardware atomics:
 
 - **Do not SIGILL** — `misa = rv32imafdc`, so `amoadd.w`/`lr.w`/`sc.w` decode fine.
-- **Wedge the process** — every mode prints the line *before* the atomic and
-  never the line *after*; the atomic never retires. (Even the "hot" case wedges,
-  unlike bare-metal M-mode where an owned line works.)
-- **Become uninterruptible** — `kill -9` does not reap the task; it accumulates
-  CPU time.
+- **Do not SIGILL** — `misa = rv32imafdc`, so `amoadd.w`/`lr.w`/`sc.w` decode fine.
+- **Wedge on a cold/uncached line** — the atomic never retires; the task becomes
+  **uninterruptible** (`kill -9` fails, accumulates CPU).
 - **Do not crash the board** — the single hart keeps time-slicing other tasks, so
-  `ping`/`uptime`/ssh stay responsive and `dmesg` logs no oops/trap/fault. The
-  damage is contained to a dead-but-unkillable process; cleanup is a reboot.
+  `ping`/`uptime`/ssh stay responsive and `dmesg` logs no oops/trap/fault.
 
-This is the userspace-side reason the entire stack (kernel + OpenSBI + musl) is
-built single-hart "soft-atomic". See `../CACHE_ISSUES.md` and the memory note
-`ae350-amo-cache-miss-hang`.
+### amo_probe — hit-vs-miss, the safe way (corrects the above)
+`atomic_test`'s original "even the hot case wedges" was a **test artifact** (it did
+only a `volatile` store, which didn't allocate the line in cache). `amo_probe` runs
+each AMO in a **forked child with a timeout** (so a wedge doesn't need a reboot) and
+shows the real rule:
+
+```
+amoadd.w  hot (written + read back) -> COMPLETED (old=100)  WORKS
+amoadd.w  cold (evicted line)        -> no completion in 3s  WEDGED
+```
+
+So userspace AMO follows the **same hit-vs-miss rule as bare-metal**: a **cached
+line works**, a **cache miss wedges** (the no-coherence-manager bus can't service the
+atomic). This is the userspace-side reason the whole stack (kernel + OpenSBI + musl)
+is single-hart "soft-atomic" — the kernel/libc can't guarantee every atomic's line is
+resident, and contended/cold DRAM atomics are exactly the miss case. See
+`../CACHE_ISSUES.md` and the memory note `ae350-amo-cache-miss-hang`.

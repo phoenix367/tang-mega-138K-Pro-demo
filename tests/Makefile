@@ -18,7 +18,7 @@ ARCH := -march=rv32imafdc -mabi=ilp32d
 BOARD ?= 192.168.200.2
 RUSER ?= ae350
 
-BINS := atomic_test memthroughput compute_bench dsp_probe ext_probe cctl_probe
+BINS := atomic_test memthroughput compute_bench dsp_probe ext_probe amo_probe cctl_probe
 
 all: $(BINS)
 
@@ -35,6 +35,9 @@ compute_bench: compute_bench.c
 	$(CC) -static -O2 $(ARCH) -fno-math-errno -ffp-contract=fast -o $@ $< -lm
 
 # Andes DSP / P-ext via raw .insn (no -march P support needed in the toolchain)
+amo_probe: amo_probe.c
+	$(CC) -static -O2 $(ARCH) -o $@ $<
+
 ext_probe: ext_probe.c
 	$(CC) -static -O2 $(ARCH) -o $@ $<
 
