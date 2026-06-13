@@ -86,6 +86,21 @@ static int probe_ucode(void)
 	printf("  ucode  SIGILL (no DSP datapath)\n"); return 0;
 }
 
+/* Andes scalar BFLOAT16 conversion (XAndesBFHCvt): fcvt.bf16.s=0x44857553,
+ * fcvt.s.bf16=0x40657553 (opcode 0x53, FP space). Round-trip 1.5 (exact in BF16). */
+static int probe_bf16(void)
+{
+	trapped = 0;
+	if (sigsetjmp(jb,1)==0) {
+		register float x asm("fa0") = 1.5f;
+		__asm__ volatile(".word 0x44857553":"+f"(x));   /* fp32 -> bf16 */
+		__asm__ volatile(".word 0x40657553":"+f"(x));   /* bf16 -> fp32 */
+		if (x==1.5f) { printf("  bf16   fcvt round-trip OK (XAndesBFHCvt present)\n"); return 1; }
+		printf("  bf16   executed but round-trip=%g (unexpected)\n",(double)x); return 0;
+	}
+	printf("  bf16   SIGILL (XAndesBFHCvt absent)\n"); return 0;
+}
+
 /* dependent-chain latency benchmarks (4 lanes / instruction) */
 static void bench(const char *nm, int lanes,
                   uint32_t (*dsp)(uint32_t,uint32_t), uint32_t (*ref)(uint32_t,uint32_t))
@@ -114,6 +129,7 @@ int main(void)
 	printf("A25 Andes-DSP / P-extension (real encodings, opcode 0x7F)\n");
 	printf("[probe]\n");
 	probe_ucode();
+	probe_bf16();
 	uint32_t g;
 	trapped=0; g = (sigsetjmp(jb,1)==0) ? i_add8 (0x7f010203u,0x01010101u) : 0;
 	int a8  = probe("ADD8",  1, g, ref_add8 (0x7f010203u,0x01010101u));

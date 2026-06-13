@@ -179,6 +179,14 @@ multiply `smbb16`/`khm`/`kmmac`, min/max `smin8`/`smax8`/`umin8`/`umax8`, compar
 whole packed-SIMD family works, not just a couple of ops. (Encodings recovered from
 the Andes `riscv32-elf` toolchain at `~/Downloads/nds32le-elf-newlib-v5/`.)
 
+**No usable float intrinsics.** The DSP set is integer-only. The toolchain's Andes
+float intrinsics are BF16/FP16: scalar BF16 conv `XAndesBFHCvt` (`fcvt.s.bf16`
+=0x40657553 / `fcvt.bf16.s`=0x44857553) and vector `XAndesVBFHCvt`/`XAndesVPackFPH`.
+dsp_probe round-trips the scalar BF16 conv on HW -> **SIGILL (XAndesBFHCvt absent)**;
+the vector ones need RVV (absent). So the only FP path is the standard scalar F/D
+FPU (compute_bench: ~0.82 GFLOP/s, single==double, no packed float). The Andes float
+extensions are for the AI parts (NX27V-class), not this A25.
+
 ### atomic_test — the headline result
 On this **no-coherence-manager** A25, userspace hardware atomics:
 
