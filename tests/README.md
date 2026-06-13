@@ -11,6 +11,8 @@ TC=~/projects/riscv32-ilp32d--musl--stable-2025.08-1
 CC=$TC/bin/riscv32-buildroot-linux-musl-gcc
 $CC -static -O0 -march=rv32imafdc -mabi=ilp32d -o atomic_test    atomic_test.c
 $CC -static -O2 -march=rv32imafdc -mabi=ilp32d -o memthroughput memthroughput.c
+$CC -static -O2 -march=rv32imafdc -mabi=ilp32d -fno-math-errno -ffp-contract=fast \
+                                                 -o compute_bench compute_bench.c -lm
 $CC -static -O2                                  -o cctl_probe    cctl_probe.c
 # sanity: the atomic test really contains hardware atomics
 $TC/bin/riscv32-buildroot-linux-musl-objdump -d atomic_test | grep -E 'amoadd|lr\.w|sc\.w'
@@ -23,6 +25,7 @@ scp -O atomic_test cctl_probe ae350@192.168.200.2:/tmp/
 ssh ae350@192.168.200.2
   /tmp/cctl_probe              # CCTL register access (expects: "CCTL_SUEN OK ...")
   /tmp/memthroughput            # safe: read/write/copy bandwidth vs chunk size
+  /tmp/compute_bench            # safe: core int/FP throughput (register-resident)
   /tmp/atomic_test hot          # amoadd.w on a cached line
   /tmp/atomic_test lrsc          # bounded lr.w/sc.w on a cold line
   /tmp/atomic_test amo           # amoadd.w on a cold line
@@ -117,6 +120,27 @@ ceiling is specifically the **pure-streaming, zero-compute** case (a tight copy/
 has nothing to overlap the single in-flight fill with). A workload that interleaves
 real compute hides much of the latency; only a gateware fix (multiple-outstanding /
 bursting DDR path) lifts the *streaming* ceiling itself.
+
+### compute_bench — the core is NOT the bottleneck
+Register/L1-resident int + FP rates (no DDR). Measured on hardware (2026-06-13):
+
+```
+int32 mul+add            426 Mop/s   (0.53/cyc; mul ~3 cyc throughput)
+int32 divide              29 Mdiv/s  (~27 cyc, iterative)
+float  mul+add           816 Mflop/s (1.02/cyc)
+double mul+add           823 Mflop/s (1.03/cyc)   <- same as float: scalar FPU, no SIMD
+double divide            11 Mdiv/s   (~71 cyc)
+double sqrt              11 Msqrt/s   (~70 cyc)
+double FMA latency       7.85 cyc/op  (pipeline depth ~8)
+mandelbrot (branchy FP)  ~198 Mflop/s (~4x below peak: deps + branches)
+```
+
+The 800 MHz A25 sustains **~0.82 GFLOP/s / ~0.43 G int-op/s** register-resident, but
+DDR delivers only **~1.5 M words/s** (~6 MB/s). The compute:memory ratio is **~500x**,
+so a workload only escapes the memory wall if it does **~500 FLOP per DDR word** --
+almost nothing does, which is why everything that touches DDR is memory-bound (the
+target of the L2-cache analysis). Notes: single == double FP rate (no packed SIMD);
+divide/sqrt are slow iterative units; integer multiply ~3 cyc.
 
 ### atomic_test — the headline result
 On this **no-coherence-manager** A25, userspace hardware atomics:
