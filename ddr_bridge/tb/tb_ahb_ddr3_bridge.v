@@ -20,6 +20,7 @@
 module tb_ahb_ddr3_bridge;
     parameter NBUF     = 8;
     parameter PREFETCH = 1;
+    parameter ADDR_BITS = 28;                  // bridge address width (28 = 256 MB, 29 = 512 MB)
     parameter WIN      = 4096;                 // bytes exercised (power of 2)
     parameter XROW_REORDER = 0;                // DDR model may reorder cross-row reads (the real MC
                                                // does not -- read BIST on hardware: 0 errors)
@@ -61,7 +62,7 @@ module tb_ahb_ddr3_bridge;
     wire        hready; wire [1:0] hresp; wire [63:0] hrdata;
     // DDR UI
     wire        calib_done, cmd_ready, cmd_en, wr_data_rdy, wr_data_en, wr_data_end, rd_data_valid;
-    wire [2:0]  cmd; wire [27:0] addr; wire [127:0] wr_data, rd_data; wire [15:0] wr_data_mask;
+    wire [2:0]  cmd; wire [ADDR_BITS-1:0] addr; wire [127:0] wr_data, rd_data; wire [15:0] wr_data_mask;
     wire [511:0] perf_cnt;
     integer ddr_errors;
     // video read port
@@ -71,11 +72,11 @@ module tb_ahb_ddr3_bridge;
     initial if ($value$plusargs("vmaxwait=%d", vmaxwait)) ;
     initial if ($test$plusargs("wrheavy")) wrheavy = 1'b1;
     reg          v_req = 1'b0;
-    reg  [27:0]  v_addr = 28'd0;
+    reg  [31:0]  v_addr = 32'd0;
     wire         v_rstn, v_ack, v_rvalid;
     wire [127:0] v_rdata;
 
-    ahb_ddr3_bridge #(.NBUF(NBUF), .PREFETCH(PREFETCH)) dut (
+    ahb_ddr3_bridge #(.NBUF(NBUF), .PREFETCH(PREFETCH), .ADDR_BITS(ADDR_BITS)) dut (
         .hclk(hclk), .hresetn(hresetn), .haddr(haddr), .htrans(htrans), .hwrite(hwrite),
         .hsize(hsize), .hburst(hburst), .hprot(hprot), .hwdata(hwdata), .hready(hready),
         .hresp(hresp), .hrdata(hrdata), .mode(tb_mode), .perf_en(1'b1), .perf_clr(1'b0), .perf_cnt(perf_cnt),
@@ -83,10 +84,10 @@ module tb_ahb_ddr3_bridge;
         .addr(addr), .wr_data_rdy(wr_data_rdy), .wr_data(wr_data), .wr_data_en(wr_data_en),
         .wr_data_end(wr_data_end), .wr_data_mask(wr_data_mask), .rd_data(rd_data),
         .rd_data_valid(rd_data_valid),
-        .v_rstn(v_rstn), .v_req(v_req), .v_addr(v_addr), .v_ack(v_ack),
+        .v_rstn(v_rstn), .v_req(v_req), .v_addr(v_addr[ADDR_BITS-1:0]), .v_ack(v_ack),
         .v_rvalid(v_rvalid), .v_rdata(v_rdata));
 
-    ddr3_ui_model #(.WORDS(2*WIN/16), .XROW_REORDER(XROW_REORDER),
+    ddr3_ui_model #(.WORDS(2*WIN/16), .XROW_REORDER(XROW_REORDER), .ADDR_W(ADDR_BITS),
                     .LAT_MIN(LAT_MIN), .LAT_MAX(LAT_MAX)) ddr (
         .clk(uclk), .calib_done(calib_done), .cmd_ready(cmd_ready), .cmd(cmd), .cmd_en(cmd_en),
         .addr(addr), .wr_data_rdy(wr_data_rdy), .wr_data(wr_data), .wr_data_en(wr_data_en),

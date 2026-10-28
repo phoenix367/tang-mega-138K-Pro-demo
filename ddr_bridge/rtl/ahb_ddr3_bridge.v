@@ -55,7 +55,8 @@
 // clock / 4).  The two are asynchronous; ddr_async_fifo crosses both ways.
 //
 // DDR address: byte address [ADDR_BITS-1:0] -> IP word address (x16) = byte>>1
-// in the IP's {bank,row,column} order.
+// in the IP's {bank,row,column} order; the IP's addr port is one bit wider
+// than the word address (its top bit stays 0), i.e. ADDR_BITS wide.
 //============================================================================
 module ahb_ddr3_bridge #(
     parameter ADDR_BITS = 28,        // DDR bytes = 2**ADDR_BITS (256 MB)
@@ -106,7 +107,7 @@ module ahb_ddr3_bridge #(
     input  wire         cmd_ready,
     output wire [2:0]   cmd,
     output wire         cmd_en,
-    output wire [27:0]  addr,
+    output wire [ADDR_BITS-1:0] addr,
     input  wire         wr_data_rdy,
     output wire [127:0] wr_data,
     output wire         wr_data_en,
@@ -864,7 +865,7 @@ module ahb_ddr3_bridge #(
     wire          c_half   = rd_second ? ~c_first : c_first;
     // read BIST: holds the bridge off, then owns the port (read-only)
     wire          bist_hold, bist_own, bist_cmd_en;
-    wire [26:0]   bist_addr;
+    wire [ADDR_BITS-2:0] bist_addr;
     reg           bist_tgl_q;
     wire          bist_start = umode_s2[24] ^ bist_tgl_q;
     wire [255:0]  bist_res;
@@ -919,11 +920,11 @@ module ahb_ddr3_bridge #(
     assign cmd_en       = bist_own ? bist_cmd_en : (issue_wr | issue_rd | issue_v);
     assign cmd          = (bist_own | c_read | v_slot) ? 3'b001 : 3'b000;
     assign addr         = bist_own ? {1'b0, bist_addr}
-                        : v_slot ? {{(28-ADDR_BITS+1){1'b0}}, v_addr[ADDR_BITS-1:4], 3'b000}
-                        : c_read ? {{(28-ADDR_BITS+1){1'b0}}, c_blk[BB-1:1], c_half, 3'b000}
-                                 : {{(28-ADDR_BITS+1){1'b0}}, c_blk, 3'b000};
+                        : v_slot ? {1'b0, v_addr[ADDR_BITS-1:4], 3'b000}
+                        : c_read ? {1'b0, c_blk[BB-1:1], c_half, 3'b000}
+                                 : {1'b0, c_blk, 3'b000};
 
-    ddr_rd_bist u_bist (
+    ddr_rd_bist #(.AW(ADDR_BITS-1)) u_bist (
         .clk(uclk), .rst_n(urst_n),
         .start(bist_start), .pattern(umode_s2[26:25]), .iter_log2(umode_s2[31:28]),
         .port_idle(!rd_out && v_n == 4'd0),

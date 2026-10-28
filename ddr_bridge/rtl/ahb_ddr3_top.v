@@ -9,6 +9,7 @@
 // (in the DDR3 IP user clock, exported as VCLK).
 //============================================================================
 module ahb_ddr3_top #(
+    parameter ADDR_BITS = 29,          // DDR bytes = 2**ADDR_BITS: 512 MB (x16, 15 row bits)
     parameter NBUF     = 8,
     parameter PREFETCH = 1,
     parameter PF_DIST  = 2
@@ -30,7 +31,7 @@ module ahb_ddr3_top #(
     output wire         DDR3_CKE,
     output wire         DDR3_RESET_N,
     output wire         DDR3_ODT,
-    output wire [13:0]  DDR3_ADDR,
+    output wire [ADDR_BITS-15:0] DDR3_ADDR,   // row address: ADDR_BITS-14 bits
     output wire [1:0]   DDR3_DM,
     inout  wire [15:0]  DDR3_DQ,
     inout  wire [1:0]   DDR3_DQS,
@@ -57,7 +58,7 @@ module ahb_ddr3_top #(
     output wire         VCLK,               // DDR3 IP user clock (100 MHz)
     output wire         VRSTN,              // VCLK reset, released after calibration
     input  wire         V_REQ,
-    input  wire [27:0]  V_ADDR,             // byte address, 16 B aligned
+    input  wire [31:0]  V_ADDR,             // byte address, 16 B aligned (bits above ADDR_BITS ignored)
     output wire         V_ACK,
     output wire         V_RVALID,
     output wire [127:0] V_RDATA
@@ -71,7 +72,7 @@ module ahb_ddr3_top #(
     wire         calib_done;
     wire         cmd_ready, cmd_en, wr_data_rdy, wr_data_en, wr_data_end, rd_data_valid;
     wire [2:0]   cmd;
-    wire [27:0]  addr;
+    wire [ADDR_BITS-1:0] addr;
     wire [127:0] wr_data, rd_data;
     wire [15:0]  wr_data_mask;
 
@@ -122,7 +123,7 @@ module ahb_ddr3_top #(
     );
 
     ahb_ddr3_bridge #(
-        .ADDR_BITS (28),
+        .ADDR_BITS (ADDR_BITS),
         .NBUF      (NBUF),
         .PREFETCH  (PREFETCH),
         .PF_DIST   (PF_DIST)
@@ -158,7 +159,7 @@ module ahb_ddr3_top #(
         .rd_data_valid (rd_data_valid),
         .v_rstn        (VRSTN),
         .v_req         (V_REQ),
-        .v_addr        (V_ADDR),
+        .v_addr        (V_ADDR[ADDR_BITS-1:0]),
         .v_ack         (V_ACK),
         .v_rvalid      (V_RVALID),
         .v_rdata       (V_RDATA)

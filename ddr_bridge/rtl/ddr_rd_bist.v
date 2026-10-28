@@ -18,7 +18,9 @@
 // Only reads are issued, so the BIST can run under a live OS; the bridge
 // stalls for the duration (a few ms).
 //============================================================================
-module ddr_rd_bist (
+module ddr_rd_bist #(
+    parameter AW = 27                   // x16 word address bits (DDR bytes = 2**(AW+1))
+) (
     input  wire         clk,
     input  wire         rst_n,
     // control (quasi-static, synchronized by the caller)
@@ -31,7 +33,7 @@ module ddr_rd_bist (
     output wire         own,            // BIST owns the command port
     input  wire         cmd_ok,         // command may be issued this cycle
     output wire         cmd_en,
-    output wire [26:0]  addr,
+    output wire [AW-1:0] addr,
     input  wire [127:0] rd_data,
     input  wire         rd_data_valid,
     // results (static once done)
@@ -49,14 +51,14 @@ module ddr_rd_bist (
 
     reg  [2:0]   st;
     reg  [31:0]  lfsr;
-    reg  [26:0]  a [0:3];
+    reg  [AW-1:0] a [0:3];
     reg  [127:0] truth [0:3];
     reg  [127:0] got   [0:3];
     reg  [1:0]   i, n_ret;
     reg  [2:0]   n_iss;
     reg  [27:0]  iter, iters;
     reg  [1:0]   pat;
-    reg  [16:0]  base;                  // bank+row of the iteration (pattern 1)
+    reg  [AW-11:0] base;                // bank+row of the iteration (pattern 1)
     reg          first_n;               // first mismatch of this run captured
     reg  [1:0]   cph;                   // S_CMP phase: 0 select, 1 partial compares, 2 verdict
     reg  [127:0] g_sel;                 // got[i], registered
@@ -85,7 +87,7 @@ module ddr_rd_bist (
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             st <= S_IDLE; lfsr <= 32'h1BADF00D; i <= 2'd0; n_iss <= 3'd0; n_ret <= 2'd0;
-            iter <= 28'd0; iters <= 28'd0; pat <= 2'd0; base <= 17'd0; first_n <= 1'b0;
+            iter <= 28'd0; iters <= 28'd0; pat <= 2'd0; base <= {(AW-10){1'b0}}; first_n <= 1'b0;
             cph <= 2'd0; eqp <= 16'd0; g_lo <= 32'd0; t_lo <= 32'd0; extra_q <= 1'b0;
             g_sel <= 128'd0;
             r_status <= 32'd0; r_err <= 32'd0; r_reorder <= 32'd0; r_first <= 32'd0;
@@ -101,17 +103,17 @@ module ddr_rd_bist (
                 end
                 S_WAIT: if (port_idle) begin st <= S_GEN; i <= 2'd0; end
                 S_GEN: begin
-                    // 16 B aligned x16 word address {bank[2:0], row[13:0], col[9:0]}
+                    // 16 B aligned x16 word address {bank[2:0], row, col[9:0]}
                     lfsr <= lfsr_n;
-                    if (i == 2'd0) base <= lfsr[26:10];
+                    if (i == 2'd0) base <= lfsr[AW-1:10];
                     case (pat)
-                        2'd0: a[i] <= {lfsr[26:3], 3'b000};                       // anywhere
-                        2'd1: a[i] <= {(i == 2'd0) ? lfsr[26:10] : base,           // same row
+                        2'd0: a[i] <= {lfsr[AW-1:3], 3'b000};                     // anywhere
+                        2'd1: a[i] <= {(i == 2'd0) ? lfsr[AW-1:10] : base,         // same row
                                        lfsr[9:3], 3'b000};
-                        2'd2: a[i] <= i[0] ? {a[i-2'd1][26:4], 4'b1000}           // line pairs
-                                           : {lfsr[26:4], 4'b0000};
-                        2'd3: a[i] <= i[0] ? {a[i-2'd1][26:4], 4'b0000}           // descending
-                                           : {lfsr[26:4], 4'b1000};                //  line pairs
+                        2'd2: a[i] <= i[0] ? {a[i-2'd1][AW-1:4], 4'b1000}         // line pairs
+                                           : {lfsr[AW-1:4], 4'b0000};
+                        2'd3: a[i] <= i[0] ? {a[i-2'd1][AW-1:4], 4'b0000}         // descending
+                                           : {lfsr[AW-1:4], 4'b1000};              //  line pairs
                     endcase
                     i <= i + 2'd1;
                     if (i == 2'd3) st <= S_SER;

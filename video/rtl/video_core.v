@@ -36,7 +36,7 @@ module video_core (
     input  wire         vclk,
     input  wire         vrstn,
     output wire         v_req,
-    output wire [27:0]  v_addr,
+    output wire [31:0]  v_addr,
     input  wire         v_ack,
     input  wire         v_rvalid,
     input  wire [127:0] v_rdata,

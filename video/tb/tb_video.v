@@ -35,7 +35,7 @@ module tb_video;
 
     // video port and DDR3 user port
     wire         vrstn, v_req, v_ack, v_rvalid;
-    wire [27:0]  v_addr;
+    wire [31:0]  v_addr;
     wire [127:0] v_rdata;
     wire         calib_done, cmd_ready, cmd_en, wr_data_rdy, wr_data_en, wr_data_end, rd_data_valid;
     wire [2:0]   cmd;
@@ -68,7 +68,7 @@ module tb_video;
         .addr(addr), .wr_data_rdy(wr_data_rdy), .wr_data(wr_data), .wr_data_en(wr_data_en),
         .wr_data_end(wr_data_end), .wr_data_mask(wr_data_mask), .rd_data(rd_data),
         .rd_data_valid(rd_data_valid),
-        .v_rstn(vrstn), .v_req(v_req), .v_addr(v_addr), .v_ack(v_ack),
+        .v_rstn(vrstn), .v_req(v_req), .v_addr(v_addr[27:0]), .v_ack(v_ack),
         .v_rvalid(v_rvalid), .v_rdata(v_rdata)
     );
     ddr3_ui_model #(.WORDS(512), .LAT_MIN(10), .LAT_MAX(40), .RDY_PCT(100 - WAIT_PCT)) ddr (

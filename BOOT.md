@@ -21,7 +21,7 @@ Boot is **automatic** (U-Boot `bootcmd`) and from **flash only** (no SD): ~24 s 
 
 | Flash offset | XIP addr   | Contents                                  |
 |--------------|------------|-------------------------------------------|
-| `0x000000`   | —          | FPGA bitstream (binary ~4.8 MB, ends `0x48C000`); `MODE=flash scripts/gw_program.sh` |
+| `0x000000`   | —          | FPGA bitstream (binary ~4.8 MB, ends `0x48C000`); `MODE=flash scripts/gw_program.sh`. Build 52 (2026-10-29): LCD + 512 MB DDR |
 | `0x600000`   | `0x80000000` | U-Boot (XIP, with appended DTB @0xf0000) |
 | `0x800000`   | `0x80200000` | `fw_payload.bin.gz` (OpenSBI+kernel+DTB, gzip); kernel #50: boot log + getty on the LCD (`console=tty0`, `tty1` in inittab) |
 

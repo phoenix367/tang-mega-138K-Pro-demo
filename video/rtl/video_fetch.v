@@ -26,7 +26,7 @@ module video_fetch (
     output reg  [15:0]  done_line,
     // DDR video read port
     output reg          v_req,         // held until v_ack
-    output reg  [27:0]  v_addr,
+    output reg  [31:0]  v_addr,
     input  wire         v_ack,
     input  wire         v_rvalid,
     input  wire [127:0] v_rdata,
@@ -70,7 +70,7 @@ module video_fetch (
                 st   <= S_ADDR;
             end
             S_ADDR: begin
-                v_addr <= fb_base[27:0] + offs[27:0];
+                v_addr <= fb_base + {1'b0, offs};
                 v_req  <= (hactive[15:3] != 13'd0);
                 n_iss  <= hactive[10:3];        // 16 B reads
                 n_ret  <= hactive[10:3];
@@ -79,7 +79,7 @@ module video_fetch (
             end
             default: begin                      // S_RUN
                 if (v_ack) begin
-                    v_addr <= v_addr + 28'd16;
+                    v_addr <= v_addr + 32'd16;
                     n_iss  <= n_iss - 8'd1;
                     v_req  <= (n_iss != 8'd1);
                 end

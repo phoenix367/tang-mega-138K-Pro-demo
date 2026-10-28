@@ -19,14 +19,15 @@ module ddr3_ui_model #(
     parameter WORDS   = 4096,           // 16 B words modelled (64 KB)
     parameter LAT_MIN = 6,
     parameter LAT_MAX = 24,
-    parameter RDY_PCT = 80              // % of cycles cmd_ready / wr_data_rdy high
+    parameter RDY_PCT = 80,             // % of cycles cmd_ready / wr_data_rdy high
+    parameter ADDR_W  = 28              // addr port width (= bridge ADDR_BITS)
 ) (
     input  wire         clk,
     output reg          calib_done,
     output reg          cmd_ready,
     input  wire [2:0]   cmd,
     input  wire         cmd_en,
-    input  wire [27:0]  addr,
+    input  wire [ADDR_W-1:0] addr,
     output reg          wr_data_rdy,
     input  wire [127:0] wr_data,
     input  wire         wr_data_en,
@@ -77,7 +78,7 @@ module ddr3_ui_model #(
         end
     endfunction
 
-    wire [26:0] waddr = addr[26:0];              // x16 word address
+    wire [ADDR_W-2:0] waddr = addr[ADDR_W-2:0];  // x16 word address
     wire [31:0] widx  = (waddr >> 3) % WORDS;    // 16 B word index
 
     always @(posedge clk) begin

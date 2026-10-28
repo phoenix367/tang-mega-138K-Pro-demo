@@ -34,7 +34,7 @@ graph TB
   end
 
   FLASH[("SPI NOR W25Q128<br/>16 MB")]
-  DDR[("DDR3 SDRAM<br/>256 MB")]
+  DDR[("DDR3 SDRAM<br/>512 MB")]
   PHYC["RTL8211F<br/>RGMII PHY"]
 
   FLASH -.config + XIP.-> SOC
@@ -76,7 +76,7 @@ Key integration facts (`src/ae350_demo.v`):
 
 | Region | Base | Size | Notes |
 |---|---|---|---|
-| DDR3 SDRAM (data) | `0x0000_0000` | 256 MB | DDR_H* AHB → `gw_ahb_ddr3_top` → DDR3 PHY |
+| DDR3 SDRAM (data) | `0x0000_0000` | 512 MB (of 1 GB on board) | DDR_H* AHB → `ddr_bridge/ahb_ddr3_top` → DDR3 PHY |
 | Flash XIP (instr.) | `0x8000_0000` | 16 MB | maps to SPI-NOR offset `0x60_0000`; U-Boot runs here |
 | PLIC | `0xE400_0000` | — | interrupt controller |
 | PLMT (mtime) | `0xE600_0000` | — | machine timer, **50 MHz** tick |

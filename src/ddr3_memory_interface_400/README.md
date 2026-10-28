@@ -1,7 +1,8 @@
 # DDR3 IP netlist for 400 MHz (DDR3-800), H5TQ4G63EFR-RDC timings
 
-**Active** (the default since 2026-10-28): `mega_138K_test.gprj` uses this netlist; the stock
-200 MHz one in `src/ddr3_memory_interface/` stays in the project with `enable="0"`.
+**Superseded** on 2026-10-29 by `../ddr3_memory_interface_512/` (same, with 15 row bits = all
+512 MB of the chip); this one and the stock 200 MHz netlist in `src/ddr3_memory_interface/`
+stay in the project with `enable="0"`.
 
 Generated without the IDE wizard by running GowinSynthesis on the IP sources shipped with
 the AE350 SoC IP, with `gwmc_param.v` from this directory:

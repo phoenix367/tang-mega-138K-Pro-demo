@@ -3,6 +3,12 @@
 Replaces Gowin's `gw_ahb_ddr3` (src/gw_ahb_ddr3*.v, now disabled in the .gprj) between
 the AE350 SoC's customized data-memory AHB bus (`DDR_H*`, 64-bit, **100 MHz**) and the
 Gowin DDR3 Memory Interface IP (`DDR3_Memory_Interface_Top`, 1:4, x16, BL8, **DDR3-800**).
+`ADDR_BITS` (ahb_ddr3_top) is the DDR size: 29 = **512 MB** since 2026-10-29 (15 row bits,
+`src/ddr3_memory_interface_512/`); it was 28 = 256 MB, a quarter of the board's 1 GB. The
+AE350 forwards its whole 2 GB data window (0x00000000–0x7FFFFFFF) to `DDR_H*`; addresses
+beyond the DDR size alias. The other half of the board's memory is the second x16 chip of a
+32-bit bus: reaching it means `DQ_WIDTH = 32` in the IP, a 256-bit bridge datapath (one BL8 per
+32 B line instead of two halves) and 20 more pins — not done.
 
 ```
 rtl/ahb_ddr3_top.v      drop-in for gw_ahb_ddr3_top: bridge + DDR3 IP (+HPROT, perf hookup)

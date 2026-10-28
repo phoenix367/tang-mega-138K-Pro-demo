@@ -16,6 +16,8 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    RTC; `gowin_pll_ddr3` → 400 MHz DDR3, netlist `src/ddr3_memory_interface_400/`). `src/riscv_ae350_soc/` is encrypted Andes IP
    (`.v` synth source + `.vo` sim netlist) — regenerate via the IDE IP wizard, don't
    hand-edit. `src/key_debounce.v` debounces the DDR3/AE350 resets.
+   DDR3 is **512 MB** (x16, 15 row bits, `src/ddr3_memory_interface_512/`; the board has
+   1 GB on a 32-bit bus, the second chip is unused — see ddr_bridge/README.md).
    DDR3 path: SoC data-memory AHB (`DDR_H*`) -> **`ddr_bridge/`** (`ahb_ddr3_top`,
    line-buffered bridge, replaces Gowin's `src/gw_ahb_ddr3*.v`, now `enable="0"`) ->
    DDR3 IP. `src/ddr_perf.v` = bus perf counters/trace + bridge MODE register on the

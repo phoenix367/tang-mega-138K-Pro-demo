@@ -20,7 +20,7 @@ graph LR
     DDRC["DDR3 controller<br/>(hard PHY)"]
   end
   FLASH[("SPI NOR 16 MB<br/>bitstream + boot")]
-  DDR[("DDR3 256 MB")]
+  DDR[("DDR3 512 MB")]
   PHY["RTL8211F PHY"]
   HOST["Host PC<br/>192.168.200.1"]
 
