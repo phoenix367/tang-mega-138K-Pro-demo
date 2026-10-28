@@ -6,6 +6,7 @@
 // having crossed the CDC FIFOs.
 //============================================================================
 module tb_rx_path;
+    parameter WAIT_PCT = 0;         // slave wait states (iverilog -P)
     localparam BUF_SHIFT = 11;
 
     reg rx_mac_clk = 0; always #4  rx_mac_clk = ~rx_mac_clk;   // 125 MHz
@@ -36,7 +37,7 @@ module tb_rx_path;
         .haddr(haddr), .htrans(htrans), .hwrite(hwrite), .hsize(hsize), .hburst(hburst),
         .hwdata(hwdata), .hrdata(hrdata), .hready(hready), .hresp(hresp)
     );
-    ahb_slave_ram #(.AW(12)) slv (
+    ahb_slave_ram #(.AW(12), .WAIT_PCT(WAIT_PCT)) slv (
         .hclk(bus_clk), .hresetn(arst_n), .haddr(haddr), .htrans(htrans), .hwrite(hwrite),
         .hsize(hsize), .hburst(hburst), .hwdata(hwdata), .hrdata(hrdata),
         .hready(hready), .hresp(hresp)
@@ -97,11 +98,12 @@ module tb_rx_path;
                 end
             end
         end
+        errors = errors + slv.proto_err;
         if (stat_frames !== 32'd3 || stat_bad !== 32'd1) begin
             errors = errors + 1;
             $display("  line-rate stats frames=%0d bad=%0d, exp 3/1", stat_frames, stat_bad);
         end
-        if (errors == 0) $display("RESULT: PASS (3 frames crossed MAC->CDC->DMA->DRAM intact; drops=%0d)", drop_cnt);
+        if (errors == 0) $display("RESULT: PASS (3 frames crossed MAC->CDC->DMA->DRAM intact; drops=%0d; wait %0d%%)", drop_cnt, WAIT_PCT);
         else             $display("RESULT: FAIL (%0d errors, rx_head=%0d)", errors, rx_head);
         $finish;
     end

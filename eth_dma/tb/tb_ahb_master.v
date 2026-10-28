@@ -1,11 +1,14 @@
 `timescale 1ns/1ps
 `default_nettype none
 //============================================================================
-// tb_ahb_master.v -- self-checking testbench: ahb_master writes a pattern to
-// the AHB slave RAM, reads it back, and verifies it matches.
+// tb_ahb_master.v -- self-checking testbench: ahb_master writes patterns to
+// the AHB slave RAM over many lengths/alignments (bursts up to INCR16, some
+// meeting a 1 KB boundary), reads each back and verifies it; the slave checks
+// the burst protocol.  WAIT_PCT (iverilog -P) adds random slave wait states.
+// On a zero-wait slave a long write must take ~1 cycle per beat (pipelined).
 //============================================================================
 module tb_ahb_master;
-    localparam N = 16;             // words per transfer
+    parameter WAIT_PCT = 0;
 
     reg hclk = 1'b0;
     reg hresetn = 1'b0;
@@ -27,8 +30,8 @@ module tb_ahb_master;
     wire        w_req;
     wire        r_valid;
     wire [31:0] r_data;
-    reg  [31:0] wsrc [0:255];
-    reg  [31:0] rdst [0:255];
+    reg  [31:0] wsrc [0:511];
+    reg  [31:0] rdst [0:511];
     integer     widx, ridx;
 
     wire [31:0] w_data = wsrc[widx];
@@ -43,7 +46,7 @@ module tb_ahb_master;
         .hready(hready), .hresp(hresp)
     );
 
-    ahb_slave_ram #(.AW(12)) slv (
+    ahb_slave_ram #(.AW(12), .WAIT_PCT(WAIT_PCT)) slv (
         .hclk(hclk), .hresetn(hresetn),
         .haddr(haddr), .htrans(htrans), .hwrite(hwrite), .hsize(hsize),
         .hburst(hburst), .hwdata(hwdata), .hrdata(hrdata),
@@ -63,6 +66,7 @@ module tb_ahb_master;
         else if (r_valid) begin rdst[ridx] <= r_data; ridx <= ridx + 1; end
     end
 
+    integer cycles;
     task run_cmd(input [31:0] a, input [15:0] n, input w);
         begin
             @(posedge hclk);
@@ -70,37 +74,61 @@ module tb_ahb_master;
             cmd_addr <= a; cmd_len <= n; cmd_wr <= w; cmd_valid <= 1'b1;
             @(posedge hclk);                 // accepted here (cmd_ready was 1)
             cmd_valid <= 1'b0;
-            while (!cmd_done) @(posedge hclk);
+            cycles = 1;
+            while (!cmd_done) begin @(posedge hclk); cycles = cycles + 1; end
         end
     endtask
 
-    integer i, errors;
+    // (start address, words): odd lengths, unaligned starts, 1 KB crossings
+    integer t, i, errors, n;
+    reg [31:0] a;
+    reg [31:0] addrs [0:9];
+    integer    lens  [0:9];
+    initial begin
+        addrs[0] = 32'h0000_0040; lens[0] = 16;
+        addrs[1] = 32'h0000_0104; lens[1] = 1;
+        addrs[2] = 32'h0000_0200; lens[2] = 3;
+        addrs[3] = 32'h0000_0304; lens[3] = 37;
+        addrs[4] = 32'h0000_03F8; lens[4] = 9;     // crosses 0x400
+        addrs[5] = 32'h0000_07C4; lens[5] = 100;   // crosses 0x800
+        addrs[6] = 32'h0000_0A00; lens[6] = 256;
+        addrs[7] = 32'h0000_0E0C; lens[7] = 381;   // ~ a max frame, crosses 0x1000
+        addrs[8] = 32'h0000_1FF0; lens[8] = 5;     // crosses 0x2000
+        addrs[9] = 32'h0000_2004; lens[9] = 2;
+    end
+
     initial begin
         errors = 0;
-        for (i = 0; i < N; i = i + 1) wsrc[i] = 32'hDEAD0000 + i*4 + 1;
         repeat (4) @(posedge hclk);
         hresetn = 1'b1;
         repeat (2) @(posedge hclk);
 
-        run_cmd(32'h0000_0040, N, 1'b1);     // write N words at byte addr 0x40
-        run_cmd(32'h0000_0040, N, 1'b0);     // read them back
-        repeat (3) @(posedge hclk);
-
-        for (i = 0; i < N; i = i + 1) begin
-            if (rdst[i] !== wsrc[i]) begin
+        for (t = 0; t < 10; t = t + 1) begin
+            a = addrs[t]; n = lens[t];
+            for (i = 0; i < n; i = i + 1) wsrc[i] = {a[15:0], 16'd0} ^ (i * 32'h9E3779B1) ^ t;
+            run_cmd(a, n, 1'b1);
+            if (WAIT_PCT == 0 && n >= 100 && cycles > n + n / 8 + 8) begin
                 errors = errors + 1;
-                $display("  MISMATCH word %0d: wrote %08x read %08x", i, wsrc[i], rdst[i]);
+                $display("  write of %0d words took %0d cycles (not pipelined)", n, cycles);
+            end
+            run_cmd(a, n, 1'b0);
+            repeat (2) @(posedge hclk);
+            for (i = 0; i < n; i = i + 1) begin
+                if (rdst[i] !== wsrc[i]) begin
+                    errors = errors + 1;
+                    if (errors < 10) $display("  MISMATCH t%0d word %0d: wrote %08x read %08x", t, i, wsrc[i], rdst[i]);
+                end
             end
         end
-        if (errors == 0) $display("RESULT: PASS (%0d words round-tripped through AHB)", N);
-        else             $display("RESULT: FAIL (%0d mismatches)", errors);
+        errors = errors + slv.proto_err;
+        if (errors == 0) $display("RESULT: PASS (10 transfers round-tripped, bursts clean, wait %0d%%)", WAIT_PCT);
+        else             $display("RESULT: FAIL (%0d errors)", errors);
         $finish;
     end
 
     initial begin
-        #20000;
+        #2000000;
         $display("RESULT: FAIL (timeout)");
         $finish;
     end
 endmodule
-`default_nettype wire

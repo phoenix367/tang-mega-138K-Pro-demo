@@ -260,3 +260,13 @@ Follow-ups (Oct 2026):
   The ~17 bus cycles per 32-bit EXTM write remain; the options are AHB bursts /
   64-bit beats through EXTM (gain unknown) or a dedicated DMA port into
   `ddr_bridge` that bypasses the SoC interconnect.
+- **AHB bursts fix the RX DMA rate** (`ahb_master` v2): writes now go out as
+  pipelined INCR16/8/4 bursts (32-bit beats, never across 1 KB); reads stay
+  single beats. The SoC's EXTM port handles bursts well: the RX DMA went from
+  ~7.5k to ~63k full frames/s (~95 MB/s, ~78% of line rate). Line-rate burst
+  loss on an idle board: 8 frames 24% -> 0%, 32 frames 72% -> 4%, 64 frames
+  81% -> 10%. TCP RX 24.6 -> 34.8 Mbit/s, RX drops / host retransmits -74%
+  (TX unchanged, 36 Mbit/s). Verified in sim against a wait-state slave with
+  burst-protocol checks (tb_ahb_master, tb_rx_path WAIT_PCT) and on hardware
+  (Build 40, md5 both ways). Remaining headroom: 64-bit beats (EXTM is 64-bit)
+  would take the RX DMA past line rate; TX reads could use bursts too.
