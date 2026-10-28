@@ -73,6 +73,13 @@ module ddr_rd_bist (
 
     wire [31:0] lfsr_n = {lfsr[30:0], lfsr[31] ^ lfsr[21] ^ lfsr[1] ^ lfsr[0]};
 
+    // return data capture: no reset (the arrays are never read before they
+    // are written), which keeps rst_n -- a high-fanout net -- off their enables
+    always @(posedge clk) begin
+        if (st == S_SERW && rd_data_valid)                     truth[i]   <= rd_data;
+        if ((st == S_OVL || st == S_OVLW) && rd_data_valid)    got[n_ret] <= rd_data;
+    end
+
     integer k;
     reg [2:0] km;
     always @(posedge clk or negedge rst_n) begin
@@ -111,17 +118,16 @@ module ddr_rd_bist (
                 end
                 S_SER:  if (cmd_ok) st <= S_SERW;
                 S_SERW: if (rd_data_valid) begin
-                    truth[i] <= rd_data;
                     if (i == 2'd3) begin st <= S_OVL; n_iss <= 3'd0; n_ret <= 2'd0; end
                     else begin i <= i + 2'd1; st <= S_SER; end
                 end
                 S_OVL: begin
                     if (cmd_en) n_iss <= n_iss + 3'd1;
-                    if (rd_data_valid) begin got[n_ret] <= rd_data; n_ret <= n_ret + 2'd1; end
+                    if (rd_data_valid) n_ret <= n_ret + 2'd1;
                     if ((n_iss == 3'd3 && cmd_en) || n_iss == 3'd4) st <= S_OVLW;
                 end
                 S_OVLW: if (rd_data_valid) begin
-                    got[n_ret] <= rd_data; n_ret <= n_ret + 2'd1;
+                    n_ret <= n_ret + 2'd1;
                     if (n_ret == 2'd3) begin st <= S_CMP; i <= 2'd0; cph <= 2'd0; end
                 end
                 S_CMP: if (cph == 2'd0) begin

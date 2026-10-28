@@ -44,6 +44,12 @@ TESTS=(
   "bist_line_pairs      tb       BIST0    +bist=2"
   "bist_desc_pairs      tb       BIST0    +bist=3"
   "bist_detects_reorder tb_xrow  BISTDET  +bist=0"
+  "video_port           tb       PASS     +video=50 +mode=0x10000 +hclk_ns=10 +uclk_ns=10"
+  "video_saturated      tb       PASS     +video=100 +mode=0x10000 +hclk_ns=10 +uclk_ns=10"
+  "video_backpressure   tb       PASS     +video=50 +rdy_pct=20 +mode=0x10000 +hclk_ns=10 +uclk_ns=10"
+  "video_busy_slowbus   tb       PASS     +video=30 +busy=60 +hclk_ns=20 +uclk_ns=10"
+  "video_bist           tb       BIST0    +video=30 +bist=0"
+  "video_write_stream   tb       PASS     +video=100 +wrheavy +rdy_pct=60 +mode=0x10000 +hclk_ns=10 +uclk_ns=10 +vmaxwait=200"
 )
 
 fail=0

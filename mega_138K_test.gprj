@@ -16,6 +16,10 @@
         <File path="eth_dma/rtl/tx_ring_reader.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/cdc_fifo_reset.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/ahb_master.v" type="file.verilog" enable="1"/>
+        <File path="video/rtl/video_core.v" type="file.verilog" enable="1"/>
+        <File path="video/rtl/video_csr.v" type="file.verilog" enable="1"/>
+        <File path="video/rtl/video_fetch.v" type="file.verilog" enable="1"/>
+        <File path="video/rtl/video_out.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/csr.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/extm_bridge.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/eth_ahb_arbiter.v" type="file.verilog" enable="1"/>

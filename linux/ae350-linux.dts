@@ -99,6 +99,18 @@
 			no-loopback-test = <1>;
 		};
 
+		/* RGB LCD scan-out core (video/rtl), Sipeed 5" 800x480, DE mode */
+		lcd0: lcd@e8001000 {
+			compatible = "gowin,ae350-lcd";
+			reg = <0xe8001000 0x100>;
+			width = <800>;
+			height = <480>;
+			hfront-porch = <210>;
+			hback-porch = <182>;
+			vfront-porch = <45>;
+			vback-porch = <8>;
+		};
+
 		gmac0: ethernet@e8000000 {
 			compatible = "gowin,ae350-tse";
 			reg = <0xe8000000 0x800>;

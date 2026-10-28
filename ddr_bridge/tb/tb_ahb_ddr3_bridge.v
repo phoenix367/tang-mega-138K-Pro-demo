@@ -8,7 +8,15 @@
 // in-flight conflicts happen constantly.  Every read beat is checked against a
 // byte-accurate reference memory updated in AHB bus order.
 //
-// Plusargs: +seed=N +ops=N +hclk_ns=N +uclk_ns=N
+// +video=P adds a client on the video read port: P % of uclk cycles it wants
+// a BL8 read of a second window [WIN, 2*WIN) that AHB traffic never writes,
+// and every return is checked against the DDR model (routing by issue order).
+//
+// +wrheavy makes the traffic back-to-back line evictions (posted writes keep
+// the command FIFO full -- the case that would starve the video port), and
+// +vmaxwait=N fails the run if a video request waits longer than N uclk.
+//
+// Plusargs: +seed=N +ops=N +hclk_ns=N +uclk_ns=N +video=P +wrheavy +vmaxwait=N
 module tb_ahb_ddr3_bridge;
     parameter NBUF     = 8;
     parameter PREFETCH = 1;
@@ -56,6 +64,16 @@ module tb_ahb_ddr3_bridge;
     wire [2:0]  cmd; wire [27:0] addr; wire [127:0] wr_data, rd_data; wire [15:0] wr_data_mask;
     wire [511:0] perf_cnt;
     integer ddr_errors;
+    // video read port
+    integer      vid_pct = 0, vmaxwait = 0;
+    reg          wrheavy = 1'b0;
+    initial if ($value$plusargs("video=%d", vid_pct)) ;
+    initial if ($value$plusargs("vmaxwait=%d", vmaxwait)) ;
+    initial if ($test$plusargs("wrheavy")) wrheavy = 1'b1;
+    reg          v_req = 1'b0;
+    reg  [27:0]  v_addr = 28'd0;
+    wire         v_rstn, v_ack, v_rvalid;
+    wire [127:0] v_rdata;
 
     ahb_ddr3_bridge #(.NBUF(NBUF), .PREFETCH(PREFETCH)) dut (
         .hclk(hclk), .hresetn(hresetn), .haddr(haddr), .htrans(htrans), .hwrite(hwrite),
@@ -64,9 +82,11 @@ module tb_ahb_ddr3_bridge;
         .uclk(uclk), .calib_done(calib_done), .cmd_ready(cmd_ready), .cmd(cmd), .cmd_en(cmd_en),
         .addr(addr), .wr_data_rdy(wr_data_rdy), .wr_data(wr_data), .wr_data_en(wr_data_en),
         .wr_data_end(wr_data_end), .wr_data_mask(wr_data_mask), .rd_data(rd_data),
-        .rd_data_valid(rd_data_valid));
+        .rd_data_valid(rd_data_valid),
+        .v_rstn(v_rstn), .v_req(v_req), .v_addr(v_addr), .v_ack(v_ack),
+        .v_rvalid(v_rvalid), .v_rdata(v_rdata));
 
-    ddr3_ui_model #(.WORDS(WIN/16), .XROW_REORDER(XROW_REORDER),
+    ddr3_ui_model #(.WORDS(2*WIN/16), .XROW_REORDER(XROW_REORDER),
                     .LAT_MIN(LAT_MIN), .LAT_MAX(LAT_MAX)) ddr (
         .clk(uclk), .calib_done(calib_done), .cmd_ready(cmd_ready), .cmd(cmd), .cmd_en(cmd_en),
         .addr(addr), .wr_data_rdy(wr_data_rdy), .wr_data(wr_data), .wr_data_en(wr_data_en),
@@ -81,6 +101,34 @@ module tb_ahb_ddr3_bridge;
         for (i = 0; i < WIN/16; i = i + 1)
             for (b = 0; b < 16; b = b + 1)
                 refm[i*16 + b] = ddr.mem[i][b*8 +: 8];
+    end
+
+    // ---------------- video client (uclk) ----------------
+    reg  [27:0] vq [0:63];                     // addresses of video reads in flight
+    integer     vq_w = 0, vq_r = 0, v_errors = 0, v_wait = 0, v_maxwait = 0;
+    reg         v_seed_init = 0;
+    integer     vseed;
+    always @(posedge uclk) begin
+        if (!v_seed_init) begin vseed = seed * 31 + 7; v_seed_init = 1; end
+        if (v_rvalid) begin
+            if (vq_r == vq_w) begin
+                $display("%0t VIDEO: return with no read in flight", $time); v_errors = v_errors + 1;
+            end else begin
+                if (v_rdata !== ddr.mem[(vq[vq_r % 64] >> 4) % (2*WIN/16)]) begin
+                    if (v_errors < 10) $display("%0t VIDEO MISMATCH addr %h: got %h exp %h", $time,
+                                                vq[vq_r % 64], v_rdata, ddr.mem[(vq[vq_r % 64] >> 4) % (2*WIN/16)]);
+                    v_errors = v_errors + 1;
+                end
+                vq_r = vq_r + 1;
+            end
+        end
+        if (v_ack) begin vq[vq_w % 64] = v_addr; vq_w = vq_w + 1; end
+        if (v_req && !v_ack) v_wait = v_wait + 1; else v_wait = 0;
+        if (v_wait > v_maxwait) v_maxwait = v_wait;
+        if (!v_req || v_ack) begin             // a request is held until issued
+            v_req  <= (v_rstn === 1'b1) && done_ops < ops && ($random(vseed) & 32'h7fffffff) % 100 < vid_pct;
+            v_addr <= WIN + (($random(vseed) & 32'h7fffffff) % (WIN/16)) * 16;
+        end
     end
 
     // ---------------- beat queue (generator -> pipelined master) ----------------
@@ -106,6 +154,7 @@ module tb_ahb_ddr3_bridge;
             r = ($random(seed) & 32'h7fffffff) % 100;
             line = ($random(seed) & 32'h7fffffff) % (WIN/32);
             w = $random(seed);
+            if (wrheavy && r < 90) begin r = 0; w = 1'b1; end   // mostly WRAP4 evictions
             if (r < 40) begin                      // WRAP4 64-bit line fill / eviction
                 crit = ($random(seed) & 3);
                 for (k = 0; k < 4; k = k + 1)
@@ -182,7 +231,7 @@ module tb_ahb_ddr3_bridge;
             end
             // next address phase
             if (qn == 0 && done_ops < ops) begin
-                if (($random(seed) & 3) == 0) begin      // idle gap between bursts
+                if (!wrheavy && ($random(seed) & 3) == 0) begin   // idle gap between bursts
                     htrans <= 2'b00;
                 end else begin
                     gen_op; done_ops = done_ops + 1;
@@ -217,6 +266,17 @@ module tb_ahb_ddr3_bridge;
         $display("perf: hit0 %0d demand %0d prefetch %0d wrpush %0d | rdcmd %0d lat_sum %0d wrcmd %0d rdvalid %0d",
                  perf_cnt[31:0], perf_cnt[63:32], perf_cnt[95:64], perf_cnt[127:96],
                  perf_cnt[159:128], perf_cnt[191:160], perf_cnt[223:192], perf_cnt[255:224]);
+        if (vid_pct > 0)
+            $display("video: %0d reads, %0d returned, longest wait for issue %0d uclk, %0d errors",
+                     vq_w, vq_r, v_maxwait, v_errors);
+        if (vmaxwait > 0 && v_maxwait > vmaxwait) begin
+            $display("VIDEO: a request waited %0d uclk (limit %0d)", v_maxwait, vmaxwait);
+            v_errors = v_errors + 1;
+        end
+        if (vq_r != vq_w) begin
+            $display("VIDEO: %0d reads never returned", vq_w - vq_r); v_errors = v_errors + 1;
+        end
+        errors = errors + v_errors;
         if (bist_pat >= 0)
             $display("bist: status %h err %0d reorder %0d first %h addr %h got %h exp %h extra %0d",
                      perf_cnt[287:256], perf_cnt[319:288], perf_cnt[351:320], perf_cnt[383:352],

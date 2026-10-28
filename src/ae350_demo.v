@@ -52,6 +52,12 @@ module ae350_demo_top
     input  [3:0] RGMII_RXD,
     output MDC,
     inout  MDIO,
+    // RGB LCD: Sipeed 5" 800x480 panel, DE mode, RGB666
+    output LCD_CLK,
+    output LCD_DE,
+    output [5:0] LCD_R,
+    output [5:0] LCD_G,
+    output [5:0] LCD_B,
     output [1:0] DBG            // EXTM probe: {hreadyout, hsel} (W21/P21 are JTAG)
 );
 
@@ -126,6 +132,12 @@ wire        apb_pclk, apb_prstn;
 wire GTX_CLK;       // 125 MHz - RGMII TX
 wire ETH_CLK;       // 25 MHz  - PHY reference
 wire ETH_PLL_LOCK;
+wire VID_CLK;       // 33.3 MHz - LCD pixel clock
+
+// DDR bridge video read port (DDR3 user clock) -> LCD video core
+wire         ddr_vclk, ddr_vrstn, ddr_v_req, ddr_v_ack, ddr_v_rvalid;
+wire [27:0]  ddr_v_addr;
+wire [127:0] ddr_v_rdata;
 
 // SoC external-AHB-slave bus (SoC masters; the MAC bridge is the slave)
 wire [31:0] EXTS_HRDATA, EXTS_HADDR, EXTS_HWDATA;
@@ -180,6 +192,20 @@ assign tx_pause_val         = 16'b0;
 assign tx_pause_source_addr = 48'b0;
 assign eth_hresp[1]         = 1'b0;
 
+// EXTS register window: 0xE8000000 gw_eth_dma CSRs, 0xE8001000 LCD video core.
+// Both slaves are zero-wait; the data phase is muxed by the select registered
+// at the accepted address phase.
+wire        exts_vid = EXTS_HADDR[12];
+reg         exts_vid_d;
+wire [31:0] eth_s_hrdata, vid_s_hrdata;
+wire        eth_s_hready, vid_s_hready, eth_s_hresp, vid_s_hresp;
+always @(posedge EXTS_HCLK or negedge EXTS_HRSTN)
+    if (!EXTS_HRSTN)                                exts_vid_d <= 1'b0;
+    else if (EXTS_HSEL && EXTS_HTRANS[1] && EXTS_HREADY) exts_vid_d <= exts_vid;
+assign EXTS_HRDATA  = exts_vid_d ? vid_s_hrdata : eth_s_hrdata;
+assign EXTS_HREADY  = exts_vid_d ? vid_s_hready : eth_s_hready;
+assign eth_hresp[0] = exts_vid_d ? vid_s_hresp  : eth_s_hresp;
+
 assign eth_rstn = EXTS_HRSTN;
 
 // EXTM handshake probe -> debug pins (and CSR EXTM_DBG): is the SoC EXTM
@@ -187,14 +213,14 @@ assign eth_rstn = EXTS_HRSTN;
 wire [3:0] dbg_extm = {extm_hresp, extm_hreadyout, extm_htrans[1], extm_hsel};
 assign DBG = {extm_hreadyout, extm_hsel};   // U16=hsel, U15=hreadyout
 
-// Dedicated Ethernet PLL: clkout1 = 125 MHz (GTX), clkout3 = 25 MHz (PHY ref).
-// (Same Gowin_PLL IP as the SDK ae350_ext_ethernet example; VCO 1000 MHz.
-//  clkout0/2 = 50/250 MHz are left unused here.)
+// Dedicated Ethernet PLL: clkout1 = 125 MHz (GTX), clkout3 = 25 MHz (PHY ref),
+// clkout2 = 33.3 MHz (1000/30) LCD pixel clock.  (Same Gowin_PLL IP as the SDK
+// ae350_ext_ethernet example; VCO 1000 MHz.  clkout0 = 50 MHz is unused.)
 Gowin_PLL u_Gowin_PLL_ETH
 (
     .clkout0(),
     .clkout1(GTX_CLK),          // 125 MHz
-    .clkout2(),
+    .clkout2(VID_CLK),          // 33.3 MHz
     .clkout3(ETH_CLK),          // 25 MHz
     .lock(ETH_PLL_LOCK),
     .clkin(CLK),
@@ -395,7 +421,15 @@ ahb_ddr3_top u_ahb_ddr3_top
     .MODE(ddr_bridge_mode),
     .PERF_EN(ddr_perf_en),
     .PERF_CLR(ddr_perf_clr),
-    .PERF_CNT(ddr_perf_cnt)
+    .PERF_CNT(ddr_perf_cnt),
+    // read-only video port -> LCD video core
+    .VCLK(ddr_vclk),
+    .VRSTN(ddr_vrstn),
+    .V_REQ(ddr_v_req),
+    .V_ADDR(ddr_v_addr),
+    .V_ACK(ddr_v_ack),
+    .V_RVALID(ddr_v_rvalid),
+    .V_RDATA(ddr_v_rdata)
 );
 
 
@@ -459,12 +493,12 @@ gw_eth_dma_core u_gw_eth_dma_core
     .s_haddr(EXTS_HADDR),
     .s_htrans(EXTS_HTRANS),
     .s_hwrite(EXTS_HWRITE),
-    .s_hsel(EXTS_HSEL),
+    .s_hsel(EXTS_HSEL & ~exts_vid),
     .s_hready_in(EXTS_HREADY),
     .s_hwdata(EXTS_HWDATA),
-    .s_hrdata(EXTS_HRDATA),
-    .s_hready(EXTS_HREADY),
-    .s_hresp(eth_hresp[0]),
+    .s_hrdata(eth_s_hrdata),
+    .s_hready(eth_s_hready),
+    .s_hresp(eth_s_hresp),
     // EXTM master 0 (RX write)
     .m0_haddr(m0_haddr), .m0_htrans(m0_htrans), .m0_hwrite(m0_hwrite), .m0_hsize(m0_hsize),
     .m0_hburst(m0_hburst), .m0_hwdata(m0_hwdata), .m0_hrdata(m0_hrdata), .m0_hready(m0_hready),
@@ -498,6 +532,25 @@ eth_ahb_arbiter u_eth_ahb_arbiter
     .active(arb_active), .haddr(arb_haddr), .htrans(arb_htrans), .hwrite(arb_hwrite),
     .hsize(arb_hsize), .hburst(arb_hburst), .hwdata(arb_hwdata),
     .hrdata(arb_hrdata), .hready(arb_hready), .hresp(arb_hresp)
+);
+
+// LCD video core: registers on EXTS @ 0xE8001000, framebuffer reads on the
+// DDR bridge's video port (DDR3 user clock), RGB666 out on the panel in the
+// VID_CLK domain.
+video_core u_video_core
+(
+    .hclk(EXTS_HCLK), .hresetn(EXTS_HRSTN),
+    .s_haddr(EXTS_HADDR), .s_htrans(EXTS_HTRANS), .s_hwrite(EXTS_HWRITE),
+    .s_hsel(EXTS_HSEL & exts_vid), .s_hready_in(EXTS_HREADY), .s_hwdata(EXTS_HWDATA),
+    .s_hrdata(vid_s_hrdata), .s_hready(vid_s_hready), .s_hresp(vid_s_hresp),
+    .vclk(ddr_vclk), .vrstn(ddr_vrstn), .v_req(ddr_v_req), .v_addr(ddr_v_addr),
+    .v_ack(ddr_v_ack), .v_rvalid(ddr_v_rvalid), .v_rdata(ddr_v_rdata),
+    .pclk(VID_CLK), .lcd_de(LCD_DE), .lcd_r(LCD_R), .lcd_g(LCD_G), .lcd_b(LCD_B)
+);
+// Pixel clock to the panel, in phase with the registered outputs: data and DE
+// change after the rising edge, the panel samples on the falling edge.
+ODDR #(.TXCLK_POL(1'b0), .INIT(1'b0)) u_lcd_clk_oddr (
+    .Q0(LCD_CLK), .Q1(), .D0(1'b1), .D1(1'b0), .TX(1'b0), .CLK(VID_CLK)
 );
 
 // 32-bit arbiter master -> 64-bit SoC EXTM slave port

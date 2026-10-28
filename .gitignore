@@ -45,3 +45,4 @@ __pycache__/
 /tests/amo_probe
 /tests/cctl_probe
 /tests/ddr_memtest
+/tests/fbtest

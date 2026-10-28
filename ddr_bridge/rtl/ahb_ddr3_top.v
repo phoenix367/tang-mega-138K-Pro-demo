@@ -5,7 +5,8 @@
 // ahb_ddr3_bridge (line-buffered, burst-aware AHB slave) in front of the
 // Gowin DDR3 Memory Interface IP (DDR3_Memory_Interface_Top, 1:4, x16).
 // Drop-in replacement for Gowin's gw_ahb_ddr3_top (same DDR3/AHB ports), plus
-// HPROT and the ddr_perf counter hookup.
+// HPROT, the ddr_perf counter hookup and the bridge's read-only video port
+// (in the DDR3 IP user clock, exported as VCLK).
 //============================================================================
 module ahb_ddr3_top #(
     parameter NBUF     = 8,
@@ -51,7 +52,15 @@ module ahb_ddr3_top #(
     input  wire [31:0]  MODE,
     input  wire         PERF_EN,
     input  wire         PERF_CLR,
-    output wire [511:0] PERF_CNT
+    output wire [511:0] PERF_CNT,
+    // video read port (VCLK domain, see ahb_ddr3_bridge): BL8 = 16 B reads
+    output wire         VCLK,               // DDR3 IP user clock (100 MHz)
+    output wire         VRSTN,              // VCLK reset, released after calibration
+    input  wire         V_REQ,
+    input  wire [27:0]  V_ADDR,             // byte address, 16 B aligned
+    output wire         V_ACK,
+    output wire         V_RVALID,
+    output wire [127:0] V_RDATA
 );
     // IP reset: synchronous release in the IP's clk domain (IPUG281 4.4.3)
     reg [1:0] rst_s;
@@ -67,6 +76,7 @@ module ahb_ddr3_top #(
     wire [15:0]  wr_data_mask;
 
     assign DDR3_INIT = calib_done;
+    assign VCLK      = uclk;
 
     DDR3_Memory_Interface_Top u_ddr3 (
         .clk                 (DDR3_CLK_IN),
@@ -145,7 +155,13 @@ module ahb_ddr3_top #(
         .wr_data_end   (wr_data_end),
         .wr_data_mask  (wr_data_mask),
         .rd_data       (rd_data),
-        .rd_data_valid (rd_data_valid)
+        .rd_data_valid (rd_data_valid),
+        .v_rstn        (VRSTN),
+        .v_req         (V_REQ),
+        .v_addr        (V_ADDR),
+        .v_ack         (V_ACK),
+        .v_rvalid      (V_RVALID),
+        .v_rdata       (V_RDATA)
     );
 endmodule
 `default_nettype wire

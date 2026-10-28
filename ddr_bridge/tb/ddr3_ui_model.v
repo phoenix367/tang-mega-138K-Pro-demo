@@ -10,7 +10,8 @@
 //    known-good DDR test relies on (cmd_en registered from cmd_ready)
 //  * XROW_REORDER=1: like the real Gowin MC, reads that target a different
 //    DRAM row than the previous read may complete out of command order (a
-//    row miss costs extra latency, a later row-hit read can overtake it)
+//    row miss costs extra latency, a later row-hit read can overtake it);
+//    +noreorder turns it off at run time
 module ddr3_ui_model #(
     parameter XROW_REORDER = 0,
     parameter LOOKAHEAD_CHECK = 1,
@@ -54,6 +55,8 @@ module ddr3_ui_model #(
     // +rdy_pct=N overrides RDY_PCT (heavy back-pressure fills the command FIFO)
     integer     rdy_pct = RDY_PCT;
     initial if ($value$plusargs("rdy_pct=%d", rdy_pct)) ;
+    reg         xrow = XROW_REORDER;
+    initial if ($test$plusargs("noreorder")) xrow = 1'b0;
 
     initial begin
         for (i = 0; i < WORDS; i = i + 1)
@@ -106,7 +109,7 @@ module ddr3_ui_model #(
                 end
                 q_data[q_w % 256] = mem[widx];
                 lat = LAT_MIN + ($random & 32'h7fffffff) % (LAT_MAX - LAT_MIN + 1);
-                if (XROW_REORDER && (widx >> ROW_SHIFT) != last_row) begin
+                if (xrow && (widx >> ROW_SHIFT) != last_row) begin
                     // different row than the previous read: row miss, slower,
                     // and NOT ordered against earlier reads (may overtake or
                     // be overtaken); same-row followers stay behind it

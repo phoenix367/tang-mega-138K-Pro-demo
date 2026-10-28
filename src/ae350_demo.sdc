@@ -50,3 +50,12 @@ report_timing -setup -from [get_ports {RGMII_RXD[*]}] -max_paths 10
 report_timing -hold -from [get_ports {RGMII_RXD[*]}] -max_paths 10
 report_timing -setup -from [get_ports {RGMII_RX_CTL}] -max_paths 4
 report_timing -hold -from [get_ports {RGMII_RX_CTL}] -max_paths 4
+// LCD video core: pixel clock (Ethernet PLL CLKOUT2, 1000/30 = 33.3 MHz).  The
+// core spans three clocks -- registers on EXTS (ae350_ahb_clk), line fetch on
+// the DDR bridge's video port (ddr3_sysclk), scan-out (lcd_pclk) -- that talk
+// only through the dual-clock line RAM, toggle handshakes and configuration
+// that is static while scan-out runs.
+create_clock -name lcd_pclk -period 30 -waveform {0 15} [get_pins {u_Gowin_PLL_ETH/PLL_inst/CLKOUT2}]
+set_clock_groups -exclusive -group [get_clocks {lcd_pclk}] -group [get_clocks {ae350_ahb_clk}]
+set_clock_groups -asynchronous -group [get_clocks {lcd_pclk}] -group [get_clocks {ddr3_sysclk}]
+set_clock_groups -asynchronous -group [get_clocks {ae350_ahb_clk}] -group [get_clocks {ddr3_sysclk}]

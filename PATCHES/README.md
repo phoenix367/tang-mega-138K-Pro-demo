@@ -12,6 +12,7 @@ git apply 0002-linux-riscv-ae350-soft-atomics.patch             # in linux/
 git apply 0003-uboot-ae350-sd-boot-and-cache.patch              # in u-boot/
 git apply 0004-linux-a25-cctl-cmo.patch                         # in linux/ (after 0002; needs 0003's CCTL_SUEN)
 git apply 0005-linux-a25-ptw-pagetable-writeback.patch         # in linux/ (after 0004)
+git apply 0006-linux-gowin-lcdfb.patch                         # in linux/ (needs 0004's CCTL ops)
 ```
 (or `patch -p1 < <file>`). Base versions used: OpenSBI v1.8, Linux 6.12, U-Boot 2026.07-rc3.
 
@@ -79,6 +80,20 @@ git apply 0005-linux-a25-ptw-pagetable-writeback.patch         # in linux/ (afte
   `a25_ptwb=0`). Verified on HW (kernel #46): bridge MODE 0 / 0x10000 at 200 MHz and
   400 MHz run memtest + 3000 fork / 500 exec with 0 oopses. With the same kernel and
   `a25_ptwb=0`, MODE 0 oopses within seconds.
+
+## 0006 — Linux LCD framebuffer for the gateware's video core (after 0004)
+- `drivers/video/fbdev/gowin-lcdfb.c` (new) + Kconfig `FB_GOWIN_LCD` + Makefile: fbdev
+  driver for the scan-out core in `../video/`, registers at 0xE8001000, DT compatible
+  `"gowin,ae350-lcd"`. It sets up an RGB565 framebuffer with software rendering only,
+  and runs fbcon on it. See `../video/README.md`.
+- The framebuffer is `alloc_pages_exact` memory with a streaming `DMA_TO_DEVICE`
+  mapping, and the driver turns the device's default `dma_coherent` off. Every change
+  is written back with 0004's CCTL ops before the core reads DDR:
+  - damage callbacks for fbcon / write();
+  - deferred I/O for mmap() writers.
+- **Not in the patch** (Kconfig): `CONFIG_FB=y`, `CONFIG_FB_GOWIN_LCD=y`,
+  `CONFIG_FRAMEBUFFER_CONSOLE=y`, `CONFIG_LOGO=y` (+ `LOGO_LINUX_CLUT224`), and the
+  `lcd@e8001000` node in `linux/ae350-linux.dts`.
 
 ## Note on correctness
 The soft atomics are correct **only because the system is single-hart** (the only

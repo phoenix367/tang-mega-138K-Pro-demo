@@ -24,6 +24,12 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    ddr_bridge/README.md). Bridge RTL is validated with
    `ddr_bridge/tb/run_all.sh` (iverilog random regression, directed tests, mutation
    check, and a formal proof of the AHB side with yosys + ABC).
+   **LCD:** `video/` = scan-out core for the Sipeed 5" 800×480 RGB panel (regs on EXTS
+   @ `0xE8001000`, pixel clock = Ethernet PLL CLKOUT2 33.3 MHz). It reads the RGB565
+   framebuffer straight from DDR3 through the bridge's read-only **video port** (not
+   EXTM — reading over EXTM cost the CPU ~37% of its memory bandwidth). Linux fbdev
+   driver `PATCHES/0006` (software rendering, fbcon); sim `video/tb/run_tb.sh`,
+   hardware check `tests/fbtest.c`. See video/README.md.
 2. **`led_blink` — a disabled sample.** Counter-based LED blinker (`CLK_FREQ_HZ` /
    `BLINK_HZ` params) on the board's `clk`=P16 / `rst_n`=K16 / `led`=J14. Files present
    but `enable="0"` in the `.gprj`. To switch back to it: enable its three files, disable

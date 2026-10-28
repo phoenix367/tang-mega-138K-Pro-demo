@@ -41,6 +41,15 @@
 //    reads have returned.  That rule came from an early theory that the MC
 //    returns reads out of order across rows; the read BIST disproved it (the
 //    Linux oopses were the A25 page-table walker, see PATCHES/0005).
+//  * Video port: a read-only second DDR client in the uclk domain (LCD
+//    scan-out, video/rtl).  Its BL8 reads go out in cycles where the issue
+//    slot is empty (the bridge goes first) or, once a request has waited
+//    VAGE uclk, ahead of the bridge's next command -- a CPU write stream
+//    keeps the slot full and would starve it otherwise.  At most VMAX in
+//    flight, never during the BIST.  Returns are routed by issue order: a 1-bit FIFO
+//    records which client each read in flight belongs to (the MC answers in
+//    order).  Video reads bypass the line buffers -- they only see DDR, so a
+//    pixel can lag a posted CPU write by a frame, which scan-out tolerates.
 //
 // Clocks: hclk = SoC DDR_HCLK (AHB side), uclk = DDR3 IP clk_out (memory
 // clock / 4).  The two are asynchronous; ddr_async_fifo crosses both ways.
@@ -104,7 +113,15 @@ module ahb_ddr3_bridge #(
     output wire         wr_data_end,
     output wire [15:0]  wr_data_mask,
     input  wire [127:0] rd_data,
-    input  wire         rd_data_valid
+    input  wire         rd_data_valid,
+
+    // ---------------- video read port (uclk, read-only) ----------------
+    output wire         v_rstn,          // uclk-domain reset (released after calibration)
+    input  wire         v_req,           // a BL8 read of v_addr is wanted
+    input  wire [ADDR_BITS-1:0] v_addr,  // byte address, 16 B aligned
+    output wire         v_ack,           // ... issued this cycle
+    output wire         v_rvalid,        // data of the oldest video read in flight
+    output wire [127:0] v_rdata
 );
     localparam LB = ADDR_BITS - 5;           // line address bits
     localparam BB = ADDR_BITS - 4;           // 16 B block address bits
@@ -759,12 +776,16 @@ module ahb_ddr3_bridge #(
     // the BSRAM output register (~1.8 ns clock-to-out), too slow to feed the
     // issue decision at a 100 MHz uclk.  Whether its row / line differs from
     // the reads in flight is compared once, on load (row_ne_q / line_ne_q):
-    // rd_row / rd_line only change when this slot issues a read.
+    // rd_row / rd_line only change when this slot issues a read.  The slot
+    // loads only while empty (a cycle after it issues), so cmd_ready -- a late
+    // IP output -- never reaches the load enables of is_d / hq_d (~340 flops);
+    // the bubble costs ~1-4 % of throughput in simulation, less at the real
+    // command rate.
     reg           is_v;
     reg  [CW-1:0] is_d;
     reg           row_ne_q, line_ne_q;
     wire          is_done;                   // slot consumed this cycle
-    wire          is_load = hq_v & (~is_v | is_done);
+    wire          is_load = hq_v & ~is_v;
     assign        hq_done = is_load;
 
     wire          c_read = is_d[CW-1];
@@ -824,9 +845,36 @@ module ahb_ddr3_bridge #(
     wire          bist_start = umode_s2[24] ^ bist_tgl_q;
     wire [255:0]  bist_res;
 
-    wire          issue_wr = c_valid & ~c_read & cmd_ok & wdat_ok & ~blk_wr & ~bist_hold;
-    wire          issue_rd = c_valid &  c_read & cmd_ok & ~tq_full & ~blk_rd & ~bist_hold;
+    // video port: the command port is the video's while the issue slot is
+    // empty, or (v_pri) once its request has waited VAGE uclk -- then the
+    // bridge's command waits a cycle.  v_pri is a flop, set a cycle ahead;
+    // it is only set with < VMAX-1 reads in flight, so the port has room
+    // when it applies.
+    localparam    VMAX = 8;                  // video reads in flight
+    localparam    VAGE = 8;                  // uclk a request waits before it goes first
+    reg  [3:0]    v_n;
+    reg  [3:0]    v_age;                     // uclk the current request has waited (saturates)
+    reg           v_pri;
+    wire          v_room   = (v_n < VMAX);
+    wire          v_slot   = ~is_v | v_pri;
+
+    wire          issue_wr = c_valid & ~c_read & cmd_ok & wdat_ok & ~blk_wr & ~bist_hold & ~v_pri;
+    wire          issue_rd = c_valid &  c_read & cmd_ok & ~tq_full & ~blk_rd & ~bist_hold & ~v_pri;
     assign        is_done  = issue_wr | (issue_rd & rd_second);
+
+    wire          issue_v  = v_req & v_slot & cmd_ok & ~bist_hold & ~bist_own & v_room;
+    // issue order of the reads in flight, 1 = video (bridge <= 15 + video <= 8
+    // fit in 32).  who_hd is the head entry as a flop: it is reloaded every
+    // cycle with the head after this cycle's return, which is correct for any
+    // read issued at least 2 uclk before its data returns (the MC takes ~28).
+    reg  [31:0]   who;
+    reg  [4:0]    who_w, who_r;
+    reg           who_hd;
+    wire          rv_any   = rd_data_valid & ~bist_own;
+    assign        v_ack    = issue_v;
+    assign        v_rvalid = rv_any & who_hd;
+    assign        v_rdata  = rd_data;
+    assign        v_rstn   = urst_n;
 
     always @(posedge uclk or negedge urst_n)
         if (!urst_n) begin
@@ -834,24 +882,26 @@ module ahb_ddr3_bridge #(
         end else if (is_load) begin
             is_v      <= 1'b1;
             is_d      <= hq_d;
-            row_ne_q  <= issue_rd ? (h_blk[BB-1:7] != c_row)         : (h_blk[BB-1:7] != rd_row);
-            line_ne_q <= issue_rd ? (h_blk[BB-1:1] != c_blk[BB-1:1]) : (h_blk[BB-1:1] != rd_line);
+            row_ne_q  <= (h_blk[BB-1:7] != rd_row);      // (no issue while empty)
+            line_ne_q <= (h_blk[BB-1:1] != rd_line);
         end else begin
             if (is_done)  is_v <= 1'b0;
             if (issue_rd) begin row_ne_q <= 1'b0; line_ne_q <= 1'b0; end
         end
-    wire          br_valid = rd_data_valid & ~bist_own;   // returns for the bridge
+    wire          br_valid = rv_any & ~who_hd;            // returns for the bridge
 
-    assign cmd_en       = bist_own ? bist_cmd_en : (issue_wr | issue_rd);
-    assign cmd          = (bist_own | c_read) ? 3'b001 : 3'b000;
+    // (v_slot: the port belongs to the video read this cycle)
+    assign cmd_en       = bist_own ? bist_cmd_en : (issue_wr | issue_rd | issue_v);
+    assign cmd          = (bist_own | c_read | v_slot) ? 3'b001 : 3'b000;
     assign addr         = bist_own ? {1'b0, bist_addr}
+                        : v_slot ? {{(28-ADDR_BITS+1){1'b0}}, v_addr[ADDR_BITS-1:4], 3'b000}
                         : c_read ? {{(28-ADDR_BITS+1){1'b0}}, c_blk[BB-1:1], c_half, 3'b000}
                                  : {{(28-ADDR_BITS+1){1'b0}}, c_blk, 3'b000};
 
     ddr_rd_bist u_bist (
         .clk(uclk), .rst_n(urst_n),
         .start(bist_start), .pattern(umode_s2[26:25]), .iter_log2(umode_s2[31:28]),
-        .port_idle(!rd_out),
+        .port_idle(!rd_out && v_n == 4'd0),
         .hold(bist_hold), .own(bist_own), .cmd_ok(cmd_ok), .cmd_en(bist_cmd_en), .addr(bist_addr),
         .rd_data(rd_data), .rd_data_valid(rd_data_valid),
         .r_status(bist_res[31:0]),     .r_err(bist_res[63:32]),        .r_reorder(bist_res[95:64]),
@@ -887,6 +937,7 @@ module ahb_ddr3_bridge #(
             rd_row   <= {RB{1'b0}};
             rd_line  <= {(BB-1){1'b0}};
             cmd_ready_q <= 1'b0; wr_rdy_q <= 1'b0; bist_tgl_q <= 1'b0;
+            v_n <= 4'd0; v_age <= 4'd0; v_pri <= 1'b0; who <= 32'd0; who_w <= 5'd0; who_r <= 5'd0; who_hd <= 1'b0;
             ucnt <= 16'd0;
             uc_rdcmd <= 32'd0; uc_latsum <= 32'd0; uc_wrcmd <= 32'd0; uc_rdval <= 32'd0;
         end else begin
@@ -906,12 +957,21 @@ module ahb_ddr3_bridge #(
                 rd_second <= ~rd_second;
                 tq_wd_q   <= {c_blk[BB-1:1], c_mask[EB-1:0], c_mask[EB +: GB], c_half, ucnt};
             end
-            if (tq_push_q) begin
-                tq[tq_w[3:0]] <= tq_wd_q;
-                tq_w <= tq_w + 5'd1;
-            end
+            if (tq_push_q) tq_w <= tq_w + 5'd1;
             if (br_valid) tq_r <= tq_r + 5'd1;
             tq_n <= tq_n + {4'd0, tq_push_q} - {4'd0, br_valid};
+
+            // video reads in flight and the issue-order FIFO
+            v_n <= v_n + {3'd0, issue_v} - {3'd0, v_rvalid};
+            if (!v_req || issue_v)  v_age <= 4'd0;
+            else if (v_age != VAGE) v_age <= v_age + 4'd1;
+            v_pri <= v_req & ~issue_v & (v_age >= VAGE - 1) & (v_n < VMAX - 1);
+            if (issue_rd | issue_v) begin
+                who[who_w] <= issue_v;
+                who_w      <= who_w + 5'd1;
+            end
+            if (rv_any) who_r <= who_r + 5'd1;
+            who_hd <= who[who_r + {4'd0, rv_any}];
 
             if (u_clr) begin
                 uc_rdcmd <= 32'd0; uc_latsum <= 32'd0; uc_wrcmd <= 32'd0; uc_rdval <= 32'd0;
@@ -925,6 +985,11 @@ module ahb_ddr3_bridge #(
             end
         end
     end
+
+    // tag FIFO entries: no reset (tq_push_q is low in reset), which keeps the
+    // high-fanout urst_n off their write enables
+    always @(posedge uclk)
+        if (tq_push_q) tq[tq_w[3:0]] <= tq_wd_q;
 
     // return FIFO: data + the tag of the read it answers (MC returns in order)
     wire rf_full;
