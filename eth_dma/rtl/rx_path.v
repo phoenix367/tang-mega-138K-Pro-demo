@@ -45,6 +45,8 @@ module rx_path #(
     input  wire [15:0] rx_tail,
     output wire [15:0] rx_head,
     output wire [15:0] drop_cnt,
+    output reg  [31:0] stat_frames,     // frames the MAC delivered (bus domain)
+    output reg  [31:0] stat_bad,        // ... of which it flagged bad (CRC/PHY err)
     output wire        irq,
     output wire        busy,           // AHB master command in progress (for arbiter)
     output wire        dbg_done,        // debug: ahb_master cmd_done pulse
@@ -153,5 +155,32 @@ module rx_path #(
         .receiving_data(sf_drop_bus), .receiving_valid(drp_v), .receiving_ready(drp_v)
     );
     assign drop_cnt = ring_drop + sf_drop_bus;
+
+    // ---- line-rate RX statistics ----
+    // Every frame the MAC hands over, and those it flagged bad, counted whether
+    // or not the ring or staging buffer had room -- so a host can flood the link
+    // and measure the error rate far below one per million frames.  Each event
+    // toggles a flop in the MAC domain; frames are >= 672 ns apart, much longer
+    // than the 2-flop synchronizer, so the bus side sees every toggle.
+    reg frm_tgl, bad_tgl;
+    always @(posedge rx_mac_clk or posedge in_clear) begin
+        if (in_clear) begin
+            frm_tgl <= 1'b0; bad_tgl <= 1'b0;
+        end else if (frame_valid) begin
+            frm_tgl <= ~frm_tgl;
+            if (frame_err) bad_tgl <= ~bad_tgl;
+        end
+    end
+    reg [2:0] frm_s, bad_s;
+    always @(posedge bus_clk or posedge out_clear) begin
+        if (out_clear) begin
+            frm_s <= 3'd0; bad_s <= 3'd0; stat_frames <= 32'd0; stat_bad <= 32'd0;
+        end else begin
+            frm_s <= {frm_s[1:0], frm_tgl};
+            bad_s <= {bad_s[1:0], bad_tgl};
+            if (frm_s[2] ^ frm_s[1]) stat_frames <= stat_frames + 32'd1;
+            if (bad_s[2] ^ bad_s[1]) stat_bad    <= stat_bad + 32'd1;
+        end
+    end
 endmodule
 `default_nettype wire

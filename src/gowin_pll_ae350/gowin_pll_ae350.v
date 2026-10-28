@@ -85,7 +85,7 @@ PLL PLL_inst (
 defparam PLL_inst.FCLKIN = "50";
 defparam PLL_inst.IDIV_SEL = 1;
 defparam PLL_inst.FBDIV_SEL = 1;
-defparam PLL_inst.ODIV0_SEL = 16;
+defparam PLL_inst.ODIV0_SEL = 8;
 defparam PLL_inst.ODIV1_SEL = 1;
 defparam PLL_inst.ODIV2_SEL = 16;
 defparam PLL_inst.ODIV3_SEL = 16;

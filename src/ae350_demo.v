@@ -30,6 +30,7 @@ module ae350_demo_top
     output DDR3_RESET_N,
     output DDR3_ODT,
     output [13:0] DDR3_ADDR,
+    output DDR3_ADDR14,         // DRAM row bit 14: unused (256 MB map), held low
     output [1:0] DDR3_DM,
     inout [15:0] DDR3_DQ,
     inout [1:0] DDR3_DQS,
@@ -70,7 +71,7 @@ wire DDR3_STOP;
 // Gowin_PLL_AE350 instantiation
 Gowin_PLL_AE350 u_Gowin_PLL_AE350
 (
-    .clkout0(DDR_CLK),          // 50MHz    - for test
+    .clkout0(DDR_CLK),          // 100MHz (800/8) data-memory AHB (DDR_HCLK)
     .clkout1(CORE_CLK),         // 800MHz
     .clkout2(AHB_CLK),          // 50MHz    - for test
     .clkout3(APB_CLK),          // 50MHz    - for test
@@ -107,6 +108,11 @@ wire [3:0]  DDR_HPROT;
 wire [2:0]  DDR_HBURST, DDR_HSIZE;
 wire [1:0]  DDR_HTRANS;
 wire        DDR_HREADY, DDR_HRESP, DDR_HWRITE, DDR_HCLK, DDR_HRSTN;
+
+// External APB slave port (SoC master) -> ddr_perf monitor @ 0xF8000000
+wire [31:0] apb_paddr, apb_pwdata, apb_prdata;
+wire        apb_psel, apb_penable, apb_pwrite, apb_pready, apb_pslverr;
+wire        apb_pclk, apb_prstn;
 
 
 // ---------------------------------------------------------------------------
@@ -195,6 +201,8 @@ Gowin_PLL u_Gowin_PLL_ETH
     .enclk3(1'b1)
 );
 
+
+assign DDR3_ADDR14 = 1'b0;
 
 wire ae350_rstn;                    // AE350 power on and hardware reset in
 wire ddr3_rstn;                     // DDR3 memory reset in
@@ -289,20 +297,19 @@ RiscV_AE350_SOC_Top u_RiscV_AE350_SOC_Top
     .EXTM_HRDATA(extm_hrdata),
     .EXTM_HREADYOUT(extm_hreadyout),
     .EXTM_HRESP(extm_hresp),
-    // External APB master -> apb_sd_top (SD-SPI HW controller @ CPU 0xF8000000)
-    // External APB master - unused (SD removed)
-    .APB_PRDATA(32'b0),
-    .APB_PREADY(1'b1),
-    .APB_PSLVERR(1'b0),
-    .APB_PADDR(),
-    .APB_PENABLE(),
-    .APB_PSEL(),
-    .APB_PWDATA(),
-    .APB_PWRITE(),
+    // External APB master -> ddr_perf (DDR AHB perf counters/trace @ CPU 0xF8000000)
+    .APB_PRDATA(apb_prdata),
+    .APB_PREADY(apb_pready),
+    .APB_PSLVERR(apb_pslverr),
+    .APB_PADDR(apb_paddr),
+    .APB_PENABLE(apb_penable),
+    .APB_PSEL(apb_psel),
+    .APB_PWDATA(apb_pwdata),
+    .APB_PWRITE(apb_pwrite),
     .APB_PPROT(),
     .APB_PSTRB(),
-    .APB_PCLK(),
-    .APB_PRSTN(),
+    .APB_PCLK(apb_pclk),
+    .APB_PRSTN(apb_prstn),
     // DMA - unused
     .DMA_REQ(8'b0),
     .DMA_ACK(),
@@ -337,10 +344,15 @@ RiscV_AE350_SOC_Top u_RiscV_AE350_SOC_Top
 );
 
 
-// AHB -> DDR3 bridge (external DDR3 controller). Turns the SoC's customized
-// data-memory AHB bus into DDR3 PHY. Uses our Gowin_PLL_DDR3 clocks and the
-// same DDR3 reset/init nets the embedded controller used.
-gw_ahb_ddr3_top u_gw_ahb_ddr3_top
+// AHB -> DDR3 (external DDR3 controller). ahb_ddr3_top = our line-buffered,
+// burst-aware AHB slave (ddr_bridge/rtl/ahb_ddr3_bridge.v) in front of the Gowin
+// DDR3 Memory Interface IP. It replaces Gowin's gw_ahb_ddr3, which spent a full
+// DDR round trip on every 64-bit beat (~39 HCLK/beat, ~5 us per L1 line miss).
+wire         ddr_perf_en, ddr_perf_clr;
+wire [31:0]  ddr_bridge_mode;
+wire [511:0] ddr_perf_cnt;
+
+ahb_ddr3_top u_ahb_ddr3_top
 (
     .DDR3_MEMORY_CLK(DDR3_MEMORY_CLK),
     .DDR3_CLK_IN(DDR3_CLK_IN),
@@ -371,14 +383,51 @@ gw_ahb_ddr3_top u_gw_ahb_ddr3_top
     .HWRITE(DDR_HWRITE),
     .HTRANS(DDR_HTRANS),
     .HBURST(DDR_HBURST),
+    .HPROT(DDR_HPROT),
     .HWDATA(DDR_HWDATA),
     .HREADY_O(DDR_HREADY),
     .HRESP(DDR_HRESP),
-    .HRDATA(DDR_HRDATA)
+    .HRDATA(DDR_HRDATA),
+    .MODE(ddr_bridge_mode),
+    .PERF_EN(ddr_perf_en),
+    .PERF_CLR(ddr_perf_clr),
+    .PERF_CNT(ddr_perf_cnt)
 );
 
 
-// (SD host core removed -- the AE350 external APB is tied off above.)
+// DDR data-memory bus performance monitor (passive tap on DDR_H*), read via
+// the external APB at 0xF8000000. CONFIG = {8'h0, bridge id, DDR3 memory MHz}:
+// bridge 1 = Gowin gw_ahb_ddr3 (encrypted v1.3), 2 = ahb_ddr3_bridge.
+// MODE_RESET 0x10000: overlapping DDR reads, also across rows (full speed).
+// Needs a kernel with PATCHES/0005 (A25 page-table writeback); for a kernel
+// without it use 0x100 (one read in flight) -- see ddr_bridge/README.md.
+ddr_perf #(
+    .CONFIG(32'h0002_0190),
+    .MODE_RESET(32'h0001_0000)
+) u_ddr_perf (
+    .hclk(DDR_HCLK),
+    .hresetn(DDR_HRSTN),
+    .haddr_i(DDR_HADDR),
+    .htrans_i(DDR_HTRANS),
+    .hwrite_i(DDR_HWRITE),
+    .hsize_i(DDR_HSIZE),
+    .hburst_i(DDR_HBURST),
+    .hready_i(DDR_HREADY),
+    .ext_cnt(ddr_perf_cnt),
+    .en(ddr_perf_en),
+    .clr(ddr_perf_clr),
+    .mode(ddr_bridge_mode),
+    .pclk(apb_pclk),
+    .presetn(apb_prstn),
+    .psel(apb_psel),
+    .penable(apb_penable),
+    .pwrite(apb_pwrite),
+    .paddr(apb_paddr),
+    .pwdata(apb_pwdata),
+    .prdata(apb_prdata),
+    .pready(apb_pready),
+    .pslverr(apb_pslverr)
+);
 
 
 // ---------------------------------------------------------------------------

@@ -40,23 +40,41 @@ Consequences and the fix:
 boots Linux 6.12 to an interactive shell with gigabit Ethernet. The real fix would
 be a Gowin/Andes AE350 config *with* a coherence manager.
 
-## 2. DDR bandwidth is the throughput ceiling (~6 MB/s)
+## 2. DDR speed: the Gowin AHB bridge was the bottleneck
 
-Measured on hardware:
+Measured with the `src/ddr_perf.v` bus monitor (APB @ `0xF8000000`): Gowin's
+`gw_ahb_ddr3` turned every 64-bit AHB beat into its own DDR3 command with a full
+clock-domain round trip — ~39 HCLK (0.8 µs) per beat, ~160 HCLK per 32 B L1 line fill
+(the A25 fills lines with WRAP4 64-bit bursts), bus 93 % busy. Hence the old ~6 MB/s.
 
-- Core 800 MHz, L1 D-cache on. **L1-hot working set ≈ 700 MB/s.**
-- **DDR cache-miss ≈ 6 MB/s** — a single 32 B cache-line fill costs **~5 µs
-  (~4000 core cycles)**, ~100× too slow.
-- Re-enabling cache prefetch made no difference. The bare-metal DMA loopback also
-  tops out ~2.4 MB/s — so the ceiling is the **A25↔DDR3 path** (gateware DDR3
-  controller / EXTM-AHB bridge latency), not software.
+`ddr_bridge/` replaces it (line buffers, stream prefetch, posted/merged writes) — see
+[ddr_bridge/README.md](../ddr_bridge/README.md). The default MODE 0x10000 (overlapped
+reads), with DDR3 at 400 MHz and a 100 MHz bus, is ~23x faster than stock: 148 MB/s
+sequential read, ~1.4 µs per random miss, kernel to `/init` in 2.83 s. At 400 MHz the
+bridge's DDR side runs at 100 MHz; closing timing there needed an issue-slot register
+stage, a registered tag-queue write and a 3-phase BIST compare.
 
-**Consequence:** every memory-heavy workload crawls — `nc` TCP ~1 Mbit/s, md5 of
-50 MB ~120 s. Networking is worst because the stack touches DDR per packet. This is
-*not* the ethernet driver, the cache maintenance, the kernel HZ, or the clocks —
-all were investigated and ruled out. Raising it requires fixing the DDR3 path in
-the gateware (burst/pipelined line fills), a regenerate-IP / bus-integration
-effort.
+**A25 page-table walker is not cache-coherent.** Overlapped reads first made Linux
+oops at fork/exec: walks of a new pgd read stale kernel entries. The walker reads page
+tables straight from the bus, so lines still dirty in L1 are invisible to it, and the
+slow stock bridge only hid the race. Fixed in the kernel by writing every page-table
+store back with CCTL L1D_VA_WB (`PATCHES/0005`, switch `a25_ptwb`). A kernel without
+0005 must run the bridge at MODE 0x100 (one read in flight, ~4x stock).
+
+**SoC bus clocks.** Per Gowin MUG1031 the AE350's DDR (data memory), AHB and APB clocks
+may each run below 200 MHz. They are asynchronous to the 800 MHz core and to each other
+(AHB:APB = 1:1), but the reference design runs all three at 50 MHz "for test". The
+CPU↔DDR bus clock (`DDR_CLK`) is now **100 MHz**. That took a redesign of the bridge's
+AHB side: the hard macro sits at a fixed spot with ~5–7 ns routes each way, so AHB inputs
+are only registered, `HREADY`/`HRDATA` come from flops, and burst beats are predicted.
+Measured vs 50 MHz: +34% sequential read (148 MB/s), +43% memset, +39% memcpy; kernel to
+`/init` in 2.83 s. See ddr_bridge/README.md.
+
+Board DDR: 2x H5TQ4G63EFR-RDC (4 Gbit x16, 1 GB on a 32-bit bus); the design uses 16 bits
+/ 256 MB. The stock IP ran at 200 MHz, below the DDR3 DLL-on minimum (300 MHz), with 2 Gbit
+timings. The active netlist is `src/ddr3_memory_interface_400/`: 400 MHz, with the
+correct 4 Gbit timings. **Caveat:** at 400 MHz gigabit RX sees ~2e-5 frames rejected by
+the MAC CRC check (0 at 200 MHz); see §3.
 
 ## 3. RGMII RX clock must be constrained at 125 MHz
 
@@ -75,6 +93,21 @@ marginal.
   `[1]`–`[7]`, and Linux gigabit RX becomes timing-verified.
 - `RGMII_RXC` is still on **generic routing** (`PR1014` warning) → only ~1.3 %
   margin. Routing it onto a global clock buffer would harden it further (optional).
+- **Logic depth, not the clock, was the real limit (fixed Oct 2026).** Adding the
+  DDR bridge pushed the 125 MHz paths to −1.0 ns (build-to-build swing +0.08 …
+  −2.1 ns). The failing paths were deep logic in our own RTL, now registered:
+  `tx_unpack.v` drives `tx_mac_valid/data/last` from a 2-entry skid buffer, with no
+  gaps inside a frame (previously a 16-bit `byte_cnt == len-1` compare and the
+  FIFO RAM output went straight into the MAC's TX FSM/CRC). In `rx_sf_buffer.v`,
+  the drain takes one extra `D_LEN` cycle per frame, and the
+  "RAM full" / "info FIFO full" flags are registered with look-ahead (they never
+  miss a full buffer). Result: worst setup slack **+1.79 ns** design-wide. On HW at
+  1 Gbps: ping sweep 0–1472 B, 3×32 MB down + 3×16 MB up md5-exact, 0 errors/drops.
+- **Some builds show ~2e-5 MAC-rejected RX frames** (Builds 22/23/30: 2–5 per 140k),
+  others none (Builds 26/33, both with fast DDR), so it depends on placement. Every bad
+  frame is CRC-rejected (TCP `InCsumErrors` 0) and TCP recovers. `RGMII_RXC` is on C23,
+  a VREF pin that is not clock-capable, so generic routing is forced, and the RGMII input
+  timing is unconstrained (no `set_input_delay`). That is the place to fix it.
 
 ## 4. RX data/metadata desync (fixed by the store-and-forward stage)
 

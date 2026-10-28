@@ -12,10 +12,18 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
 1. **`ae350_demo_top` — the active design.** Andes RISC-V **AE350 SoC** reference,
    imported from `~/Downloads/RiscV_AE350_SOC_V1.3/.../Tang_MEGA_138K_Pro_Dock`. Boots
    from SPI flash, runs DDR3 data memory, UART2, GPIO (3 LEDs + 3 keys), PIT/WDT/RTC,
-   JTAG debug. Two PLLs (`gowin_pll_ae350` → 800 MHz core + 50 MHz AHB/APB/DDR + 10 MHz
-   RTC; `gowin_pll_ddr3` → 200 MHz DDR3). `src/riscv_ae350_soc/` is encrypted Andes IP
+   JTAG debug. Two PLLs (`gowin_pll_ae350` → 800 MHz core + 100 MHz data-memory `DDR_CLK` + 50 MHz AHB/APB + 10 MHz
+   RTC; `gowin_pll_ddr3` → 400 MHz DDR3, netlist `src/ddr3_memory_interface_400/`). `src/riscv_ae350_soc/` is encrypted Andes IP
    (`.v` synth source + `.vo` sim netlist) — regenerate via the IDE IP wizard, don't
    hand-edit. `src/key_debounce.v` debounces the DDR3/AE350 resets.
+   DDR3 path: SoC data-memory AHB (`DDR_H*`) -> **`ddr_bridge/`** (`ahb_ddr3_top`,
+   line-buffered bridge, replaces Gowin's `src/gw_ahb_ddr3*.v`, now `enable="0"`) ->
+   DDR3 IP. `src/ddr_perf.v` = bus perf counters/trace + bridge MODE register on the
+   SoC external APB @ `0xF8000000` (reset MODE 0x10000 = overlapped reads; needs the
+   Linux page-table writeback patch `PATCHES/0005`, else use 0x100 — see
+   ddr_bridge/README.md). Bridge RTL is validated with
+   `ddr_bridge/tb/run_all.sh` (iverilog random regression, directed tests, mutation
+   check, and a formal proof of the AHB side with yosys + ABC).
 2. **`led_blink` — a disabled sample.** Counter-based LED blinker (`CLK_FREQ_HZ` /
    `BLINK_HZ` params) on the board's `clk`=P16 / `rst_n`=K16 / `led`=J14. Files present
    but `enable="0"` in the `.gprj`. To switch back to it: enable its three files, disable

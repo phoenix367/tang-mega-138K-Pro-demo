@@ -25,6 +25,7 @@
 *.fst
 
 # --- Editor / misc ---
+__pycache__/
 *.swp
 *~
 
@@ -43,3 +44,4 @@
 /tests/ext_probe
 /tests/amo_probe
 /tests/cctl_probe
+/tests/ddr_memtest

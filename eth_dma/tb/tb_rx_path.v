@@ -24,13 +24,15 @@ module tb_rx_path;
 
     wire [31:0] haddr, hwdata, hrdata;
     wire [1:0]  htrans; wire hwrite, hready, hresp; wire [2:0] hsize, hburst;
+    wire [31:0] stat_frames, stat_bad;
 
     rx_path #(.DATA_DEPTH(512), .META_DEPTH(8), .BUF_SHIFT(BUF_SHIFT)) dut (
         .rx_mac_clk(rx_mac_clk), .rx_mac_valid(rx_mac_valid), .rx_mac_data(rx_mac_data),
         .rx_mac_last(rx_mac_last), .rx_mac_error(rx_mac_error),
         .bus_clk(bus_clk), .arst_n(arst_n),
         .rx_en(rx_en), .buf_base(buf_base), .ring_len(ring_len), .rx_tail(rx_tail),
-        .rx_head(rx_head), .drop_cnt(drop_cnt), .irq(irq),
+        .rx_head(rx_head), .drop_cnt(drop_cnt),
+        .stat_frames(stat_frames), .stat_bad(stat_bad), .irq(irq),
         .haddr(haddr), .htrans(htrans), .hwrite(hwrite), .hsize(hsize), .hburst(hburst),
         .hwdata(hwdata), .hrdata(hrdata), .hready(hready), .hresp(hresp)
     );
@@ -94,6 +96,10 @@ module tb_rx_path;
                     if (errors < 8) $display("  frame %0d byte %0d got %02x exp %02x", f, i, got, exp);
                 end
             end
+        end
+        if (stat_frames !== 32'd3 || stat_bad !== 32'd1) begin
+            errors = errors + 1;
+            $display("  line-rate stats frames=%0d bad=%0d, exp 3/1", stat_frames, stat_bad);
         end
         if (errors == 0) $display("RESULT: PASS (3 frames crossed MAC->CDC->DMA->DRAM intact; drops=%0d)", drop_cnt);
         else             $display("RESULT: FAIL (%0d errors, rx_head=%0d)", errors, rx_head);

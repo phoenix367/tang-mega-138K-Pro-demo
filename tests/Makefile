@@ -18,7 +18,7 @@ ARCH := -march=rv32imafdc -mabi=ilp32d
 BOARD ?= 192.168.200.2
 RUSER ?= ae350
 
-BINS := atomic_test memthroughput compute_bench dsp_probe ext_probe amo_probe cctl_probe
+BINS := atomic_test memthroughput compute_bench dsp_probe ext_probe amo_probe cctl_probe ddr_memtest
 
 all: $(BINS)
 
@@ -29,6 +29,10 @@ atomic_test: atomic_test.c
 # zicbop so __builtin_prefetch emits a real prefetch.r (harmless hint if HW lacks it)
 memthroughput: memthroughput.c
 	$(CC) -static -O2 -march=rv32imafdc_zicbop -mabi=ilp32d -o $@ $<
+
+# DDR path correctness + per-miss latency / bandwidth (bridge validation)
+ddr_memtest: ddr_memtest.c
+	$(CC) -static -O2 $(ARCH) -Wall -o $@ $<
 
 # -fno-math-errno + -ffp-contract=fast => hardware fsqrt.d / fmadd.d (not libcalls)
 compute_bench: compute_bench.c

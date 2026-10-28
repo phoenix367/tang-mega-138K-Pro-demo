@@ -28,4 +28,21 @@ TCL_SCRIPT="$SCRIPT_DIR/gw_run.tcl"
 cd "$GOWIN_PATH"
 export LD_LIBRARY_PATH="./IDE/lib"
 export LD_PRELOAD="/lib/x86_64-linux-gnu/libstdc++.so.6 /lib/x86_64-linux-gnu/libfreetype.so"
-exec ./IDE/bin/gw_sh "$TCL_SCRIPT"
+
+# The floating license server is flaky ("License verification failed  Server
+# not responding."): retry a few times before giving up.
+LICENSE_RETRIES="${LICENSE_RETRIES:-6}"
+log="$(mktemp)"
+trap 'rm -f "$log"' EXIT
+for ((try = 1; try <= LICENSE_RETRIES; try++)); do
+    set +e
+    ./IDE/bin/gw_sh "$TCL_SCRIPT" 2>&1 | tee "$log"
+    rc=${PIPESTATUS[0]}
+    set -e
+    if ! grep -q "License verification failed" "$log"; then
+        exit "$rc"
+    fi
+    echo "gw_run.sh: license check failed (try $try/$LICENSE_RETRIES), retrying in 20 s" >&2
+    sleep 20
+done
+exit 1

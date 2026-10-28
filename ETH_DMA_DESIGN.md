@@ -162,7 +162,9 @@ Compile/sim with `iverilog -g2012 -y <lib> -I <lib>` (libdir auto-resolves modul
   (valid/data/last, honoring `tx_mac_ready`), `frame_done` pulse. Gates on the
   metadata token (pushed after all data → whole frame already across the CDC) so
   no mid-frame underrun. **iverilog PASS** (`tb/tb_tx_unpack.v`: 3 frames, correct
-  bytes + last, under ~75% random `tx_mac_ready` back-pressure).
+  bytes + last, under ~75% random `tx_mac_ready` back-pressure). The `tx_mac_*`
+  outputs come from a 2-entry skid buffer (125 MHz timing). The tb also checks that
+  there are no mid-frame gaps in `tx_mac_valid`.
 
 - **`rtl/tx_ring_reader.v`** — TX engine, bus side. Reads a queued frame from the
   TX ring via `ahb_master` (header→len, then data words → data FIFO), then pushes

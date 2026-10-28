@@ -1,0 +1,37 @@
+# Safety properties of the bridge's AHB side (ifdef FORMAL in
+# rtl/ahb_ddr3_bridge.v), bounded model check with Z3.  Run from formal/:
+#   sby -f bridge_ahb.sby small     (12-bit address space, 4 line buffers)
+#   sby -f bridge_ahb.sby full      (the real 28-bit / 8-buffer configuration)
+# Data the properties never look at (line / copy / merge / queue data, the
+# DDR-clock side, perf counters) is cut into free values: that only adds
+# behaviours, so every property proved also holds for the real design.  The
+# properties do not depend on address width or buffer count, so the small task
+# covers the logic quickly; the full task repeats it at the real sizes.
+[tasks]
+small
+full
+
+[options]
+mode bmc
+small: depth 12
+full:  depth 8
+multiclock off
+
+[engines]
+smtbmc z3
+
+[script]
+read_verilog -formal -DFORMAL ahb_ddr3_bridge.v
+read_verilog -formal stubs.v
+small: chparam -set ADDR_BITS 12 -set NBUF 4 ahb_ddr3_bridge
+prep -top ahb_ddr3_bridge
+flatten
+memory_map
+opt_clean
+cutpoint w:ent_data* w:cl_data w:wb_data w:wb_mask w:wh_data w:wq_mem* w:hrdata_q w:rf_data w:rfq_d
+cutpoint w:pc_* w:uc_* w:ucnt w:tq* w:hq_d w:is_d w:tq_wd_q w:cfq_data w:umode_s* w:wgap w:rgap
+opt_clean
+
+[files]
+../rtl/ahb_ddr3_bridge.v
+stubs.v

@@ -60,6 +60,7 @@ module gw_eth_dma_core (
     wire [31:0] rx_base, tx_base;
     wire [15:0] rx_ring_len, rx_tail, tx_ring_len, tx_tail;
     wire [15:0] rx_head, rx_drop, tx_head, tx_fetch;
+    wire [31:0] rx_frames, rx_bad;
 
     csr u_csr (
         .hclk(bus_clk), .hresetn(bus_rstn),
@@ -74,6 +75,7 @@ module gw_eth_dma_core (
         .miim_phyad(miim_phyad), .miim_regad(miim_regad), .miim_wrdata(miim_wrdata),
         .miim_wren(miim_wren), .miim_rden(miim_rden), .miim_rddata(miim_rddata),
         .miim_rddata_valid(miim_rddata_valid), .miim_busy(miim_busy), .eth_mode(eth_mode),
+        .rx_frames(rx_frames), .rx_bad(rx_bad),
         .rx_busy(m0_busy), .tx_busy(m1_busy), .rx_done(rx_dbg_done), .tx_done(tx_dbg_done),
         .dbg_extm(dbg_extm)
     );
@@ -83,7 +85,8 @@ module gw_eth_dma_core (
         .rx_mac_last(rx_mac_last), .rx_mac_error(rx_mac_error),
         .bus_clk(bus_clk), .arst_n(arst_n),
         .rx_en(rx_en), .buf_base(rx_base), .ring_len(rx_ring_len), .rx_tail(rx_tail),
-        .rx_head(rx_head), .drop_cnt(rx_drop), .irq(rx_irq), .busy(m0_busy), .dbg_done(rx_dbg_done),
+        .rx_head(rx_head), .drop_cnt(rx_drop),
+        .stat_frames(rx_frames), .stat_bad(rx_bad), .irq(rx_irq), .busy(m0_busy), .dbg_done(rx_dbg_done),
         .haddr(m0_haddr), .htrans(m0_htrans), .hwrite(m0_hwrite), .hsize(m0_hsize),
         .hburst(m0_hburst), .hwdata(m0_hwdata), .hrdata(m0_hrdata), .hready(m0_hready), .hresp(m0_hresp)
     );

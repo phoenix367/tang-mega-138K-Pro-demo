@@ -54,7 +54,12 @@ module rx_sf_buffer #(
     reg  [AW:0] drain;                // drain (read) pointer
     reg         abort;                // current frame cannot be stored
     wire [AW:0] occ  = wptr - drain;  // words in use (committed + speculative)
-    wire        full = occ[AW];       // occ == DEPTH
+    // Registered occ == DEPTH: keeps the wptr - drain subtract off the store /
+    // commit / info-write path (125 MHz).  It is computed from this cycle's
+    // occupancy plus this cycle's store; a drain pop or a rewind can only free
+    // space, so it never misses a full RAM (at worst it withholds the last free
+    // word for one cycle).
+    reg         full;
 
     // ---- staging RAM (1W1R, single clock); registered write, registered read ----
     reg  [31:0] mem [0:DEPTH-1];
@@ -66,7 +71,13 @@ module rx_sf_buffer #(
     reg  [16:0]      info [0:IDEPTH-1];
     reg  [INFO_AW:0] iwr, ird;
     wire             info_empty = (iwr == ird);
-    wire             info_full  = ((iwr - ird) == IDEPTH[INFO_AW:0]);
+    wire [INFO_AW:0] info_cnt   = iwr - ird;
+    // Registered "no free info slot": keeps the ird subtract off the commit /
+    // info-write path (125 MHz).  It lags one cycle, which is safe -- with no
+    // EOF last cycle no slot can have been taken since, so a stale value can
+    // only overstate fullness; after an EOF the second term reserves the slot
+    // that EOF may have taken.
+    reg              info_full;
 
     // ====================================================================
     // WRITE SIDE: speculative store, rewind-on-abort, commit-on-clean-EOF
@@ -79,9 +90,12 @@ module rx_sf_buffer #(
     always @(posedge clk or negedge rstn) begin
         if (!rstn) begin
             wptr <= 0; commit <= 0; abort <= 0; iwr <= 0; drop_cnt <= 0;
-            wr_en <= 1'b0; wr_addr <= 0; wr_data <= 0;
+            wr_en <= 1'b0; wr_addr <= 0; wr_data <= 0; info_full <= 1'b0; full <= 1'b0;
         end else begin
             wr_en <= 1'b0;
+            full  <= occ[AW] || (occ == DEPTH - 1 && can_write);
+            info_full <= (info_cnt == IDEPTH[INFO_AW:0]) ||
+                         (in_eof && info_cnt == IDEPTH[INFO_AW:0] - 1'b1);
             wptr  <= wptr_after;                         // default advance
             if (can_write) begin                         // speculative store
                 wr_en   <= 1'b1;
@@ -107,12 +121,15 @@ module rx_sf_buffer #(
     // ====================================================================
     // DRAIN SIDE: per committed frame, push all data words then the metadata
     // ====================================================================
-    localparam D_IDLE = 2'd0, D_READ = 2'd1, D_PUSH = 2'd2, D_META = 2'd3;
-    reg  [1:0]  dstate;
+    // D_LEN splits "read the info FIFO" from "count words + pick next state"
+    // (one extra cycle per frame) to keep both under one 125 MHz cycle.
+    localparam D_IDLE = 3'd0, D_READ = 3'd1, D_PUSH = 3'd2, D_META = 3'd3, D_LEN = 3'd4;
+    reg  [2:0]  dstate;
     reg  [16:0] d_info;               // {err,len} of the frame being drained
     reg  [15:0] d_left;               // data words remaining
-    wire [15:0] pop_len    = info[ird[INFO_AW-1:0]][15:0];
-    wire [15:0] pop_nwords = (pop_len + 16'd3) >> 2;
+    wire [15:0] d_nwords = (d_info[15:0] + 16'd3) >> 2;
+    // == (d_nwords == 0) without waiting for the adder: len 0, or len+3 wraps
+    wire        d_nowords = (d_info[15:0] == 16'd0) || (&d_info[15:2] && |d_info[1:0]);
 
     // Combinational read address/enable: assert in D_READ so the registered RAM
     // output `rdata` holds mem[drain] by the time we reach D_PUSH.
@@ -135,9 +152,12 @@ module rx_sf_buffer #(
             case (dstate)
                 D_IDLE: if (!info_empty) begin
                     d_info <= info[ird[INFO_AW-1:0]];
-                    d_left <= pop_nwords;
                     ird    <= ird + {{INFO_AW{1'b0}},1'b1};
-                    dstate <= (pop_nwords == 16'd0) ? D_META : D_READ;
+                    dstate <= D_LEN;
+                end
+                D_LEN: begin
+                    d_left <= d_nwords;
+                    dstate <= d_nowords ? D_META : D_READ;
                 end
                 D_READ: dstate <= D_PUSH;                // rd_en asserted -> rdata next cycle
                 D_PUSH: if (data_ready) begin            // word accepted by CDC FIFO

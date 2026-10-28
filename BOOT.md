@@ -42,6 +42,8 @@ heavy debug off (`DEBUG_VM_PGTABLE`, `DEBUG_SPINLOCK`, lockdep, RCU-debug),
 `CONFIG_INITRAMFS_SOURCE="…/linux/rootfs …/linux/initramfs_nodes.list"` (the second
 entry adds the static `/dev/console`,`/dev/kmsg` nodes the kernel needs before init).
 Soft-atomic patches: `arch/riscv/include/asm/{soft_atomic.h,cmpxchg.h,atomic.h,bitops.h,futex.h}`.
+A25 page-table writeback (`PATCHES/0005`, `asm/a25-ptwb.h`) is required with the fast
+DDR bridge (gateware MODE 0x10000): without it fork/exec oopses.
 ```
 cd ~/projects/linux
 make ARCH=riscv CROSS_COMPILE=$LGNU -j$(nproc) Image
@@ -93,4 +95,5 @@ To stop at the U-Boot prompt, hit a key within 2 s; then run the two commands ma
 - **gzip + U-Boot `unzip`** — the ~29 MB payload won't fit 16 MB flash; gzip → ~5 MB. The host uses `gzip`; U-Boot's `unzip` *is* gunzip.
 - **`.bin` extension** — `programmer_cli --mcuFile` silently writes 0 bytes for non-`.bin` files.
 - **static `/dev/console`** — kernel opens it before running `/init`; without it the shell's stdio never reaches the UART.
+- **Page-table writeback (`a25_ptwb`)** — the A25 page-table walker does not see dirty L1 lines; every page-table store must be written back to DRAM (PATCHES/0005). The slow stock DDR bridge used to hide this.
 - **DTB `compatible="andestech,a25"`** (NOT `andestech,ae350`) — the ae350 OpenSBI override resets this SoC.

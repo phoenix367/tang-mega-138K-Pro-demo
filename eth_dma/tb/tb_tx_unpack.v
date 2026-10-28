@@ -56,6 +56,15 @@ module tb_tx_unpack;
         if (frame_done) ndone = ndone + 1;
     end
 
+    // no mid-frame gap: between a frame's first and last accepted byte the
+    // MAC must see tx_mac_valid every cycle (Ethernet cannot pause a frame)
+    reg     in_frame = 0;
+    integer gaps = 0;
+    always @(posedge clk) begin
+        if (in_frame && !tx_mac_valid) gaps = gaps + 1;
+        if (tx_mac_valid && tx_mac_ready) in_frame = !tx_mac_last;
+    end
+
     integer f, i, ws, base, errors;
     reg [7:0] got, exp;
     initial begin
@@ -86,6 +95,10 @@ module tb_tx_unpack;
             end
             base = base + mlen[f];
             ws = ws + ((mlen[f]+3)>>2);
+        end
+        if (gaps != 0) begin
+            errors = errors + 1;
+            $display("  %0d mid-frame cycles without tx_mac_valid", gaps);
         end
         if (errors == 0) $display("RESULT: PASS (3 frames unpacked to tx_mac with correct bytes/last)");
         else             $display("RESULT: FAIL (%0d errors)", errors);

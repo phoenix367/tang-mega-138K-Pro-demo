@@ -22,6 +22,8 @@
 //   0x58 MDIO_CTRL w   [0]->read pulse  [1]->write pulse
 //   0x5C MDIO_ST   ro  [15:0]rddata [16]rd_valid [17]busy
 //   0x60 ETH_MODE  rw  [2:0] speed/duplex (driven to the MAC)
+//   0x64 RX_FRAMES ro  frames the MAC delivered, counted at line rate
+//   0x68 RX_BAD    ro  ... of which the MAC flagged bad (CRC / PHY error)
 //============================================================================
 module csr (
     // AHB-lite slave (EXTS)
@@ -65,6 +67,9 @@ module csr (
     input  wire        miim_busy,
     // MAC mode
     output reg  [2:0]  eth_mode,
+    // line-rate RX statistics (rx_path, bus domain)
+    input  wire [31:0] rx_frames,
+    input  wire [31:0] rx_bad,
     // debug: per-direction AHB master activity (EXTM bring-up)
     input  wire        rx_busy,
     input  wire        tx_busy,
@@ -153,6 +158,8 @@ module csr (
             6'h15: rd = {16'b0, miim_wrdata};
             6'h17: rd = {14'b0, miim_busy, mdio_rvalid, mdio_rdata};
             6'h18: rd = {29'b0, eth_mode};
+            6'h19: rd = rx_frames;
+            6'h1A: rd = rx_bad;
             6'h1C: rd = {tx_done_cnt, 15'b0, tx_busy};   // 0x70 TX_DBG
             6'h1D: rd = {rx_done_cnt, 15'b0, rx_busy};   // 0x74 RX_DBG
             6'h1E: rd = {28'b0, dbg_extm};               // 0x78 EXTM_DBG

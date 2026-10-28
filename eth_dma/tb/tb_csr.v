@@ -39,7 +39,8 @@ module tb_csr;
         .rx_irq_set(rx_irq_set), .tx_irq_set(tx_irq_set), .irq(irq),
         .miim_phyad(miim_phyad), .miim_regad(miim_regad), .miim_wrdata(miim_wrdata),
         .miim_wren(miim_wren), .miim_rden(miim_rden), .miim_rddata(miim_rddata),
-        .miim_rddata_valid(miim_rddata_valid), .miim_busy(miim_busy), .eth_mode(eth_mode)
+        .miim_rddata_valid(miim_rddata_valid), .miim_busy(miim_busy), .eth_mode(eth_mode),
+        .rx_frames(32'h1234_5678), .rx_bad(32'h0000_0009)
     );
 
     integer errors = 0;
@@ -119,6 +120,8 @@ module tb_csr;
         ahb_read(32'h5C, rv);
         chk(rv[15:0], 32'hBEEF, "mdio rddata");
         chk(rv[16], 1, "mdio rd_valid");
+        ahb_read(32'h64, rv); chk(rv, 32'h1234_5678, "rx_frames");
+        ahb_read(32'h68, rv); chk(rv, 32'h0000_0009, "rx_bad");
 
         if (errors == 0) $display("RESULT: PASS (CSR registers, status, IRQ, MDIO all correct)");
         else             $display("RESULT: FAIL (%0d errors)", errors);

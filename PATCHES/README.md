@@ -11,6 +11,7 @@ git apply 0001-opensbi-ae350-soft-atomics-and-priv110.patch     # in opensbi/
 git apply 0002-linux-riscv-ae350-soft-atomics.patch             # in linux/
 git apply 0003-uboot-ae350-sd-boot-and-cache.patch              # in u-boot/
 git apply 0004-linux-a25-cctl-cmo.patch                         # in linux/ (after 0002; needs 0003's CCTL_SUEN)
+git apply 0005-linux-a25-ptw-pagetable-writeback.patch         # in linux/ (after 0004)
 ```
 (or `patch -p1 < <file>`). Base versions used: OpenSBI v1.8, Linux 6.12, U-Boot 2026.07-rc3.
 
@@ -63,6 +64,21 @@ git apply 0004-linux-a25-cctl-cmo.patch                         # in linux/ (aft
   `CONFIG_RISCV_NONSTANDARD_CACHE_OPS=y`, errata/Zicbom CMO off. Note: this only
   takes effect for drivers that use **streaming DMA** (`dma_map_*`); a driver on
   `dma_alloc_coherent` (uncached) never calls these ops.
+
+## 0005 — Linux A25 page-table writeback (needed for fast DDR; after 0004)
+- New `arch/riscv/include/asm/a25-ptwb.h`; hooks in `asm/pgtable.h` (`set_pte`,
+  `set_pmd`, `ptep_get_and_clear`, `ptep_set_wrprotect`), `mm/pgtable.c`
+  (`ptep_test_and_clear_young`) and `asm/pgalloc.h` (`pgd_alloc`, `pmd_populate*`).
+  These write every page-table store back to DRAM with a CCTL L1D_VA_WB (plus fences).
+  For whole pages, the new pgd and freshly zeroed PTE tables, every line is written back.
+- **Why:** the A25 hardware page-table walker reads page tables from the bus, not
+  through the L1 D-cache, and nothing makes it coherent with dirty lines. The slow
+  stock DDR bridge hid this. With the line-buffered `ddr_bridge/`, fork/exec
+  oopsed: a new pgd was walked with stale kernel entries.
+- Runtime switch `/sys/module/kernel/parameters/a25_ptwb` (default 1, boot
+  `a25_ptwb=0`). Verified on HW (kernel #46): bridge MODE 0 / 0x10000 at 200 MHz and
+  400 MHz run memtest + 3000 fork / 500 exec with 0 oopses. With the same kernel and
+  `a25_ptwb=0`, MODE 0 oopses within seconds.
 
 ## Note on correctness
 The soft atomics are correct **only because the system is single-hart** (the only
