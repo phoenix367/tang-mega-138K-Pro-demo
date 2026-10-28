@@ -9,6 +9,10 @@
 # -L = local line (ignore modem carrier on the bare UART) so the prompt shows.
 ttyS0::respawn:/sbin/getty -L 115200 ttyS0 vt100
 
+# Login prompt on the LCD console too (fbcon VT 1; no keyboard on the board,
+# so it only shows the prompt until one is attached).
+tty1::respawn:/sbin/getty -L 38400 tty1 linux
+
 # Reboot on Ctrl-Alt-Del; rcK stops services + syncs + quiet remount-ro.
 ::ctrlaltdel:/sbin/reboot
 ::shutdown:/etc/init.d/rcK

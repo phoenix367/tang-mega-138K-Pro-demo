@@ -5,6 +5,8 @@
  * Self-contained (no U-Boot includes). Differences vs our U-Boot DT:
  *   - riscv,isa = "rv32imafdc"  (expose the FPU; userspace is ilp32d)
  *   - chosen/bootargs carry earlycon + console for the 8250 at 0xf0300020
+ *     (console=tty0 too: the boot log also goes to fbcon on the LCD; ttyS0
+ *     stays last, so /dev/console is the UART)
  * OpenSBI (generic) keys off: andestech,plmt0 (M-mode timer), andestech,plicsw
  * (IPI), riscv,plic0 (irqchip), ns16550a (console). 50 MHz APB/timer clocks.
  */
@@ -24,7 +26,7 @@
 		 * pointer-hash key never seeds and /proc/net/* prints "(ptrval)",
 		 * which breaks netstat/ss parsing. Print real pointers instead
 		 * (acceptable on a dev board). */
-		bootargs = "console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0300020 loglevel=8 no_hash_pointers";
+		bootargs = "console=tty0 console=ttyS0,115200n8 earlycon=uart8250,mmio32,0xf0300020 loglevel=8 no_hash_pointers";
 		stdout-path = "/soc/serial@f0300000:115200n8";
 	};
 
