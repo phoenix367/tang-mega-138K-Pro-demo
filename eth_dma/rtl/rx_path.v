@@ -2,13 +2,13 @@
 //============================================================================
 // rx_path.v -- complete Ethernet RX DMA path.
 //
-//   rx_mac stream (rx_mac_clk) --> rx_capture --> rx_sf_buffer --\
-//                                  (pack bytes)  (store&forward)  |
-//                                                                 v
-//      data  CDC_FIFO_Buffer --\                          (rewindable write
-//      meta  CDC_FIFO_Buffer --+--> rx_ring_writer         pointer; whole-frame
-//                              |    (bus_clk) --> AHB        commit or rewind)
-//                              v    master port -> DRAM ring
+//   rx_mac stream (rx_mac_clk) --> rx_capture --> rx_sf_buffer --> pair packer --\
+//                                  (pack bytes)  (store&forward)  (2 words -> 64b) |
+//                                                                                  v
+//      data  CDC_FIFO_Buffer (64-bit) --\                          (rewindable write
+//      meta  CDC_FIFO_Buffer -----------+--> rx_ring_writer         pointer; whole-frame
+//                                       |    (bus_clk) --> 64-bit    commit or rewind)
+//                                       v    AHB master -> DRAM ring
 //
 // rx_sf_buffer is a single-clock (MAC domain) store-and-forward stage: it buffers
 // each frame and only releases COMPLETE frames into the CDC FIFOs, data words
@@ -23,7 +23,7 @@
 // bus domain; rx_head/drop_cnt/irq report status.
 //============================================================================
 module rx_path #(
-    parameter DATA_DEPTH = 1024,      // words; MUST hold one whole max frame
+    parameter DATA_DEPTH = 512,       // 64-bit entries; MUST hold one whole max frame
     parameter META_DEPTH = 8,         // frames in flight; power of two
     parameter STAGE_AW   = 10,        // staging RAM = 2^STAGE_AW words
     parameter INFO_AW    = 4,         // staging frame-info FIFO depth = 2^INFO_AW
@@ -56,8 +56,8 @@ module rx_path #(
     output wire        hwrite,
     output wire [2:0]  hsize,
     output wire [2:0]  hburst,
-    output wire [31:0] hwdata,
-    input  wire [31:0] hrdata,
+    output wire [63:0] hwdata,        // 64-bit beats (EXTM is 64-bit)
+    input  wire [63:0] hrdata,
     input  wire        hready,
     input  wire        hresp
 );
@@ -85,7 +85,7 @@ module rx_path #(
     wire        sf_data_valid, sf_meta_valid;
     wire [31:0] sf_data_word;
     wire [16:0] sf_meta_word;
-    wire        sf_data_ready, sf_meta_ready;     // = CDC FIFO input_ready
+    wire        sf_data_ready, sf_meta_ready;     // from the pair packer
     wire [15:0] sf_drop;                          // whole-frame drops (MAC domain)
     rx_sf_buffer #(.AW(STAGE_AW), .INFO_AW(INFO_AW)) sf (
         .clk(rx_mac_clk), .rstn(~in_clear),
@@ -96,31 +96,65 @@ module rx_path #(
         .drop_cnt(sf_drop)
     );
 
-    // ---- data CDC FIFO (32-bit words) ----
+    // ---- pair packer (rx_mac_clk): two 32-bit words -> one 64-bit entry ----
+    // {w[2i+1], w[2i]} per entry; a frame with an odd word count is flushed with
+    // an unused upper half when its trailer comes up.  The trailer is held back
+    // until the frame's last entry is in the data FIFO, so the bus side still
+    // sees a frame's whole data before its trailer.
+    reg         pk_lo_v;                      // a low word is waiting for its pair
+    reg  [31:0] pk_lo;
+    reg         pk_v;                         // an entry is waiting for the FIFO
+    reg  [63:0] pk_d;
+    wire        pk_ready;                     // = data CDC FIFO input_ready
+    wire        pk_free  = !pk_v || pk_ready; // pk_d can take an entry this cycle
+    wire        pk_flush = sf_meta_valid && pk_lo_v && pk_free;
+    wire        pk_meta_valid;
+    assign sf_data_ready  = !pk_lo_v || pk_free;
+    assign pk_meta_valid  = sf_meta_valid && !pk_lo_v && !pk_v;
+    always @(posedge rx_mac_clk or posedge in_clear) begin
+        if (in_clear) begin
+            pk_lo_v <= 1'b0; pk_lo <= 32'd0; pk_v <= 1'b0; pk_d <= 64'd0;
+        end else begin
+            if (pk_v && pk_ready) pk_v <= 1'b0;
+            if (sf_data_valid && sf_data_ready) begin
+                if (!pk_lo_v) begin
+                    pk_lo <= sf_data_word; pk_lo_v <= 1'b1;
+                end else begin
+                    pk_d <= {sf_data_word, pk_lo}; pk_v <= 1'b1; pk_lo_v <= 1'b0;
+                end
+            end else if (pk_flush) begin
+                pk_d <= {32'd0, pk_lo}; pk_v <= 1'b1; pk_lo_v <= 1'b0;
+            end
+        end
+    end
+
+    // ---- data CDC FIFO (64-bit entries) ----
     wire        data_valid, data_ready;
-    wire [31:0] data_word;
-    CDC_FIFO_Buffer #(.WORD_WIDTH(32), .DEPTH(DATA_DEPTH), .RAMSTYLE(""),
+    wire [63:0] data_word;
+    CDC_FIFO_Buffer #(.WORD_WIDTH(64), .DEPTH(DATA_DEPTH), .RAMSTYLE(""),
                       .CIRCULAR_BUFFER(0), .CDC_EXTRA_STAGES(0)) dfifo (
         .input_clock(rx_mac_clk),  .input_clear(in_clear),
-        .input_valid(sf_data_valid), .input_ready(sf_data_ready), .input_data(sf_data_word),
+        .input_valid(pk_v), .input_ready(pk_ready), .input_data(pk_d),
         .output_clock(bus_clk),    .output_clear(out_clear),
         .output_valid(data_valid), .output_ready(data_ready), .output_data(data_word)
     );
 
     // ---- metadata CDC FIFO ({err,len} = 17 bits) ----
-    wire        meta_valid, meta_ready;
+    wire        meta_valid, meta_ready, mf_ready;
+    assign sf_meta_ready = mf_ready && !pk_lo_v && !pk_v;
     wire [16:0] meta_out;
     CDC_FIFO_Buffer #(.WORD_WIDTH(17), .DEPTH(META_DEPTH), .RAMSTYLE(""),
                       .CIRCULAR_BUFFER(0), .CDC_EXTRA_STAGES(0)) mfifo (
         .input_clock(rx_mac_clk),  .input_clear(in_clear),
-        .input_valid(sf_meta_valid), .input_ready(sf_meta_ready), .input_data(sf_meta_word),
+        .input_valid(pk_meta_valid), .input_ready(mf_ready), .input_data(sf_meta_word),
         .output_clock(bus_clk),    .output_clear(out_clear),
         .output_valid(meta_valid), .output_ready(meta_ready), .output_data(meta_out)
     );
 
     // ---- ring writer + AHB master (bus_clk) ----
     wire        cmd_valid, cmd_ready, cmd_wr, cmd_done, w_req;
-    wire [31:0] cmd_addr, w_data;
+    wire [31:0] cmd_addr;
+    wire [63:0] w_data;
     wire [15:0] cmd_len;
     wire [15:0] ring_drop;
     rx_ring_writer #(.BUF_SHIFT(BUF_SHIFT)) wr (
@@ -133,7 +167,7 @@ module rx_path #(
         .cmd_valid(cmd_valid), .cmd_ready(cmd_ready), .cmd_addr(cmd_addr),
         .cmd_len(cmd_len), .cmd_wr(cmd_wr), .cmd_done(cmd_done), .w_req(w_req), .w_data(w_data)
     );
-    ahb_master ahbm (
+    ahb_master #(.DATA_W(64)) ahbm (
         .hclk(bus_clk), .hresetn(~out_clear), .cmd_valid(cmd_valid), .cmd_ready(cmd_ready),
         .cmd_addr(cmd_addr), .cmd_len(cmd_len), .cmd_wr(cmd_wr), .cmd_done(cmd_done),
         .cmd_err(), .busy(busy), .w_req(w_req), .w_data(w_data), .r_valid(), .r_data(),

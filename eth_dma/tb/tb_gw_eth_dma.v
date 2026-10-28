@@ -32,11 +32,13 @@ module tb_gw_eth_dma;
     wire        s_hready, s_hresp;
 
     // EXTM master ports + arbiter + DRAM
-    wire [31:0] m0_haddr, m0_hwdata, m0_hrdata, m1_haddr, m1_hwdata, m1_hrdata;
+    wire [31:0] m0_haddr, m1_haddr, m1_hwdata, m1_hrdata;
+    wire [63:0] m0_hwdata, m0_hrdata;
     wire [1:0]  m0_htrans, m1_htrans;
     wire        m0_hwrite, m0_hready, m0_hresp, m0_busy, m1_hwrite, m1_hready, m1_hresp, m1_busy;
     wire [2:0]  m0_hsize, m0_hburst, m1_hsize, m1_hburst;
-    wire [31:0] e_haddr, e_hwdata, e_hrdata;
+    wire [31:0] e_haddr;
+    wire [63:0] e_hwdata, e_hrdata;   // merged EXTM-side bus is 64-bit
     wire [1:0]  e_htrans; wire e_hwrite, e_hready, e_hresp; wire [2:0] e_hsize, e_hburst;
 
     wire        irq; wire [2:0] eth_mode;
@@ -72,13 +74,17 @@ module tb_gw_eth_dma;
         .active(), .haddr(e_haddr), .htrans(e_htrans), .hwrite(e_hwrite), .hsize(e_hsize), .hburst(e_hburst),
         .hwdata(e_hwdata), .hrdata(e_hrdata), .hready(e_hready), .hresp(e_hresp)
     );
-    ahb_slave_ram #(.AW(14)) dram (
+    ahb_slave_ram #(.DATA_W(64), .AW(13)) dram (
         .hclk(bus_clk), .hresetn(arst_n), .haddr(e_haddr), .htrans(e_htrans), .hwrite(e_hwrite),
         .hsize(e_hsize), .hburst(e_hburst), .hwdata(e_hwdata), .hrdata(e_hrdata),
         .hready(e_hready), .hresp(e_hresp)
     );
 
     function [7:0] pat(input integer i); pat = 8'h10 + i; endfunction
+    // 32-bit word / byte views of the 64-bit DRAM model (byte addresses)
+    function [31:0] dword(input [31:0] b); dword = dram.mem[b >> 3][b[2]*32 +: 32]; endfunction
+    function [7:0]  dbyte(input [31:0] b); dbyte = dram.mem[b >> 3][b[2:0]*8 +: 8]; endfunction
+    task dword_set(input [31:0] b, input [31:0] v); dram.mem[b >> 3][b[2]*32 +: 32] = v; endtask
 
     task ahb_write(input [31:0] addr, input [31:0] data);
         begin
@@ -93,11 +99,11 @@ module tb_gw_eth_dma;
     initial begin
         errors = 0;
         // pre-load the TX frame at TX ring buffer 0
-        dram.mem[TX_BASE>>2] = {16'b0, FLEN[15:0]};           // header {len}
+        dword_set(TX_BASE, {16'b0, FLEN[15:0]});             // header {len}
         for (w = 0; w < ((FLEN+3)>>2); w = w + 1) begin
             word = 0;
             for (j = 0; j < 4; j = j + 1) if (w*4+j < FLEN) word[j*8 +: 8] = pat(w*4+j);
-            dram.mem[(TX_BASE + 4 + w*4) >> 2] = word;
+            dword_set(TX_BASE + 4 + w*4, word);
         end
 
         arst_n = 0;
@@ -122,15 +128,15 @@ module tb_gw_eth_dma;
             errors = errors + 1; $display("  rx_head=%0d (frame did not loop back)", dut.u_rx.rx_head);
         end else begin
             // check the RX ring buffer 0: header + data
-            if (dram.mem[RX_BASE>>2] !== {16'b0, FLEN[15:0]}) begin
+            if (dword(RX_BASE) !== {16'b0, FLEN[15:0]}) begin
                 errors = errors + 1;
-                $display("  RX header got %08x exp %08x", dram.mem[RX_BASE>>2], {16'b0, FLEN[15:0]});
+                $display("  RX header got %08x exp %08x", dword(RX_BASE), {16'b0, FLEN[15:0]});
             end
             for (i = 0; i < FLEN; i = i + 1) begin
-                if (dram.mem[(RX_BASE+4+i)>>2][(i%4)*8 +: 8] !== pat(i)) begin
+                if (dbyte(RX_BASE+4+i) !== pat(i)) begin
                     errors = errors + 1;
                     if (errors < 8) $display("  RX byte %0d got %02x exp %02x", i,
-                        dram.mem[(RX_BASE+4+i)>>2][(i%4)*8 +: 8], pat(i));
+                        dbyte(RX_BASE+4+i), pat(i));
                 end
             end
         end

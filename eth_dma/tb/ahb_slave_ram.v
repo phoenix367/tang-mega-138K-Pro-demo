@@ -2,6 +2,7 @@
 //============================================================================
 // ahb_slave_ram.v -- AHB-lite slave memory (sim model).
 //   Captures the address phase, then services the data phase one cycle later.
+//   DATA_W 32 or 64: memory words are DATA_W wide and full-width transfers only.
 //   WAIT_PCT > 0 inserts random wait states (HREADY low) into data phases;
 //   0 = zero-wait (the original behaviour).  HRESP always OKAY.
 //   Protocol checks (count in `proto_err`): a SEQ beat must follow the previous
@@ -29,6 +30,7 @@ module ahb_slave_ram #(
 );
     localparam [1:0] HTRANS_NONSEQ = 2'b10;
     localparam [1:0] HTRANS_SEQ    = 2'b11;
+    localparam       LB = (DATA_W == 64) ? 3 : 2;      // byte-address bits per word
 
     reg [DATA_W-1:0] mem [0:(1<<AW)-1];
 
@@ -57,7 +59,7 @@ module ahb_slave_ram #(
             // capture this cycle's address phase
             a_valid <= active;
             a_write <= hwrite;
-            a_addr  <= haddr[AW+1:2];
+            a_addr  <= haddr[AW+LB-1:LB];
         end
     end
 
@@ -81,7 +83,7 @@ module ahb_slave_ram #(
     endfunction
     always @(posedge hclk) if (hresetn && active && hready) begin
         if (htrans == HTRANS_SEQ) begin
-            if (haddr != p_addr + 4 || hwrite != p_write || hburst != p_burst) begin
+            if (haddr != p_addr + (1 << LB) || hwrite != p_write || hburst != p_burst) begin
                 proto_err = proto_err + 1;
                 $display("  AHB: bad SEQ beat @%08x (prev %08x)", haddr, p_addr);
             end

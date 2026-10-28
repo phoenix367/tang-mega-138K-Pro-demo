@@ -270,3 +270,15 @@ Follow-ups (Oct 2026):
   burst-protocol checks (tb_ahb_master, tb_rx_path WAIT_PCT) and on hardware
   (Build 40, md5 both ways). Remaining headroom: 64-bit beats (EXTM is 64-bit)
   would take the RX DMA past line rate; TX reads could use bursts too.
+- **64-bit RX beats** (Build 43): the SoC charges per burst *start* (~16 cycles),
+  and it streams only fixed-length bursts -- undefined-length INCR bursts are
+  as slow as single transfers (Build 41) -- so the way to fewer burst starts is
+  wider beats. The RX path is now 64-bit end to end on the bus side: a MAC-domain
+  pair packer puts {w[2i+1], w[2i]} into a 64-bit CDC FIFO, rx_ring_writer
+  realigns them behind the header (beat 0 = {w0, header}, beat k = {w[2k],
+  w[2k-1]}) and writes header + data as one INCR16 command of 64-bit beats; the
+  arbiter carries 64-bit data (the 32-bit TX master gets lane handling there)
+  and extm_bridge is a pass-through. Same DRAM layout, so no driver change.
+  Result: no drops for line-rate bursts of 8..64 frames (the whole ring); TCP RX
+  34.8 -> 48-50 Mbit/s, RX drops 973 -> 0, host retransmits 974 -> 5; TX 35
+  Mbit/s; md5 OK both ways incl. a 6-round bidirectional soak.

@@ -8,7 +8,8 @@
 // On a zero-wait slave a long write must take ~1 cycle per beat (pipelined).
 //============================================================================
 module tb_ahb_master;
-    parameter WAIT_PCT = 0;
+    parameter WAIT_PCT  = 0;
+    parameter MAX_BURST = 16;      // ahb_master write bursts (0 = INCR to 1 KB)
 
     reg hclk = 1'b0;
     reg hresetn = 1'b0;
@@ -36,7 +37,7 @@ module tb_ahb_master;
 
     wire [31:0] w_data = wsrc[widx];
 
-    ahb_master dut (
+    ahb_master #(.MAX_BURST(MAX_BURST)) dut (
         .hclk(hclk), .hresetn(hresetn),
         .cmd_valid(cmd_valid), .cmd_ready(cmd_ready), .cmd_addr(cmd_addr),
         .cmd_len(cmd_len), .cmd_wr(cmd_wr), .cmd_done(cmd_done), .cmd_err(cmd_err),
@@ -121,7 +122,7 @@ module tb_ahb_master;
             end
         end
         errors = errors + slv.proto_err;
-        if (errors == 0) $display("RESULT: PASS (10 transfers round-tripped, bursts clean, wait %0d%%)", WAIT_PCT);
+        if (errors == 0) $display("RESULT: PASS (10 transfers round-tripped, bursts clean, wait %0d%%, max burst %0d)", WAIT_PCT, MAX_BURST);
         else             $display("RESULT: FAIL (%0d errors)", errors);
         $finish;
     end

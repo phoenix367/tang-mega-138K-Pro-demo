@@ -35,8 +35,8 @@ module gw_eth_dma_core (
     output wire        s_hresp,
     // EXTM master 0 (RX write)
     output wire [31:0] m0_haddr,  output wire [1:0] m0_htrans, output wire m0_hwrite,
-    output wire [2:0]  m0_hsize,  output wire [2:0] m0_hburst, output wire [31:0] m0_hwdata,
-    input  wire [31:0] m0_hrdata, input  wire m0_hready, input wire m0_hresp, output wire m0_busy,
+    output wire [2:0]  m0_hsize,  output wire [2:0] m0_hburst, output wire [63:0] m0_hwdata,
+    input  wire [63:0] m0_hrdata, input  wire m0_hready, input wire m0_hresp, output wire m0_busy,
     // EXTM master 1 (TX read)
     output wire [31:0] m1_haddr,  output wire [1:0] m1_htrans, output wire m1_hwrite,
     output wire [2:0]  m1_hsize,  output wire [2:0] m1_hburst, output wire [31:0] m1_hwdata,

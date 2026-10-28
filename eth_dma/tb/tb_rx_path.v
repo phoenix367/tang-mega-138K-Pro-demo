@@ -23,7 +23,8 @@ module tb_rx_path;
     wire [15:0] rx_head, drop_cnt;
     wire        irq;
 
-    wire [31:0] haddr, hwdata, hrdata;
+    wire [31:0] haddr;
+    wire [63:0] hwdata, hrdata;
     wire [1:0]  htrans; wire hwrite, hready, hresp; wire [2:0] hsize, hburst;
     wire [31:0] stat_frames, stat_bad;
 
@@ -37,7 +38,7 @@ module tb_rx_path;
         .haddr(haddr), .htrans(htrans), .hwrite(hwrite), .hsize(hsize), .hburst(hburst),
         .hwdata(hwdata), .hrdata(hrdata), .hready(hready), .hresp(hresp)
     );
-    ahb_slave_ram #(.AW(12), .WAIT_PCT(WAIT_PCT)) slv (
+    ahb_slave_ram #(.DATA_W(64), .AW(12), .WAIT_PCT(WAIT_PCT)) slv (
         .hclk(bus_clk), .hresetn(arst_n), .haddr(haddr), .htrans(htrans), .hwrite(hwrite),
         .hsize(hsize), .hburst(hburst), .hwdata(hwdata), .hrdata(hrdata),
         .hready(hready), .hresp(hresp)
@@ -84,13 +85,13 @@ module tb_rx_path;
         for (f = 0; f < 3; f = f + 1) begin
             base = (f % ring_len) << BUF_SHIFT;
             hdr  = {15'b0, ferr_a[f][0], flen[f][15:0]};
-            if (slv.mem[base[13:2]] !== hdr) begin
+            if (slv.mem[base >> 3][31:0] !== hdr) begin
                 errors = errors + 1;
-                $display("  frame %0d header got %08x exp %08x", f, slv.mem[base[13:2]], hdr);
+                $display("  frame %0d header got %08x exp %08x", f, slv.mem[base >> 3][31:0], hdr);
             end
             for (i = 0; i < flen[f]; i = i + 1) begin
-                widx = (base + 4 + i) >> 2;
-                got  = slv.mem[widx][(i%4)*8 +: 8];
+                widx = base + 4 + i;                     // byte address
+                got  = slv.mem[widx >> 3][(widx % 8)*8 +: 8];
                 exp  = pat(f, i);
                 if (got !== exp) begin
                     errors = errors + 1;

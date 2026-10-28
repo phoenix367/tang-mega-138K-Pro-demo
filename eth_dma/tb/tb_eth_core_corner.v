@@ -46,11 +46,14 @@ module tb_eth_core_corner;
     reg  [31:0] s_haddr=0, s_hwdata=0;  reg [1:0] s_htrans=0;  reg s_hwrite=0, s_hsel=0;
     wire [31:0] s_hrdata;  wire s_hready, s_hresp;
 
-    wire [31:0] m0_haddr, m0_hwdata, m0_hrdata, m1_haddr, m1_hwdata, m1_hrdata;
+    wire [31:0] m0_haddr, m1_haddr, m1_hwdata, m1_hrdata;
+    wire [63:0] m0_hwdata, m0_hrdata;
     wire [1:0]  m0_htrans, m1_htrans;
     wire        m0_hwrite, m0_hready, m0_hresp, m0_busy, m1_hwrite, m1_hready, m1_hresp, m1_busy;
     wire [2:0]  m0_hsize, m0_hburst, m1_hsize, m1_hburst;
-    wire [31:0] ah, awd, ard;  wire [1:0] at;  wire aw, ardy, ars, aact;  wire [2:0] asz, abt;
+    wire [31:0] ah;
+    wire [63:0] awd, ard;    // merged arbiter bus is 64-bit
+     wire [1:0] at;  wire aw, ardy, ars, aact;  wire [2:0] asz, abt;
     wire [31:0] eh;  wire [63:0] e64wd, e64rd;  wire [1:0] et;  wire ew, ehsel, ehrdy_in, ehrdyout, ehresp;
     wire [2:0]  esz, ebt;  wire [3:0] eprot;
     wire [3:0]  dbg_extm = {ehresp, ehrdyout, et[1], ehsel};

@@ -2,8 +2,8 @@
 `default_nettype none
 //============================================================================
 // ahb_slave_ram64.v -- zero-wait 64-bit AHB-lite slave RAM (models the EXTM
-// slave). 32-bit transfers update only the active lane (HADDR[2]); reads return
-// the full 64-bit word (the extm_bridge selects the lane).
+// slave). 64-bit transfers (HSIZE=011) write the whole word; 32-bit transfers
+// update only the active lane (HADDR[2]); reads return the full 64-bit word.
 //============================================================================
 module ahb_slave_ram64 #(parameter AW = 12)(   // AW = 64-bit-word address bits
     input  wire        hclk,
@@ -22,17 +22,19 @@ module ahb_slave_ram64 #(parameter AW = 12)(   // AW = 64-bit-word address bits
 );
     reg [63:0] mem [0:(1<<AW)-1];
     reg [AW-1:0] a_word;
-    reg          a_lane, a_wr, a_sel;
+    reg          a_lane, a_wr, a_sel, a_w64;
     wire         active = hsel && hready_in && htrans[1];
 
     always @(posedge hclk) begin
         if (active) begin
             a_word <= haddr[AW+2:3];
             a_lane <= haddr[2];
+            a_w64  <= (hsize == 3'b011);
             a_wr   <= hwrite;
             a_sel  <= 1'b1;
         end else a_sel <= 1'b0;
-        if (a_sel && a_wr) mem[a_word][a_lane*32 +: 32] <= hwdata[a_lane*32 +: 32];
+        if (a_sel && a_wr && a_w64)  mem[a_word] <= hwdata;
+        else if (a_sel && a_wr)      mem[a_word][a_lane*32 +: 32] <= hwdata[a_lane*32 +: 32];
     end
     assign hrdata = mem[a_word];
     assign hready = 1'b1;

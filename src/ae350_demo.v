@@ -154,11 +154,13 @@ wire mdio_in, mdio_out, mdio_oen;
 
 // gw_eth_dma: CSR on EXTS; two AHB masters -> arbiter -> extm_bridge -> EXTM(64-bit).
 wire [2:0]  eth_mode;
-wire [31:0] m0_haddr, m0_hwdata, m0_hrdata, m1_haddr, m1_hwdata, m1_hrdata;
+wire [31:0] m0_haddr, m1_haddr, m1_hwdata, m1_hrdata;
+wire [63:0] m0_hwdata, m0_hrdata;      // RX DMA master: 64-bit beats
 wire [1:0]  m0_htrans, m1_htrans;
 wire        m0_hwrite, m0_hready, m0_hresp, m0_busy, m1_hwrite, m1_hready, m1_hresp, m1_busy;
 wire [2:0]  m0_hsize, m0_hburst, m1_hsize, m1_hburst;
-wire [31:0] arb_haddr, arb_hwdata, arb_hrdata;
+wire [31:0] arb_haddr;
+wire [63:0] arb_hwdata, arb_hrdata;
 wire [1:0]  arb_htrans;
 wire        arb_hwrite, arb_hready, arb_hresp, arb_active;
 wire [2:0]  arb_hsize, arb_hburst;
