@@ -210,3 +210,39 @@ cache glue (validate with a standalone DMA self-test first).
 - EXTM master correctness + arbitration with the CPU on the SoC interconnect.
 - Non-coherent cache ops on the A25 under Linux (biggest unknown).
 - Descriptor/buffer coherence (OWN-bit ordering vs cache sync).
+
+## Driver performance pass (Oct 2026, `linux/driver/gw_tse.c`)
+
+Profiled with a perf_event_open sampler on the board (TCP to/from the host,
+DDR3-800 + 100 MHz memory bus). The CPU is busy at only ~2-3k frames/s; the
+driver was ~15% of it, the rest the TCP/IP stack spread thinly (slow in-order
+core, no L2, ~1.4 us DRAM miss, soft atomics, `rdtime` trapping to OpenSBI).
+
+Fixed in the driver:
+- **Cache coherence**: RISC-V marks DT devices DMA-coherent by default and rv32
+  has no uncached page attribute, so `dma_alloc_coherent()` returned plain
+  *cached* memory with no maintenance at all (RX could read stale lines). Rings
+  are now kmalloc + streaming mappings; RX slots are invalidated before reading,
+  TX slots written back before the doorbell (A25 CCTL ops). The driver clears
+  `dev->dma_coherent` itself.
+- Frame copies: ring data (0 mod 4) vs skb data (2 mod 4) made the riscv
+  `memcpy` byte-copy; `gtse_copy()` uses aligned words with a 16-bit shift.
+- TX-done interrupts only while the queue is stopped (was one per frame);
+  TX_HEAD read only when the ring looks full; doorbell batched by `xmit_more`.
+- Rings 64 RX / 32 TX (module params `rx_ring`, `tx_ring`).
+
+Measured (32 MB transfers, md5-checked both ways):
+
+| | before | after |
+|---|---|---|
+| RX TCP (board `wget`) | 23.6 Mbit/s | 24.8 Mbit/s |
+| TX TCP (host `curl` from board `httpd`) | 29.6 Mbit/s | 36.0 Mbit/s |
+| UDP TX blast, 1472 B | 2.1k pps | 3.3k pps |
+| eth IRQs per benchmark run | 144k | 58k |
+
+**RX is limited by the gateware, not the driver**: the RX DMA writes DRAM with
+single-beat 32-bit AHB writes (half of the 64-bit EXTM port) at only ~7-8k
+full frames/s (~10-12 MB/s). With an idle board only the first 6-7 frames of a
+line-rate burst survive (staging + CDC FIFO ~8 KB); TCP bursts from the host
+therefore lose ~5% of frames (RX_DROP == host retransmits). Next lever: INCR
+bursts / 64-bit writes in `ahb_master` and more RX buffering.

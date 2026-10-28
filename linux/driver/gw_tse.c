@@ -1,39 +1,32 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Gowin Triple-Speed Ethernet MAC -- PIO (no-DMA) netdev driver
- * for the AE350 SoC on the Tang Mega 138K Pro Dock.
+ * Gowin Triple-Speed Ethernet -- descriptor-ring DMA NAPI driver for the
+ * gw_eth_dma engine on the AE350 SoC (Tang Mega 138K Pro Dock).
  *
- * The MAC exposes a single 1536-byte frame window (TX on write / RX on read)
- * plus length/enable/irq and an MDIO (MIIM) block, all on the SoC's external
- * AHB-slave port at 0xE8000000. There are NO DMA descriptor rings -- the CPU
- * copies each frame through the register window -- so this driver is immune to
- * the SoC's missing-coherence-manager problem (see CACHE_ISSUES.md). Throughput
- * is modest (one CPU-copied frame at a time); fine for management/control.
+ * The gateware (eth_dma/rtl/csr.v, EXTS slave at 0xE8000000) is a real DMA
+ * engine: it moves frames between the MAC and a ring of fixed 2 KB DRAM buffers
+ * over the SoC's EXTM master port, via a custom AHB arbiter -- no more per-frame
+ * CPU PIO. RX and TX each have a power-of-two ring of 2 KB buffers; head/tail
+ * counters (cumulative, mod 2^16) give producer/consumer flow control:
  *
- * Register map (from the SDK bare-metal ethernet.h):
- *   0x000..0x5FF  frame window: ETH_TX_DATA[384] (W) / ETH_RX_DATA[384] (R)
- *   0x600 TX_LENGTH[10:0]  0x604 TX_EN[0]  0x608 TX_FAIL[2:0]
- *   0x60C TX_IS  0x610 TX_IC  0x614 TX_IE          (all bit0)
- *   0x680 RX_LENGTH  0x684 RX_IS  0x688 RX_IE  0x68C RX_IC
- *   0x700 MIIM_OP_MODE(0=wr,1=rd) 0x704 PHYAD[4:0] 0x708 REGAD[4:0]
- *   0x70C MIIM_WRDATA 0x710 MIIM_RDDATA 0x714 MIIM_IS(b1 op-end,b0 rd-valid)
- *   0x718 MIIM_IE 0x71C MIIM_IC 0x720 MIIM_OP_EN[0]
- *   0x724 ETH_MODE: [1:0] speed(0=100,1=1000,2=10), bit2=half-duplex
+ *   RX: DMA writes buffer (RX_HEAD & (len-1)) = [hdr{[16]err,[15:0]len}][data],
+ *       bumps RX_HEAD, IRQs rx_done; CPU consumes up to RX_HEAD, bumps RX_TAIL.
+ *   TX: CPU writes buffer (TX_TAIL & (len-1)) = [len][data], bumps TX_TAIL;
+ *       DMA transmits, bumps TX_HEAD, IRQs tx_done.
  *
- * Devicetree (drop into the SoC node):
- *   ethernet@e8000000 {
- *       compatible  = "gowin,ae350-tse";
- *       reg         = <0xe8000000 0x800>;
- *       interrupt-parent = <&plic>;
- *       interrupts  = <4>;                 // EXT_INT[0] == GP0 == PLIC src 4
- *       phy-mode    = "rgmii-id";          // PHY supplies the RGMII delay
- *       phy-handle  = <&phy0>;
- *       mdio {
- *           #address-cells = <1>;
- *           #size-cells = <0>;
- *           phy0: ethernet-phy@0 { reg = <0>; };   // RTL8211-class, MDIO addr 0
- *       };
- *   };
+ * The A25 has no coherence manager and rv32 has no uncached page attribute, so
+ * dma_alloc_coherent() would hand back plain cached memory.  The rings are
+ * therefore ordinary kmalloc memory under streaming DMA mappings: an RX slot is
+ * invalidated (dma_sync_*_for_cpu) before the CPU reads it, a TX slot written
+ * back (dma_sync_*_for_device) before the DMA is told about it.  The cache ops
+ * are the A25 CCTL ones registered in arch/riscv/mm/cmo-andes-a25.c.
+ *
+ * Per-frame cost matters on this core (~1.4 us DRAM miss): frames are copied
+ * with word accesses (gtse_copy), TX-done interrupts are only enabled while
+ * the queue is stopped, the TX doorbell honours xmit_more, and TX_HEAD is only
+ * read when the ring looks full.
+ *
+ * Devicetree is identical to the PIO driver (same compatible/reg/irq/phy/mdio).
  */
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -42,63 +35,131 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/iopoll.h>
+#include <linux/dma-mapping.h>
+#include <linux/dma-map-ops.h>
 #include <linux/of.h>
 #include <linux/of_mdio.h>
 #include <linux/of_net.h>
 #include <linux/phy.h>
 #include <linux/bitops.h>
-#include <linux/unaligned.h>
+#include <linux/log2.h>
+#include <linux/slab.h>
 
-#define GTSE_FRAME_MAX		1536
+/* ---- CSR map (eth_dma/rtl/csr.v) ---- */
+#define GTSE_CTRL		0x00	/* [0] rx_en  [1] tx_en                  */
+#define GTSE_IRQ_STAT		0x04	/* W1C [0] rx_done [1] tx_done           */
+#define GTSE_IRQ_EN		0x08
+#define GTSE_RX_BASE		0x10
+#define GTSE_RX_LEN		0x14	/* number of 2 KB buffers (power of two) */
+#define GTSE_RX_TAIL		0x18	/* frames consumed by the CPU            */
+#define GTSE_RX_HEAD		0x1c	/* frames written by the DMA (ro)        */
+#define GTSE_RX_DROP		0x20	/* (ro)                                  */
+#define GTSE_TX_BASE		0x30
+#define GTSE_TX_LEN		0x34
+#define GTSE_TX_TAIL		0x38	/* frames queued by the CPU              */
+#define GTSE_TX_HEAD		0x3c	/* frames transmitted (ro)               */
+#define GTSE_MDIO_ADDR		0x50	/* [4:0] phyad  [9:5] regad              */
+#define GTSE_MDIO_WD		0x54
+#define GTSE_MDIO_CTRL		0x58	/* [0] start read  [1] start write       */
+#define GTSE_MDIO_ST		0x5c	/* [15:0] rddata [16] rd_valid [17] busy */
+#define GTSE_ETH_MODE		0x60	/* [1:0] 0=10 1=100 2=1000  [2] full-dup */
 
-#define GTSE_TX_DATA		0x000	/* and RX_DATA -- same window */
-#define GTSE_TX_LENGTH		0x600
-#define GTSE_TX_EN		0x604
-#define GTSE_TX_FAIL		0x608
-#define GTSE_TX_IS		0x60c
-#define GTSE_TX_IC		0x610
-#define GTSE_TX_IE		0x614
-#define GTSE_RX_LENGTH		0x680
-#define GTSE_RX_IS		0x684
-#define GTSE_RX_IE		0x688
-#define GTSE_RX_IC		0x68c
-#define GTSE_MIIM_OP_MODE	0x700
-#define GTSE_MIIM_PHYAD		0x704
-#define GTSE_MIIM_REGAD		0x708
-#define GTSE_MIIM_WRDATA	0x70c
-#define GTSE_MIIM_RDDATA	0x710
-#define GTSE_MIIM_IS		0x714
-#define GTSE_MIIM_IE		0x718
-#define GTSE_MIIM_IC		0x71c
-#define GTSE_MIIM_OP_EN		0x720
-#define GTSE_ETH_MODE		0x724
+#define CTRL_RX_EN		BIT(0)
+#define CTRL_TX_EN		BIT(1)
+#define IRQ_RX_DONE		BIT(0)
+#define IRQ_TX_DONE		BIT(1)
+#define MDIO_START_READ		BIT(0)
+#define MDIO_START_WRITE	BIT(1)
+#define MDIO_RVALID		BIT(16)
+#define MDIO_BUSY		BIT(17)
+#define EMODE_10		0u
+#define EMODE_100		1u
+#define EMODE_1000		2u
+#define EMODE_FD		BIT(2)
 
-#define GTSE_IRQ_BIT		BIT(0)
-#define MIIM_OP_READ		0	/* per bare-metal: OP_MODE 0 = read */
-#define MIIM_OP_WRITE		1	/*                 OP_MODE 1 = write */
-#define MIIM_IS_OPEND		BIT(1)
-#define MIIM_IS_RDVALID		BIT(0)
-#define ETH_MODE_100		0u
-#define ETH_MODE_1000		1u
-#define ETH_MODE_10		2u
-#define ETH_MODE_HALF		BIT(2)
+#define GTSE_BUF_SIZE		2048u		/* gateware BUF_SHIFT = 11        */
+#define GTSE_HDR		4u		/* [hdr|len] word before the data*/
+#define GTSE_FRAME_MAX		(GTSE_BUF_SIZE - GTSE_HDR)
+
+/* ring depths: power of two, 4..1024 (a ring is depth x 2 KB of DRAM) */
+static unsigned int rx_ring = 64;
+module_param(rx_ring, uint, 0444);
+MODULE_PARM_DESC(rx_ring, "RX ring depth in 2 KB buffers (power of two)");
+static unsigned int tx_ring = 32;
+module_param(tx_ring, uint, 0444);
+MODULE_PARM_DESC(tx_ring, "TX ring depth in 2 KB buffers (power of two)");
 
 struct gtse_priv {
 	void __iomem *base;
 	struct net_device *ndev;
 	struct device *dev;
 	struct mii_bus *mii;
+	struct napi_struct napi;
 	int irq;
-	spinlock_t lock;	/* serialises the single frame window + MIIM */
+
+	spinlock_t irq_lock;		/* IRQ_EN shadow: ISR, NAPI and xmit change it */
+	u32 irq_en;
+
+	unsigned int rx_len, tx_len;	/* ring depths (power of two) */
+	u8 *rx_pool;			/* rx_len * 2 KB, cached, streaming-mapped */
+	dma_addr_t rx_dma;
+	u8 *tx_pool;
+	dma_addr_t tx_dma;
+	u16 rx_tail;			/* our consumer count (== CSR RX_TAIL) */
+	u16 tx_tail;			/* our producer count (CSR TX_TAIL may lag) */
+	u16 tx_head;			/* last TX_HEAD read; only refreshed when full */
 };
 
-static inline u32 gtse_rd(struct gtse_priv *p, u32 off)
+static inline u32 gtse_rd(struct gtse_priv *p, u32 off) { return ioread32(p->base + off); }
+static inline void gtse_wr(struct gtse_priv *p, u32 off, u32 v) { iowrite32(v, p->base + off); }
+
+static inline unsigned int gtse_slot(u16 idx, unsigned int len)
 {
-	return ioread32(p->base + off);
+	return (idx & (len - 1)) * GTSE_BUF_SIZE;
 }
-static inline void gtse_wr(struct gtse_priv *p, u32 off, u32 val)
+
+static void gtse_irq_update(struct gtse_priv *p, u32 clear, u32 set)
 {
-	iowrite32(val, p->base + off);
+	unsigned long flags;
+
+	spin_lock_irqsave(&p->irq_lock, flags);
+	p->irq_en = (p->irq_en & ~clear) | set;
+	gtse_wr(p, GTSE_IRQ_EN, p->irq_en);
+	spin_unlock_irqrestore(&p->irq_lock, flags);
+}
+
+/*
+ * Copy a frame between a ring slot (data at offset 4) and an skb (data at
+ * NET_IP_ALIGN = 2 mod 4).  The riscv memcpy falls back to a byte loop when
+ * source and destination are not co-aligned, so for that skew this copies
+ * with aligned word loads merged by a 16-bit shift into aligned word stores.
+ * An aligned word load never crosses a page, so reading the unused half
+ * before the start or after the end of the source is harmless.
+ */
+static void gtse_copy(u8 *dst, const u8 *src, unsigned int len)
+{
+	const u32 *s;
+	u32 *d, prev, next;
+
+	if ((((unsigned long)dst - (unsigned long)src) & 3) != 2) {
+		memcpy(dst, src, len);
+		return;
+	}
+	for (; len && ((unsigned long)dst & 3); len--)
+		*dst++ = *src++;
+	/* dst is word aligned, so src is 2 mod 4 */
+	s = (const u32 *)(src - 2);
+	d = (u32 *)dst;
+	prev = *s++;
+	for (; len >= 4; len -= 4) {
+		next = *s++;
+		*d++ = (prev >> 16) | (next << 16);
+		prev = next;
+	}
+	src = (const u8 *)s - 2;
+	dst = (u8 *)d;
+	while (len--)
+		*dst++ = *src++;
 }
 
 /* ------------------------------------------------------------------ MDIO */
@@ -108,38 +169,23 @@ static int gtse_mdio_read(struct mii_bus *bus, int phy, int reg)
 	u32 v;
 	int ret;
 
-	gtse_wr(p, GTSE_MIIM_PHYAD, phy & 0x1f);
-	gtse_wr(p, GTSE_MIIM_REGAD, reg & 0x1f);
-	gtse_wr(p, GTSE_MIIM_OP_MODE, MIIM_OP_READ);
-	gtse_wr(p, GTSE_MIIM_IC, MIIM_IS_OPEND | MIIM_IS_RDVALID);
-	gtse_wr(p, GTSE_MIIM_OP_EN, 1);
-
-	ret = readl_poll_timeout(p->base + GTSE_MIIM_IS, v,
-				 v & MIIM_IS_RDVALID, 5, 10000);
+	gtse_wr(p, GTSE_MDIO_ADDR, ((reg & 0x1f) << 5) | (phy & 0x1f));
+	gtse_wr(p, GTSE_MDIO_CTRL, MDIO_START_READ);
+	ret = readl_poll_timeout(p->base + GTSE_MDIO_ST, v, v & MDIO_RVALID, 5, 10000);
 	if (ret)
 		return ret;
-	v = gtse_rd(p, GTSE_MIIM_RDDATA) & 0xffff;
-	gtse_wr(p, GTSE_MIIM_IC, MIIM_IS_OPEND | MIIM_IS_RDVALID);
-	return v;
+	return v & 0xffff;
 }
 
 static int gtse_mdio_write(struct mii_bus *bus, int phy, int reg, u16 val)
 {
 	struct gtse_priv *p = bus->priv;
 	u32 v;
-	int ret;
 
-	gtse_wr(p, GTSE_MIIM_PHYAD, phy & 0x1f);
-	gtse_wr(p, GTSE_MIIM_REGAD, reg & 0x1f);
-	gtse_wr(p, GTSE_MIIM_WRDATA, val);
-	gtse_wr(p, GTSE_MIIM_OP_MODE, MIIM_OP_WRITE);
-	gtse_wr(p, GTSE_MIIM_IC, MIIM_IS_OPEND | MIIM_IS_RDVALID);
-	gtse_wr(p, GTSE_MIIM_OP_EN, 1);
-
-	ret = readl_poll_timeout(p->base + GTSE_MIIM_IS, v,
-				 v & MIIM_IS_OPEND, 5, 10000);
-	gtse_wr(p, GTSE_MIIM_IC, MIIM_IS_OPEND | MIIM_IS_RDVALID);
-	return ret;
+	gtse_wr(p, GTSE_MDIO_ADDR, ((reg & 0x1f) << 5) | (phy & 0x1f));
+	gtse_wr(p, GTSE_MDIO_WD, val);
+	gtse_wr(p, GTSE_MDIO_CTRL, MDIO_START_WRITE);
+	return readl_poll_timeout(p->base + GTSE_MDIO_ST, v, !(v & MDIO_BUSY), 5, 10000);
 }
 
 /* ------------------------------------------------------------------ link */
@@ -151,91 +197,118 @@ static void gtse_adjust_link(struct net_device *ndev)
 
 	if (!phy->link)
 		return;
-
 	switch (phy->speed) {
-	case SPEED_1000: mode = ETH_MODE_1000; break;
-	case SPEED_10:   mode = ETH_MODE_10;   break;
-	default:         mode = ETH_MODE_100;  break;
+	case SPEED_1000: mode = EMODE_1000; break;
+	case SPEED_10:   mode = EMODE_10;   break;
+	default:         mode = EMODE_100;  break;
 	}
-	if (phy->duplex != DUPLEX_FULL)
-		mode |= ETH_MODE_HALF;
-
+	if (phy->duplex == DUPLEX_FULL)
+		mode |= EMODE_FD;
 	gtse_wr(p, GTSE_ETH_MODE, mode);
 	phy_print_status(phy);
 }
 
-/* -------------------------------------------------------------------- RX */
-static void gtse_rx_one(struct net_device *ndev)
+/* ----------------------------------------------------------- RX (NAPI) */
+static int gtse_poll(struct napi_struct *napi, int budget)
 {
-	struct gtse_priv *p = netdev_priv(ndev);
-	u32 len = gtse_rd(p, GTSE_RX_LENGTH) & 0x7ff;
-	unsigned int i, words;
-	struct sk_buff *skb;
-	u8 *dst;
+	struct gtse_priv *p = container_of(napi, struct gtse_priv, napi);
+	struct net_device *ndev = p->ndev;
+	int done = 0;
+	u16 head = gtse_rd(p, GTSE_RX_HEAD);
 
-	if (!len || len > GTSE_FRAME_MAX) {
-		ndev->stats.rx_length_errors++;
-		goto ack;
-	}
-	/* allocate rounded up so the final word write stays in-bounds */
-	skb = netdev_alloc_skb_ip_align(ndev, ALIGN(len, 4));
-	if (!skb) {
-		ndev->stats.rx_dropped++;
-		goto ack;
-	}
-	words = DIV_ROUND_UP(len, 4);
-	dst = skb_put(skb, words * 4);		/* trimmed back to len below */
-	for (i = 0; i < words; i++)
-		put_unaligned_le32(gtse_rd(p, GTSE_TX_DATA + i * 4), dst + i * 4);
-	skb_trim(skb, len);
+	while (done < budget && p->rx_tail != head) {
+		unsigned int off = gtse_slot(p->rx_tail, p->rx_len);
+		u8 *buf = p->rx_pool + off;
+		struct sk_buff *skb;
+		u32 hdr, len;
 
-	skb->protocol = eth_type_trans(skb, ndev);
-	ndev->stats.rx_packets++;
-	ndev->stats.rx_bytes += len;
-	netif_rx(skb);
-ack:
-	gtse_wr(p, GTSE_RX_IC, GTSE_IRQ_BIT);
+		/*
+		 * The DMA wrote this slot behind the cache: invalidate the header
+		 * line, then the rest of the frame.  The CPU never writes RX slots,
+		 * so they stay clean and need no maintenance to go back to the DMA.
+		 */
+		dma_sync_single_range_for_cpu(p->dev, p->rx_dma, off, 32, DMA_FROM_DEVICE);
+		hdr = le32_to_cpup((__le32 *)buf);
+		len = hdr & 0xffff;
+		if ((hdr & BIT(16)) || len == 0 || len > GTSE_FRAME_MAX) {
+			ndev->stats.rx_errors++;
+			goto next;
+		}
+		if (GTSE_HDR + len > 32)
+			dma_sync_single_range_for_cpu(p->dev, p->rx_dma, off + 32,
+						      GTSE_HDR + len - 32, DMA_FROM_DEVICE);
+		skb = napi_alloc_skb(napi, len);
+		if (!skb) {
+			ndev->stats.rx_dropped++;
+			goto next;
+		}
+		gtse_copy(skb_put(skb, len), buf + GTSE_HDR, len);
+		skb->protocol = eth_type_trans(skb, ndev);
+		napi_gro_receive(napi, skb);
+		ndev->stats.rx_packets++;
+		ndev->stats.rx_bytes += len;
+next:
+		p->rx_tail++;
+		gtse_wr(p, GTSE_RX_TAIL, p->rx_tail);	/* free the buffer */
+		done++;
+		if (p->rx_tail == head)			/* re-check for late arrivals */
+			head = gtse_rd(p, GTSE_RX_HEAD);
+	}
+
+	if (done < budget && napi_complete_done(napi, done))
+		gtse_irq_update(p, 0, IRQ_RX_DONE);
+	return done;
 }
 
 /* -------------------------------------------------------------------- TX */
+/*
+ * The ring looks full by our (lagging) copy of TX_HEAD.  Ring the doorbell,
+ * clear any stale tx_done and read how far the DMA really got; if it is still
+ * full, stop the queue and enable tx_done.  A frame completing after the read
+ * latches tx_done again, so the wake-up cannot be missed.  Returns true if
+ * the queue was stopped.
+ */
+static bool gtse_tx_full(struct gtse_priv *p)
+{
+	gtse_wr(p, GTSE_TX_TAIL, p->tx_tail);
+	gtse_wr(p, GTSE_IRQ_STAT, IRQ_TX_DONE);
+	p->tx_head = gtse_rd(p, GTSE_TX_HEAD);
+	if ((u16)(p->tx_tail - p->tx_head) < p->tx_len)
+		return false;
+	netif_stop_queue(p->ndev);
+	gtse_irq_update(p, 0, IRQ_TX_DONE);
+	return true;
+}
+
 static netdev_tx_t gtse_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 {
 	struct gtse_priv *p = netdev_priv(ndev);
-	unsigned int len, words, i;
-	unsigned long flags;
+	unsigned int len = skb->len, off;
+	u8 *buf;
 
-	len = skb->len;
 	if (len > GTSE_FRAME_MAX) {
 		ndev->stats.tx_dropped++;
 		dev_kfree_skb_any(skb);
 		return NETDEV_TX_OK;
 	}
-	/* pad so the last 32-bit copy reads a full word from skb->data */
-	if (skb_padto(skb, ALIGN(len, 4)))
-		return NETDEV_TX_OK;		/* skb already freed */
-	words = DIV_ROUND_UP(len, 4);
-
-	spin_lock_irqsave(&p->lock, flags);
-
-	/* single frame buffer: don't accept another until this one drains */
-	if (gtse_rd(p, GTSE_TX_EN) & GTSE_IRQ_BIT) {
-		spin_unlock_irqrestore(&p->lock, flags);
-		netif_stop_queue(ndev);
+	/* after a wake-up our TX_HEAD copy is stale until refreshed */
+	if ((u16)(p->tx_tail - p->tx_head) >= p->tx_len && gtse_tx_full(p))
 		return NETDEV_TX_BUSY;
-	}
 
-	for (i = 0; i < words; i++)
-		gtse_wr(p, GTSE_TX_DATA + i * 4,
-			get_unaligned_le32(skb->data + i * 4));
-	gtse_wr(p, GTSE_TX_LENGTH, len);
-	gtse_wr(p, GTSE_TX_EN, GTSE_IRQ_BIT);	/* kick */
-
-	netif_stop_queue(ndev);			/* TX irq re-wakes it */
-	spin_unlock_irqrestore(&p->lock, flags);
-
+	off = gtse_slot(p->tx_tail, p->tx_len);
+	buf = p->tx_pool + off;
+	*(__le32 *)buf = cpu_to_le32(len);
+	gtse_copy(buf + GTSE_HDR, skb->data, len);
+	dma_sync_single_range_for_device(p->dev, p->tx_dma, off, GTSE_HDR + len, DMA_TO_DEVICE);
+	p->tx_tail++;
 	ndev->stats.tx_packets++;
 	ndev->stats.tx_bytes += len;
-	dev_kfree_skb_any(skb);			/* MAC has its own copy */
+	dev_consume_skb_any(skb);			/* copied into the ring */
+
+	if ((u16)(p->tx_tail - p->tx_head) >= p->tx_len)
+		gtse_tx_full(p);			/* rings the doorbell too */
+	else if (!netdev_xmit_more())
+		gtse_wr(p, GTSE_TX_TAIL, p->tx_tail);	/* doorbell */
 	return NETDEV_TX_OK;
 }
 
@@ -244,37 +317,87 @@ static irqreturn_t gtse_isr(int irq, void *dev_id)
 {
 	struct net_device *ndev = dev_id;
 	struct gtse_priv *p = netdev_priv(ndev);
-	irqreturn_t handled = IRQ_NONE;
+	/*
+	 * Only acknowledge enabled sources: a masked rx_done that latched while
+	 * NAPI was polling must survive to fire when the poll re-enables it.
+	 */
+	u32 stat = gtse_rd(p, GTSE_IRQ_STAT) & READ_ONCE(p->irq_en);
 
-	if (gtse_rd(p, GTSE_RX_IS) & GTSE_IRQ_BIT) {
-		gtse_rx_one(ndev);
-		handled = IRQ_HANDLED;
+	if (!stat)
+		return IRQ_NONE;
+	gtse_wr(p, GTSE_IRQ_STAT, stat);		/* W1C */
+
+	if (stat & IRQ_RX_DONE) {
+		gtse_irq_update(p, IRQ_RX_DONE, 0);	/* masked during the poll */
+		napi_schedule(&p->napi);
 	}
-	if (gtse_rd(p, GTSE_TX_IS) & GTSE_IRQ_BIT) {
-		gtse_wr(p, GTSE_TX_IC, GTSE_IRQ_BIT);
-		if (gtse_rd(p, GTSE_TX_FAIL))
-			ndev->stats.tx_errors++;
-		if (netif_queue_stopped(ndev))
-			netif_wake_queue(ndev);
-		handled = IRQ_HANDLED;
+	if (stat & IRQ_TX_DONE) {			/* only enabled when stopped */
+		gtse_irq_update(p, IRQ_TX_DONE, 0);
+		netif_wake_queue(ndev);
 	}
-	return handled;
+	return IRQ_HANDLED;
 }
 
 /* ---------------------------------------------------------------- open/stop */
+static void gtse_free_rings(struct gtse_priv *p)
+{
+	if (p->rx_pool && !dma_mapping_error(p->dev, p->rx_dma))
+		dma_unmap_single(p->dev, p->rx_dma, p->rx_len * GTSE_BUF_SIZE, DMA_FROM_DEVICE);
+	if (p->tx_pool && !dma_mapping_error(p->dev, p->tx_dma))
+		dma_unmap_single(p->dev, p->tx_dma, p->tx_len * GTSE_BUF_SIZE, DMA_TO_DEVICE);
+	kfree(p->rx_pool);
+	kfree(p->tx_pool);
+	p->rx_pool = p->tx_pool = NULL;
+}
+
+static int gtse_alloc_rings(struct gtse_priv *p)
+{
+	p->rx_pool = kmalloc(p->rx_len * GTSE_BUF_SIZE, GFP_KERNEL);
+	p->tx_pool = kmalloc(p->tx_len * GTSE_BUF_SIZE, GFP_KERNEL);
+	p->rx_dma = p->tx_dma = DMA_MAPPING_ERROR;
+	if (!p->rx_pool || !p->tx_pool)
+		goto err;
+	p->rx_dma = dma_map_single(p->dev, p->rx_pool, p->rx_len * GTSE_BUF_SIZE, DMA_FROM_DEVICE);
+	p->tx_dma = dma_map_single(p->dev, p->tx_pool, p->tx_len * GTSE_BUF_SIZE, DMA_TO_DEVICE);
+	if (dma_mapping_error(p->dev, p->rx_dma) || dma_mapping_error(p->dev, p->tx_dma))
+		goto err;
+	return 0;
+err:
+	gtse_free_rings(p);
+	return -ENOMEM;
+}
+
 static int gtse_open(struct net_device *ndev)
 {
 	struct gtse_priv *p = netdev_priv(ndev);
 	int ret;
 
-	ret = request_irq(p->irq, gtse_isr, 0, ndev->name, ndev);
+	ret = gtse_alloc_rings(p);
 	if (ret)
 		return ret;
 
-	gtse_wr(p, GTSE_RX_IC, GTSE_IRQ_BIT);
-	gtse_wr(p, GTSE_TX_IC, GTSE_IRQ_BIT);
-	gtse_wr(p, GTSE_RX_IE, GTSE_IRQ_BIT);
-	gtse_wr(p, GTSE_TX_IE, GTSE_IRQ_BIT);
+	ret = request_irq(p->irq, gtse_isr, 0, ndev->name, ndev);
+	if (ret) {
+		gtse_free_rings(p);
+		return ret;
+	}
+
+	/* HEAD counters are cumulative + not CPU-resettable (firmware self-test
+	 * already advanced them), so start the ring empty at the current HEAD. */
+	gtse_wr(p, GTSE_CTRL, 0);
+	gtse_wr(p, GTSE_RX_BASE, p->rx_dma);
+	gtse_wr(p, GTSE_RX_LEN, p->rx_len);
+	gtse_wr(p, GTSE_TX_BASE, p->tx_dma);
+	gtse_wr(p, GTSE_TX_LEN, p->tx_len);
+	p->rx_tail = gtse_rd(p, GTSE_RX_HEAD);
+	p->tx_tail = p->tx_head = gtse_rd(p, GTSE_TX_HEAD);
+	gtse_wr(p, GTSE_RX_TAIL, p->rx_tail);
+	gtse_wr(p, GTSE_TX_TAIL, p->tx_tail);
+
+	napi_enable(&p->napi);
+	gtse_wr(p, GTSE_IRQ_STAT, IRQ_RX_DONE | IRQ_TX_DONE);	/* clear stale */
+	gtse_irq_update(p, ~0u, IRQ_RX_DONE);	/* tx_done only while stopped */
+	gtse_wr(p, GTSE_CTRL, CTRL_RX_EN | CTRL_TX_EN);
 
 	phy_start(ndev->phydev);
 	netif_start_queue(ndev);
@@ -287,9 +410,11 @@ static int gtse_stop(struct net_device *ndev)
 
 	netif_stop_queue(ndev);
 	phy_stop(ndev->phydev);
-	gtse_wr(p, GTSE_RX_IE, 0);
-	gtse_wr(p, GTSE_TX_IE, 0);
+	gtse_irq_update(p, ~0u, 0);
+	gtse_wr(p, GTSE_CTRL, 0);
+	napi_disable(&p->napi);
 	free_irq(p->irq, ndev);
+	gtse_free_rings(p);
 	return 0;
 }
 
@@ -310,6 +435,16 @@ static int gtse_probe(struct platform_device *pdev)
 	struct gtse_priv *p;
 	int ret;
 
+	ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(32));
+	if (ret)
+		return ret;
+	/*
+	 * RISC-V treats DT devices as DMA-coherent unless marked otherwise, but
+	 * the A25 has no coherence manager: make dma_sync_*() do the cache ops.
+	 */
+	if (dev_is_dma_coherent(dev))
+		dev->dma_coherent = false;
+
 	ndev = devm_alloc_etherdev(dev, sizeof(*p));
 	if (!ndev)
 		return -ENOMEM;
@@ -319,7 +454,9 @@ static int gtse_probe(struct platform_device *pdev)
 	p = netdev_priv(ndev);
 	p->ndev = ndev;
 	p->dev = dev;
-	spin_lock_init(&p->lock);
+	spin_lock_init(&p->irq_lock);
+	p->rx_len = is_power_of_2(rx_ring) && rx_ring >= 4 && rx_ring <= 1024 ? rx_ring : 64;
+	p->tx_len = is_power_of_2(tx_ring) && tx_ring >= 4 && tx_ring <= 1024 ? tx_ring : 32;
 
 	p->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(p->base))
@@ -334,7 +471,7 @@ static int gtse_probe(struct platform_device *pdev)
 
 	ndev->netdev_ops = &gtse_netdev_ops;
 	ndev->irq = p->irq;
-	ndev->mtu = ETH_DATA_LEN;		/* PIO window holds one MTU frame */
+	netif_napi_add(ndev, &p->napi, gtse_poll);
 
 	/* ---- MDIO bus ---- */
 	p->mii = devm_mdiobus_alloc(dev);
@@ -371,8 +508,8 @@ static int gtse_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_phy;
 
-	netdev_info(ndev, "Gowin TSE (PIO) at %pa, irq %d\n",
-		    &pdev->resource[0].start, p->irq);
+	netdev_info(ndev, "Gowin TSE (DMA, %u/%u-deep RX/TX rings) at %pa, irq %d\n",
+		    p->rx_len, p->tx_len, &pdev->resource[0].start, p->irq);
 	return 0;
 
 err_phy:
@@ -408,5 +545,5 @@ static struct platform_driver gtse_driver = {
 };
 module_platform_driver(gtse_driver);
 
-MODULE_DESCRIPTION("Gowin Triple-Speed Ethernet (PIO) for AE350");
+MODULE_DESCRIPTION("Gowin Triple-Speed Ethernet (DMA) for AE350");
 MODULE_LICENSE("GPL");
