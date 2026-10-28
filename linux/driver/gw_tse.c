@@ -26,6 +26,15 @@
  * the queue is stopped, the TX doorbell honours xmit_more, and TX_HEAD is only
  * read when the ring looks full.
  *
+ * NAPI runs threaded, with interrupt deferral (GTSE_DEFER_IRQS polls on a
+ * GTSE_GRO_FLUSH_NS timer before the RX interrupt is re-armed).  Processed in
+ * softirq context, a UDP stream above ~3k frames/s (each ~250 us of stack
+ * work on this single core) starves the receiving task and the datagrams die
+ * in its full socket buffer (receive livelock); as a kernel thread NAPI
+ * shares the CPU, and deferral batches frames even at moderate rates.  Both
+ * remain tunable in /sys/class/net/<if>/{threaded,napi_defer_hard_irqs,
+ * gro_flush_timeout}.
+ *
  * Devicetree is identical to the PIO driver (same compatible/reg/irq/phy/mdio).
  */
 #include <linux/module.h>
@@ -44,6 +53,7 @@
 #include <linux/bitops.h>
 #include <linux/log2.h>
 #include <linux/slab.h>
+#include <linux/rtnetlink.h>
 
 /* ---- CSR map (eth_dma/rtl/csr.v) ---- */
 #define GTSE_CTRL		0x00	/* [0] rx_en  [1] tx_en                  */
@@ -80,6 +90,8 @@
 #define GTSE_BUF_SIZE		2048u		/* gateware BUF_SHIFT = 11        */
 #define GTSE_HDR		4u		/* [hdr|len] word before the data*/
 #define GTSE_FRAME_MAX		(GTSE_BUF_SIZE - GTSE_HDR)
+#define GTSE_DEFER_IRQS		2		/* napi_defer_hard_irqs           */
+#define GTSE_GRO_FLUSH_NS	200000		/* gro_flush_timeout: 200 us      */
 
 /* ring depths: power of two, 4..1024 (a ring is depth x 2 KB of DRAM) */
 static unsigned int rx_ring = 64;
@@ -504,11 +516,17 @@ static int gtse_probe(struct platform_device *pdev)
 		goto err_mdio;
 	}
 
+	ndev->napi_defer_hard_irqs = GTSE_DEFER_IRQS;
+	ndev->gro_flush_timeout = GTSE_GRO_FLUSH_NS;
 	ret = register_netdev(ndev);
 	if (ret)
 		goto err_phy;
+	rtnl_lock();
+	if (dev_set_threaded(ndev, true))
+		netdev_warn(ndev, "threaded NAPI unavailable, using softirq\n");
+	rtnl_unlock();
 
-	netdev_info(ndev, "Gowin TSE (DMA, %u/%u-deep RX/TX rings) at %pa, irq %d\n",
+	netdev_info(ndev, "Gowin TSE (DMA, %u/%u-deep RX/TX rings, threaded NAPI) at %pa, irq %d\n",
 		    p->rx_len, p->tx_len, &pdev->resource[0].start, p->irq);
 	return 0;
 

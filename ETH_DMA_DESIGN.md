@@ -282,3 +282,14 @@ Follow-ups (Oct 2026):
   Result: no drops for line-rate bursts of 8..64 frames (the whole ring); TCP RX
   34.8 -> 48-50 Mbit/s, RX drops 973 -> 0, host retransmits 974 -> 5; TX 35
   Mbit/s; md5 OK both ways incl. a 6-round bidirectional soak.
+- **Threaded NAPI + IRQ deferral** (driver, kernel #48): in softirq context a
+  UDP stream above ~3.4k frames/s (~250 us of stack work each) starved the
+  receiving task -- receive livelock: 40 Mbit/s offered -> 0.4 Mbit/s delivered,
+  every datagram dropped at the full socket buffer after the stack had paid for
+  it. The driver now runs NAPI as a kernel thread (dev_set_threaded) and sets
+  napi_defer_hard_irqs = 2, gro_flush_timeout = 200 us (all still tunable in
+  /sys/class/net/eth0/). UDP RX lossless at 40/60/80 Mbit/s, ~85 Mbit/s under a
+  line-rate flood (the excess dropped in the hardware ring); TCP RX 48-50 ->
+  65 Mbit/s, TX 36 -> 40 Mbit/s; ping 1.4 ms. While the board transmits, some
+  of the host's ACKs overflow the RX ring (harmless; a 128-deep ring did not
+  help), so the ring stays 64.
