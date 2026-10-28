@@ -43,6 +43,18 @@ during `md5sum`. The DDR3 MC's own read latency is ~28 user clocks.
   until queued writes are processed, and a DDR read is pushed only after every earlier
   write. The bridge is the only path to DDR (CPU and EXTM DMA both arrive on this bus), so
   its buffers stay coherent.
+* **Video port** — a read-only second client in the DDR clock domain for the LCD
+  scan-out (`../video/`). Its BL8 reads go out in cycles where the bridge's issue slot
+  is empty, so the bridge goes first. A request that has waited 8 uclk goes ahead of the
+  bridge's next command. Without that aging rule, a CPU write stream keeps the slot full
+  and starves the port: on hardware `dd if=/dev/zero` caused 1500 underrun lines in 3 s.
+  At most 8 video reads are in flight, and none during the BIST. A 1-bit issue-order FIFO
+  routes each return: the MC answers in order, which the overlapped-read default already
+  relies on. Video reads bypass the line buffers and see DDR only, so a pixel can lag a
+  posted CPU write by one frame.
+
+  In simulation, a video request waits at most 21–97 uclk under a write stream (949 to
+  14,201 without aging), and a saturated port slows random AHB traffic by ~3 %.
 * **DDR side** — registered command head plus an issue slot, `cmd_ready`/`wr_data_rdy`
   required high in two consecutive cycles (safe for both readings of the MC handshake), a
   tag queue and return FIFO with an end-to-end line address check (`pc_tagmis`).
@@ -61,7 +73,8 @@ of routing to reach fabric logic, and `HRDATA`/`HREADY` take a similar route bac
   current-line hit, **2** on a line-buffer hit, a DDR round trip on a miss. A line fill is
   6 cycles of 10 ns (it was 5 cycles of 20 ns at 50 MHz);
 * deep logic is pipelined: registered victim (with at most one allocation every other
-  cycle), registered command-FIFO "almost full", a fabric stage plus a one-hot target for
+  cycle; found by a flat per-entry "older than every other non-pending entry" test, the
+  LRU ages being a permutation), registered command-FIFO "almost full", a fabric stage plus a one-hot target for
   returning data, a registered write-merge flag, a 3-stage prefetch pipeline, and stream
   table updates applied a cycle after the compare.
 
@@ -69,7 +82,17 @@ Timing closes at 100 MHz with a 0.3 ns setup uncertainty in the SDC (real margin
 placer stops at the constraint otherwise). The DDR side runs at 100 MHz too (DDR3-800 /
 4) and closed with: a 3-phase BIST compare, the tag queue written the cycle after the
 issue, and the issue slot (the FIFO head sits in a BSRAM output register with 1.8 ns
-clock-to-out, so the row/line compare happens once, on load).
+clock-to-out, so the row/line compare happens once, on load). The slot loads only while
+empty, a cycle after it issues. That keeps the MC's late `cmd_ready` off the ~340 load
+enables of the head and slot registers; adding the video port pushed that path 5 ps
+negative. The bubble costs 1–4 % in simulation and less at the real command rate.
+
+With the video port, Build 49 had the AHB side at −0.12 ns against the padded constraint
+(its margin moved ±0.3 ns between builds with placement). The decision-term cleanup that
+followed (flat victim select, redundant qualifiers dropped, one allocation path) took the
+AHB side from 12 to 8 synthesis logic levels; Build 51 closes every clock, ae350_ddr_clk at
+100.19 MHz against the padded constraint and ddr3_sysclk at 104.9 MHz, with the same
+hardware results (memtest, display CRCs, network, zero underruns).
 
 ## Debug MODE register (`0xF8000020`, ddr_perf, reset `MODE_RESET`)
 
@@ -134,20 +157,28 @@ transfer is fixed time on the core side of the macro.
 `tb/run_all.sh` runs everything:
 
 * **random regression** (`run_regress.sh`): 3 buffer/prefetch configs × 4 clock ratios ×
-  4 seeds, A25-like traffic against a reference memory.
+  4 seeds, A25-like traffic against a reference memory, plus one seed per combination with
+  a video-port client (`+video=P`). The client reads a second window that AHB never
+  writes, and every return is checked.
 * **directed** (`run_directed.sh`): BUSY-free and BUSY-heavy traffic, every debug mode,
   heavy DDR back-pressure, the row rule against a reordering DDR model, the
   one-read-in-flight mode against the model's `+max_rd=1` check, the legacy handshake
   against the look-ahead check, and the BIST (clean on all patterns, reorders detected).
-* **mutants** (`run_mutants.sh`): 10 deliberately broken copies of the RTL, one per rule
-  the bridge relies on; each must be caught (data errors, protocol errors or the deadlock
-  watchdog).
+  It also runs the video port at 50/100 %, under back-pressure, with a slow BUSY-heavy
+  bus, during a BIST, and against a write stream with a bound on the video wait
+  (`+wrheavy +vmaxwait=200`).
+* **mutants** (`run_mutants.sh`): 13 deliberately broken copies of the RTL, one per rule
+  the bridge relies on, including the video port's return routing, its issue-slot rule
+  and its aging. Each must be caught (data errors, protocol errors or the deadlock watchdog).
 * **ddr_perf** unit test.
 * **formal** (`formal/run_formal.sh`, properties under `ifdef FORMAL` in the bridge): no
   lost DDR command, no FIFO or write-queue overflow, reads queued only after earlier
   writes, AHB OKAY / zero-wait IDLE-BUSY / HREADY low only in a data phase, no allocation
   of an in-flight entry, no line in two entries, read data only from valid halves of the
-  right line. The clock-crossing FIFOs are free stubs and unused data is cut. ABC proves
+  right line, and the invariants the decision terms are simplified with (the slow path
+  leaves IDLE only inside a held read data phase, a prefetch candidate never meets a
+  stream-table update, the LRU ages are a permutation, nothing to flush while an
+  allocation is possible). The clock-crossing FIFOs are free stubs and unused data is cut. ABC proves
   the small configuration (12-bit, 4 buffers) **for all reachable states**; the full size
   is checked to 16 cycles. Z3 (`bridge_ahb.sby`) did not finish step 0 of this model with
   yosys-smtbmc 0.33 / Z3 4.8.12.

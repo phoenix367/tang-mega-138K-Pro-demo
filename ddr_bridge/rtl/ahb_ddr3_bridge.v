@@ -286,26 +286,40 @@ module ahb_ddr3_bridge #(
 
     // ---- victim: computed every cycle into registers; allocations at most
     //      every other cycle (alloc_cool) so a registered victim is never one
-    //      just allocated ----
+    //      just allocated.  The lowest free entry, else the oldest entry whose
+    //      data is not in flight: the ages are a permutation of 0..NBUF-1
+    //      (formal), so "non-pending and older than every other non-pending
+    //      entry" names exactly one -- a flat per-entry test instead of an
+    //      age-by-age search, about half the logic depth. ----
+    reg [NBUF-1:0] ent_free, ent_pend, ent_oldest;
     reg            vic_ok, pvic_ok_c;
     reg [EB-1:0]   vic;
-    integer e, a;
+    integer e, f;
     always @(*) begin
-        vic_ok = 1'b0; vic = {EB{1'b0}};
-        for (e = NBUF-1; e >= 0; e = e - 1)          // free entry first
-            if (!ent_alloc[e]) begin vic_ok = 1'b1; vic = e[EB-1:0]; end
-        if (!vic_ok)                                  // else the oldest non-pending one
-            for (a = 0; a < NBUF; a = a + 1)
-                for (e = NBUF-1; e >= 0; e = e - 1)
-                    if (ent_age[e] == a[EB-1:0] && !pending_f(ent_alloc[e], ent_hv[e])) begin
-                        vic_ok = 1'b1; vic = e[EB-1:0];
-                    end
+        for (e = 0; e < NBUF; e = e + 1) begin
+            ent_free[e] = ~ent_alloc[e];
+            ent_pend[e] = pending_f(ent_alloc[e], ent_hv[e]);
+        end
+        for (e = 0; e < NBUF; e = e + 1) begin
+            ent_oldest[e] = ~ent_pend[e];
+            for (f = 0; f < NBUF; f = f + 1)
+                if (f != e && !ent_pend[f] && ent_age[f] > ent_age[e]) ent_oldest[e] = 1'b0;
+        end
+        vic_ok = (|ent_free) | (|ent_oldest);
+        vic    = {EB{1'b0}};
+        if (|ent_free) begin
+            for (e = NBUF-1; e >= 0; e = e - 1)
+                if (ent_free[e]) vic = e[EB-1:0];
+        end else begin
+            for (e = 0; e < NBUF; e = e + 1)             // one-hot -> binary
+                if (ent_oldest[e]) vic = vic | e[EB-1:0];
+        end
         // prefetch victim: only the older half of the LRU order -- the same
         // as "vic is free or old" without waiting for vic.  The current line
         // needs no protection: its reads are served from the cl_data copy.
         pvic_ok_c = 1'b0;
         for (e = 0; e < NBUF; e = e + 1)
-            if (!ent_alloc[e] || (ent_age[e] >= NBUF/2 && !pending_f(ent_alloc[e], ent_hv[e])))
+            if (ent_free[e] || (ent_age[e] >= NBUF/2 && !ent_pend[e]))
                 pvic_ok_c = 1'b1;
     end
     reg            vic_ok_q, pvic_ok_q, alloc_cool;
@@ -332,15 +346,19 @@ module ahb_ddr3_bridge #(
         end
     end
 
+    // LOOK and WAIT exist only inside a held read data phase (rd_wait holds
+    // throughout: formal), so they need no further qualification
+    wire sp_look  = (sp_st == SP_LOOK);
+    wire sp_wait  = (sp_st == SP_WAIT);
     wire sp_go    = rd_wait & (sp_st == SP_IDLE) & ~wq_busy;
     wire cl_match = cl_v & (cl_line == aq_line);
     wire cl_rdy   = cl_hv[aq_half] & (~m_wline | (&cl_hv));
     wire lk_go    = sp_go & ~cl_match;                       // full lookup this cycle
     // deliveries at the end of this cycle (HREADY high next cycle)
-    wire dl_cl    = rd_wait & cl_v & cl_rdy & ((sp_go & cl_match) | (sp_st == SP_WAIT));
-    wire dl_ent   = rd_wait & (sp_st == SP_LOOK) & lk_data;
+    wire dl_cl    = cl_v & cl_rdy & ((sp_go & cl_match) | sp_wait);
+    wire dl_ent   = sp_look & lk_data;
     wire sp_dlv   = dl_cl | dl_ent;
-    wire cl_ld_ent = rd_wait & (sp_st == SP_LOOK) & lk_tag;   // current line <- that entry
+    wire cl_ld_ent = sp_look & lk_tag;                       // current line <- that entry
     reg  [255:0] lk_line_d;                  // the hit line (current-line load)
     reg  [63:0]  lk_beat_d;                  // its beat aq_beat (delivery)
     always @(*) begin
@@ -414,15 +432,24 @@ module ahb_ddr3_bridge #(
     // ---- DDR read requests: demand miss first, then prefetch ----
     // A lookup's result must stay true until used, so no prefetch allocation
     // while one is in progress (lk_go / SP_LOOK); writes (queued or held in
-    // wb) must reach the command FIFO before any read of possibly the same line.
-    wire can_alloc = vic_ok_q & ~alloc_cool & ~cf_afull & ~wb_valid & ~wq_busy & ~push_wr;
-    wire push_dem  = rd_wait & (sp_st == SP_LOOK) & ~lk_tag & can_alloc;
+    // wb) must reach the command FIFO before any read of possibly the same
+    // line.  With the queue and the block empty there is nothing for push_wr
+    // to push, so an allocation never collides with it (formal: one command
+    // FIFO source per cycle).
+    wire can_alloc = vic_ok_q & ~alloc_cool & ~cf_afull & ~wb_valid & ~wq_busy;
+    wire push_dem  = sp_look & ~lk_tag & can_alloc;
     // (a slow-path read's first cycle may start a lookup: held off whether or
-    //  not it does, which keeps the current-line compare off this path)
-    wire pf_try    = (PREFETCH != 0) & ~m_nopf & pf2_valid & ~push_dem & ~wr_dph
-                   & ~(rd_wait & (sp_st == SP_IDLE)) & (sp_st != SP_LOOK) & ~ev_q;
+    //  not it does, which keeps the current-line compare off this path; LOOK
+    //  itself is excluded, which also rules out push_dem.  A stage-3 candidate
+    //  never meets a table update: pf2_valid was cleared by ev a cycle ago.)
+    wire pf_try    = (PREFETCH != 0) & ~m_nopf & pf2_valid & ~wr_dph
+                   & ~(rd_wait & (sp_st == SP_IDLE)) & ~sp_look;
     wire push_pf   = pf_try & ~pf2_here & pvic_ok_q & can_alloc;
     wire pf_adv    = pf_try & (pf2_here | push_pf);  // line issued or already present
+    // one allocation per cycle, into the registered victim
+    wire          alloc_go   = push_dem | push_pf;
+    wire [LB-1:0] alloc_line = push_dem ? aq_line : pf2_line;
+    wire [GB-1:0] vic_gen_n  = ent_gen[vic_q] + 1'b1;   // its new generation
 
     // ---- the late decision: HREADY for the transfer the bus samples now ----
     wire t_seq     = (htrans == 2'b11);
@@ -437,14 +464,10 @@ module ahb_ddr3_bridge #(
         if (push_wr) begin
             cf_push  = 1'b1;
             cf_wdata = {1'b0, wb_blk, wb_data, wb_mask};
-        end else if (push_dem) begin
-            cf_push  = 1'b1;
-            cf_wdata = {1'b1, aq_line, aq_half, 128'd0,
-                        {(16-GB-EB){1'b0}}, ent_gen[vic_q] + 1'b1, vic_q};
-        end else if (push_pf) begin
-            cf_push  = 1'b1;
-            cf_wdata = {1'b1, pf2_line, 1'b0, 128'd0,
-                        {(16-GB-EB){1'b0}}, ent_gen[vic_q] + 1'b1, vic_q};
+        end else if (alloc_go) begin         // line read: critical half first
+            cf_push  = 1'b1;                 // (a prefetch starts at half 0)
+            cf_wdata = {1'b1, alloc_line, push_dem & aq_half, 128'd0,
+                        {(16-GB-EB){1'b0}}, vic_gen_n, vic_q};
         end
     end
 
@@ -498,8 +521,8 @@ module ahb_ddr3_bridge #(
     reg [EB-1:0]  lru_idx;
     always @(*) begin
         touch = 1'b0; touch_idx = {EB{1'b0}};
-        if (push_dem | push_pf) begin touch = 1'b1; touch_idx = vic_q;  end
-        else if (dl_ent)        begin touch = 1'b1; touch_idx = lk_idx; end
+        if (alloc_go)    begin touch = 1'b1; touch_idx = vic_q;  end
+        else if (dl_ent) begin touch = 1'b1; touch_idx = lk_idx; end
     end
 
     // perf counters (hclk); pc_tagmis: returns whose line address disagrees
@@ -601,7 +624,7 @@ module ahb_ddr3_bridge #(
 
             // ---- current line copy ----
             if (push_dem) begin
-                cl_v <= 1'b1; cl_idx <= vic_q; cl_gen <= ent_gen[vic_q] + 1'b1;
+                cl_v <= 1'b1; cl_idx <= vic_q; cl_gen <= vic_gen_n;
                 cl_line <= aq_line; cl_hv <= 2'b00;
             end else if (cl_ld_ent) begin
                 cl_v <= 1'b1; cl_idx <= lk_idx; cl_gen <= ent_gen[lk_idx];
@@ -633,23 +656,23 @@ module ahb_ddr3_bridge #(
             vic_q      <= vic;
             vic_ok_q   <= vic_ok;
             pvic_ok_q  <= pvic_ok_c;
-            alloc_cool <= push_dem | push_pf;
-            if (push_dem) begin
-                ent_alloc[vic_q] <= 1'b1; ent_tag[vic_q] <= aq_line; ent_hv[vic_q] <= 2'b00;
-                ent_gen[vic_q]   <= ent_gen[vic_q] + 1'b1;
-            end
-            if (push_pf) begin
-                ent_alloc[vic_q] <= 1'b1; ent_tag[vic_q] <= pf2_line; ent_hv[vic_q] <= 2'b00;
-                ent_gen[vic_q]   <= ent_gen[vic_q] + 1'b1;
+            alloc_cool <= alloc_go;
+            if (alloc_go) begin
+                ent_alloc[vic_q] <= 1'b1; ent_tag[vic_q] <= alloc_line; ent_hv[vic_q] <= 2'b00;
+                ent_gen[vic_q]   <= vic_gen_n;
             end
             if (pf_adv) begin
                 st_next[pf2_slot] <= pf2_lp1;    // = st_next + 1 (pf2_line was st_next)
                 st_cnt[pf2_slot]  <= st_cnt[pf2_slot] + 2'd1;
             end
+            // a candidate is dropped when the table changes under it (ev now
+            // or applied this cycle, ev_q; pf_adv, which covers push_pf) or an
+            // entry is allocated meanwhile (push_dem: pf2_here could be stale).
+            // pfc_valid already excludes ev_q (it was ev a cycle ago).
             pfc_valid <= pf_have & ~ev & ~ev_q & ~pf_adv;
             pfc_slot  <= pf_slot;
             pfc_line  <= st_next[pf_slot];
-            pf2_valid <= pfc_valid & ~ev & ~ev_q & ~pf_adv & ~push_dem & ~push_pf;
+            pf2_valid <= pfc_valid & ~ev & ~pf_adv & ~push_dem;
             pf2_slot  <= pfc_slot;
             pf2_line  <= pfc_line;
             pf2_lp1   <= pfc_line + 1'b1;
@@ -707,8 +730,9 @@ module ahb_ddr3_bridge #(
                 {wh_addr, wh_size, wh_data} <= wq_mem[wq_rp];
                 wq_rp <= wq_rp + 2'd1;
                 // against wb after this edge: a consumed head becomes the block
-                wh_sb <= (wh_cons | wb_valid) &&
-                         (wq_mem[wq_rp][WQW-1 -: BB] == (wh_cons ? wh_blk : wb_blk));
+                // (both compares in parallel, the late wh_cons only selects)
+                wh_sb <= wh_cons ? (wq_mem[wq_rp][WQW-1 -: BB] == wh_blk)
+                                 : (wb_valid & (wq_mem[wq_rp][WQW-1 -: BB] == wb_blk));
             end
             wq_n <= wq_n + {2'd0, wr_take} - {2'd0, wh_load};
             if (wh_load)      wh_v <= 1'b1;
@@ -865,8 +889,9 @@ module ahb_ddr3_bridge #(
     wire          issue_v  = v_req & v_slot & cmd_ok & ~bist_hold & ~bist_own & v_room;
     // issue order of the reads in flight, 1 = video (bridge <= 15 + video <= 8
     // fit in 32).  who_hd is the head entry as a flop: it is reloaded every
-    // cycle with the head after this cycle's return, which is correct for any
-    // read issued at least 2 uclk before its data returns (the MC takes ~28).
+    // cycle with the head after this cycle's return (the entry at who_r, or
+    // the next one when a return pops), which is correct for any read issued
+    // at least 2 uclk before its data returns (the MC takes ~28).
     reg  [31:0]   who;
     reg  [4:0]    who_w, who_r;
     reg           who_hd;
@@ -948,15 +973,14 @@ module ahb_ddr3_bridge #(
             umode_s1 <= mode; umode_s2 <= umode_s1;
             if (issue_wr)                wgap <= 6'd0;
             else if (wgap != 6'd63)      wgap <= wgap + 6'd1;
-            if (issue_rd)                rd_row <= c_row;
-            if (issue_rd)                rd_line <= c_blk[BB-1:1];
-            if (issue_rd)                rgap <= 6'd0;
-            else if (rgap != 6'd63)      rgap <= rgap + 6'd1;
             tq_push_q <= issue_rd;
             if (issue_rd) begin
+                rd_row    <= c_row;
+                rd_line   <= c_blk[BB-1:1];
+                rgap      <= 6'd0;
                 rd_second <= ~rd_second;
                 tq_wd_q   <= {c_blk[BB-1:1], c_mask[EB-1:0], c_mask[EB +: GB], c_half, ucnt};
-            end
+            end else if (rgap != 6'd63)  rgap <= rgap + 6'd1;
             if (tq_push_q) tq_w <= tq_w + 5'd1;
             if (br_valid) tq_r <= tq_r + 5'd1;
             tq_n <= tq_n + {4'd0, tq_push_q} - {4'd0, br_valid};
@@ -971,7 +995,8 @@ module ahb_ddr3_bridge #(
                 who_w      <= who_w + 5'd1;
             end
             if (rv_any) who_r <= who_r + 5'd1;
-            who_hd <= who[who_r + {4'd0, rv_any}];
+            // (both candidates read from flops; the late rv_any only selects)
+            who_hd <= rv_any ? who[who_r + 5'd1] : who[who_r];
 
             if (u_clr) begin
                 uc_rdcmd <= 32'd0; uc_latsum <= 32'd0; uc_wrcmd <= 32'd0; uc_rdval <= 32'd0;
@@ -1027,9 +1052,18 @@ module ahb_ddr3_bridge #(
         assert(!(wr_take && wq_n == 3'd4));
         // ordering: a DDR read is queued only after every earlier write
         if (push_dem || push_pf) assert(!wb_valid && wq_n == 3'd0 && !wh_v);
-        // ~wb_valid in can_alloc is redundant (the equivalent mutant)
-        assert(!(rd_wait && sp_st == SP_LOOK && !lk_tag && vic_ok_q && !alloc_cool
-                 && !cf_afull && !wq_busy && !push_wr && wb_valid));
+        // ... and then there is nothing for push_wr to push (can_alloc needs
+        // no ~push_wr term; the one-source assertions above depend on this)
+        if (!wq_busy && !wb_valid) assert(!push_wr);
+        // invariants the decision terms rely on: LOOK / WAIT only inside a
+        // held read data phase; a stage-2/3 prefetch candidate never meets a
+        // stream-table update; the LRU ages are a permutation (the victim is
+        // the non-pending entry older than every other one)
+        if (sp_st != SP_IDLE) assert(rd_wait);
+        if (pfc_valid || pf2_valid) assert(!ev_q);
+        for (f_i = 0; f_i < NBUF; f_i = f_i + 1)
+            for (f_j = f_i + 1; f_j < NBUF; f_j = f_j + 1)
+                assert(ent_age[f_i] != ent_age[f_j]);
         // AHB: OKAY only; HREADY low only inside a data phase
         assert(hresp == 2'b00);
         if (!hready_q) assert(aq_v);

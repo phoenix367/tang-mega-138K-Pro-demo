@@ -6,10 +6,6 @@
 # Usage: tb/run_mutants.sh [ops] [seeds]      (run from ddr_bridge/)
 #
 # Not listed, because they cannot change the data:
-#  * dropping only ~wb_valid or only ~push_wr from can_alloc: each covers the
-#    other (with wb_valid and an empty write queue, flush_idle pushes the held
-#    write that cycle; without wb_valid there is nothing for push_wr to push),
-#    so the mutant drops both;
 #  * no alloc_cool: a double allocation only wastes a DDR read -- a waiting
 #    read takes its data from the current-line copy keyed by its own gen.
 set -u
@@ -46,18 +42,35 @@ M = [
    "(cl_ld_ent ? (rf_ent == lk_idx) && (rf_gen == ent_gen[lk_idx])",
    "(1'b0      ? (rf_ent == lk_idx) && (rf_gen == ent_gen[lk_idx])"),
   ("merge_flag_ignores_consumed_head",
-   "(wq_mem[wq_rp][WQW-1 -: BB] == (wh_cons ? wh_blk : wb_blk))",
-   "(wq_mem[wq_rp][WQW-1 -: BB] == wb_blk)"),
+   "wh_sb <= wh_cons ? (wq_mem[wq_rp][WQW-1 -: BB] == wh_blk)",
+   "wh_sb <= wh_cons ? (wq_mem[wq_rp][WQW-1 -: BB] == wb_blk)"),
   # needs a held merged write while the command FIFO is nearly full: heavy
   # DDR back-pressure and longer runs
   ("read_overtakes_held_write",
-   "wire can_alloc = vic_ok_q & ~alloc_cool & ~cf_afull & ~wb_valid & ~wq_busy & ~push_wr;",
+   "wire can_alloc = vic_ok_q & ~alloc_cool & ~cf_afull & ~wb_valid & ~wq_busy;",
    "wire can_alloc = vic_ok_q & ~alloc_cool & ~cf_afull & ~wq_busy;",
    "+mode=0 +rdy_pct=20 +ops=8000"),
   ("one_read_mode_ignores_pending_tag",
    "    wire          rd_out    = (tq_n != 5'd0) | tq_push_q;",
    "    wire          rd_out    = (tq_n != 5'd0);",
    "+mode=0x100 +max_rd=1"),
+  # video port (needs in-order returns, like MODE 0x10000)
+  ("video_head_ignores_pop",
+   "            who_hd <= rv_any ? who[who_r + 5'd1] : who[who_r];",
+   "            who_hd <= who[who_r];",
+   "+noreorder +mode=0x10000 +video=60"),
+  # the slot loads only while empty, so the port gets a free cycle after
+  # every bridge command; only heavy back-pressure (a write needs cmd_ready
+  # and wr_data_rdy, the port just cmd_ready) makes the missing aging show:
+  # at rdy_pct=40 the port waits ~1000 uclk without it, < 100 with it
+  ("video_no_aging",
+   "            v_pri <= v_req & ~issue_v & (v_age >= VAGE - 1) & (v_n < VMAX - 1);",
+   "            v_pri <= 1'b0;",
+   "+noreorder +mode=0x10000 +video=100 +wrheavy +rdy_pct=40 +vmaxwait=200"),
+  ("video_issues_over_slot",
+   "    wire          issue_v  = v_req & v_slot & cmd_ok",
+   "    wire          issue_v  = v_req & cmd_ok",
+   "+noreorder +mode=0x10000 +video=60"),
 ]
 with open(out + "/mutants.list", "w") as lst:
     for m in M:
