@@ -246,3 +246,17 @@ full frames/s (~10-12 MB/s). With an idle board only the first 6-7 frames of a
 line-rate burst survive (staging + CDC FIFO ~8 KB); TCP bursts from the host
 therefore lose ~5% of frames (RX_DROP == host retransmits). Next lever: INCR
 bursts / 64-bit writes in `ahb_master` and more RX buffering.
+
+Follow-ups (Oct 2026):
+- **PHY reset on reconfiguration** (`src/ae350_demo.v`): `PHY_RST_N` used to be
+  just the S3 button, so an FPGA reload stopped PHY_CLK under a running PHY.
+  After that the RTL8211F could no longer train gigabit (downshifted to 100M at
+  ~15 s, on every later load, even at the U-Boot prompt) until a power cycle.
+  The PHY is now held in reset until the Ethernet PLL is locked + 21 ms (and on
+  S3); gigabit came back without a power cycle and holds across reloads.
+- **Bufferable EXTM writes do not help**: HPROT[2]=1 for the RX DMA writes (data,
+  then header, then a read-back for ordering) left the RX DMA rate unchanged
+  (same burst-loss curve), so the SoC does not post them on this path; reverted.
+  The ~17 bus cycles per 32-bit EXTM write remain; the options are AHB bursts /
+  64-bit beats through EXTM (gain unknown) or a dedicated DMA port into
+  `ddr_bridge` that bypasses the SoC interconnect.

@@ -125,6 +125,7 @@ wire        apb_pclk, apb_prstn;
 // ---------------------------------------------------------------------------
 wire GTX_CLK;       // 125 MHz - RGMII TX
 wire ETH_CLK;       // 25 MHz  - PHY reference
+wire ETH_PLL_LOCK;
 
 // SoC external-AHB-slave bus (SoC masters; the MAC bridge is the slave)
 wire [31:0] EXTS_HRDATA, EXTS_HADDR, EXTS_HWDATA;
@@ -193,6 +194,7 @@ Gowin_PLL u_Gowin_PLL_ETH
     .clkout1(GTX_CLK),          // 125 MHz
     .clkout2(),
     .clkout3(ETH_CLK),          // 25 MHz
+    .lock(ETH_PLL_LOCK),
     .clkin(CLK),
     .reset(1'b0),
     .enclk0(1'b1),
@@ -567,6 +569,15 @@ Triple_Speed_Ethernet_MAC_Top u_Triple_Speed_Ethernet_MAC_Top
 assign mdio_in   = MDIO;
 assign MDIO      = (!mdio_oen) ? mdio_out : 1'bz;
 assign PHY_CLK   = ETH_CLK;
-assign PHY_RST_N = RSTN;
+// PHY hardware reset.  A reload of the FPGA stops PHY_CLK under the running
+// PHY, which can leave it unable to train gigabit (downshifts to 100M) until a
+// hardware reset; so hold it in reset until its 25 MHz reference is back and
+// locked, plus 2^19 cycles (21 ms, the RTL8211F needs >= 10 ms), and on S3.
+wire       phy_rst_hold_n = RSTN & ETH_PLL_LOCK;
+reg [19:0] phy_rst_cnt;
+always @(posedge ETH_CLK or negedge phy_rst_hold_n)
+    if (!phy_rst_hold_n)       phy_rst_cnt <= 20'd0;
+    else if (!phy_rst_cnt[19]) phy_rst_cnt <= phy_rst_cnt + 20'd1;
+assign PHY_RST_N = phy_rst_cnt[19];
 
 endmodule
