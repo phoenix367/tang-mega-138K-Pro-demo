@@ -9,7 +9,7 @@
 // byte-accurate reference memory updated in AHB bus order.
 //
 // +video=P adds a client on the video read port: P % of uclk cycles it wants
-// a BL8 read of a second window [WIN, 2*WIN) that AHB traffic never writes,
+// a BL8 (32 B) read of a second window [WIN, 2*WIN) that AHB traffic never writes,
 // and every return is checked against the DDR model (routing by issue order).
 //
 // +wrheavy makes the traffic back-to-back line evictions (posted writes keep
@@ -20,7 +20,7 @@
 module tb_ahb_ddr3_bridge;
     parameter NBUF     = 8;
     parameter PREFETCH = 1;
-    parameter ADDR_BITS = 28;                  // bridge address width (28 = 256 MB, 29 = 512 MB)
+    parameter ADDR_BITS = 30;                  // bridge address width (30 = 1 GB, 29 = 512 MB)
     parameter WIN      = 4096;                 // bytes exercised (power of 2)
     parameter XROW_REORDER = 0;                // DDR model may reorder cross-row reads (the real MC
                                                // does not -- read BIST on hardware: 0 errors)
@@ -42,9 +42,9 @@ module tb_ahb_ddr3_bridge;
     reg [31:0] dbg_line = 32'hFFFFFFFF;          // +dbg=<hex byte addr>: trace that 32 B line
     initial if ($value$plusargs("dbg=%h", dbg_line)) dbg_line = dbg_line & ~32'h1F;
     always @(posedge uclk)
-        if (cmd_en && ({addr[26:0], 1'b0} & ~32'h1F) == dbg_line)
+        if (cmd_en && ({addr[ADDR_BITS-3:0], 2'b00} & ~32'h1F) == dbg_line)
             $display("%0t   DDR %s addr %h data %h mask %h", $time, cmd[0] ? "RD" : "WR",
-                     {addr[26:0], 1'b0}, wr_data, wr_data_mask);
+                     {addr[ADDR_BITS-3:0], 2'b00}, wr_data, wr_data_mask);
     reg hclk = 0, uclk = 0, hresetn = 0;
     initial begin
         if ($value$plusargs("seed=%d", seed)) ;
@@ -62,7 +62,7 @@ module tb_ahb_ddr3_bridge;
     wire        hready; wire [1:0] hresp; wire [63:0] hrdata;
     // DDR UI
     wire        calib_done, cmd_ready, cmd_en, wr_data_rdy, wr_data_en, wr_data_end, rd_data_valid;
-    wire [2:0]  cmd; wire [ADDR_BITS-1:0] addr; wire [127:0] wr_data, rd_data; wire [15:0] wr_data_mask;
+    wire [2:0]  cmd; wire [ADDR_BITS-2:0] addr; wire [255:0] wr_data, rd_data; wire [31:0] wr_data_mask;
     wire [511:0] perf_cnt;
     integer ddr_errors;
     // video read port
@@ -74,7 +74,7 @@ module tb_ahb_ddr3_bridge;
     reg          v_req = 1'b0;
     reg  [31:0]  v_addr = 32'd0;
     wire         v_rstn, v_ack, v_rvalid;
-    wire [127:0] v_rdata;
+    wire [255:0] v_rdata;
 
     ahb_ddr3_bridge #(.NBUF(NBUF), .PREFETCH(PREFETCH), .ADDR_BITS(ADDR_BITS)) dut (
         .hclk(hclk), .hresetn(hresetn), .haddr(haddr), .htrans(htrans), .hwrite(hwrite),
@@ -87,7 +87,7 @@ module tb_ahb_ddr3_bridge;
         .v_rstn(v_rstn), .v_req(v_req), .v_addr(v_addr[ADDR_BITS-1:0]), .v_ack(v_ack),
         .v_rvalid(v_rvalid), .v_rdata(v_rdata));
 
-    ddr3_ui_model #(.WORDS(2*WIN/16), .XROW_REORDER(XROW_REORDER), .ADDR_W(ADDR_BITS),
+    ddr3_ui_model #(.WORDS(2*WIN/32), .XROW_REORDER(XROW_REORDER), .ADDR_W(ADDR_BITS-1),
                     .LAT_MIN(LAT_MIN), .LAT_MAX(LAT_MAX)) ddr (
         .clk(uclk), .calib_done(calib_done), .cmd_ready(cmd_ready), .cmd(cmd), .cmd_en(cmd_en),
         .addr(addr), .wr_data_rdy(wr_data_rdy), .wr_data(wr_data), .wr_data_en(wr_data_en),
@@ -99,13 +99,13 @@ module tb_ahb_ddr3_bridge;
     integer i, b;
     initial begin
         #1;
-        for (i = 0; i < WIN/16; i = i + 1)
-            for (b = 0; b < 16; b = b + 1)
-                refm[i*16 + b] = ddr.mem[i][b*8 +: 8];
+        for (i = 0; i < WIN/32; i = i + 1)
+            for (b = 0; b < 32; b = b + 1)
+                refm[i*32 + b] = ddr.mem[i][b*8 +: 8];
     end
 
     // ---------------- video client (uclk) ----------------
-    reg  [27:0] vq [0:63];                     // addresses of video reads in flight
+    reg  [31:0] vq [0:63];                     // addresses of video reads in flight
     integer     vq_w = 0, vq_r = 0, v_errors = 0, v_wait = 0, v_maxwait = 0;
     reg         v_seed_init = 0;
     integer     vseed;
@@ -115,9 +115,9 @@ module tb_ahb_ddr3_bridge;
             if (vq_r == vq_w) begin
                 $display("%0t VIDEO: return with no read in flight", $time); v_errors = v_errors + 1;
             end else begin
-                if (v_rdata !== ddr.mem[(vq[vq_r % 64] >> 4) % (2*WIN/16)]) begin
+                if (v_rdata !== ddr.mem[(vq[vq_r % 64] >> 5) % (2*WIN/32)]) begin
                     if (v_errors < 10) $display("%0t VIDEO MISMATCH addr %h: got %h exp %h", $time,
-                                                vq[vq_r % 64], v_rdata, ddr.mem[(vq[vq_r % 64] >> 4) % (2*WIN/16)]);
+                                                vq[vq_r % 64], v_rdata, ddr.mem[(vq[vq_r % 64] >> 5) % (2*WIN/32)]);
                     v_errors = v_errors + 1;
                 end
                 vq_r = vq_r + 1;
@@ -128,7 +128,7 @@ module tb_ahb_ddr3_bridge;
         if (v_wait > v_maxwait) v_maxwait = v_wait;
         if (!v_req || v_ack) begin             // a request is held until issued
             v_req  <= (v_rstn === 1'b1) && done_ops < ops && ($random(vseed) & 32'h7fffffff) % 100 < vid_pct;
-            v_addr <= WIN + (($random(vseed) & 32'h7fffffff) % (WIN/16)) * 16;
+            v_addr <= WIN + (($random(vseed) & 32'h7fffffff) % (WIN/32)) * 32;
         end
     end
 
@@ -283,10 +283,10 @@ module tb_ahb_ddr3_bridge;
                      perf_cnt[287:256], perf_cnt[319:288], perf_cnt[351:320], perf_cnt[383:352],
                      perf_cnt[415:384], perf_cnt[447:416], perf_cnt[479:448], perf_cnt[511:480]);
         // final memory check: every byte the bridge wrote must be in DDR
-        for (i = 0; i < WIN/16; i = i + 1)
-            for (b = 0; b < 16; b = b + 1)
-                if (ddr.mem[i][b*8 +: 8] !== refm[i*16 + b]) begin
-                    if (errors < 40) $display("FINAL MISMATCH byte %h: ddr %h refm %h", i*16+b, ddr.mem[i][b*8 +: 8], refm[i*16+b]);
+        for (i = 0; i < WIN/32; i = i + 1)
+            for (b = 0; b < 32; b = b + 1)
+                if (ddr.mem[i][b*8 +: 8] !== refm[i*32 + b]) begin
+                    if (errors < 40) $display("FINAL MISMATCH byte %h: ddr %h refm %h", i*32+b, ddr.mem[i][b*8 +: 8], refm[i*32+b]);
                     errors = errors + 1;
                 end
         if (errors == 0 && ddr_errors == 0) $display("TEST PASSED");

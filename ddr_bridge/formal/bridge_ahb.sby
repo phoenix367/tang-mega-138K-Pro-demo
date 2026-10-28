@@ -1,7 +1,7 @@
 # Safety properties of the bridge's AHB side (ifdef FORMAL in
 # rtl/ahb_ddr3_bridge.v), bounded model check with Z3.  Run from formal/:
 #   sby -f bridge_ahb.sby small     (12-bit address space, 4 line buffers)
-#   sby -f bridge_ahb.sby full      (the real 28-bit / 8-buffer configuration)
+#   sby -f bridge_ahb.sby full      (the real 30-bit / 8-buffer configuration)
 # Data the properties never look at (line / copy / merge / queue data, the
 # DDR-clock side, perf counters) is cut into free values: that only adds
 # behaviours, so every property proved also holds for the real design.  The

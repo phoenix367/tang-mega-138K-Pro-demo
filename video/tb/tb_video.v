@@ -36,12 +36,12 @@ module tb_video;
     // video port and DDR3 user port
     wire         vrstn, v_req, v_ack, v_rvalid;
     wire [31:0]  v_addr;
-    wire [127:0] v_rdata;
+    wire [255:0] v_rdata;
     wire         calib_done, cmd_ready, cmd_en, wr_data_rdy, wr_data_en, wr_data_end, rd_data_valid;
     wire [2:0]   cmd;
-    wire [27:0]  addr;
-    wire [127:0] wr_data, rd_data;
-    wire [15:0]  wr_data_mask;
+    wire [28:0]  addr;                    // bridge ADDR_BITS (30) - 1
+    wire [255:0] wr_data, rd_data;
+    wire [31:0]  wr_data_mask;
     wire [63:0]  b_hrdata;
     wire [1:0]   b_hresp;
     wire         b_hready;
@@ -68,10 +68,10 @@ module tb_video;
         .addr(addr), .wr_data_rdy(wr_data_rdy), .wr_data(wr_data), .wr_data_en(wr_data_en),
         .wr_data_end(wr_data_end), .wr_data_mask(wr_data_mask), .rd_data(rd_data),
         .rd_data_valid(rd_data_valid),
-        .v_rstn(vrstn), .v_req(v_req), .v_addr(v_addr[27:0]), .v_ack(v_ack),
+        .v_rstn(vrstn), .v_req(v_req), .v_addr(v_addr[29:0]), .v_ack(v_ack),
         .v_rvalid(v_rvalid), .v_rdata(v_rdata)
     );
-    ddr3_ui_model #(.WORDS(512), .LAT_MIN(10), .LAT_MAX(40), .RDY_PCT(100 - WAIT_PCT)) ddr (
+    ddr3_ui_model #(.WORDS(256), .LAT_MIN(10), .LAT_MAX(40), .RDY_PCT(100 - WAIT_PCT)) ddr (
         .clk(uclk), .calib_done(calib_done), .cmd_ready(cmd_ready), .cmd(cmd), .cmd_en(cmd_en),
         .addr(addr), .wr_data_rdy(wr_data_rdy), .wr_data(wr_data), .wr_data_en(wr_data_en),
         .wr_data_end(wr_data_end), .wr_data_mask(wr_data_mask), .rd_data(rd_data),
@@ -135,17 +135,19 @@ module tb_video;
 
     integer x, y, i, errors;
     reg [31:0]  r, crc, model_crc, frames0;
-    reg [127:0] w;
+    reg [255:0] w;
     initial begin
         errors = 0;
         #1;     // after the DDR model's random initialisation
         // fill the framebuffer (padding words get a marker that must never show)
-        for (i = 0; i < 512; i = i + 1) ddr.mem[i] = {4{32'hDEAD_BEEF}};
+        for (i = 0; i < 256; i = i + 1) ddr.mem[i] = {8{32'hDEAD_BEEF}};
         for (y = 0; y < VA; y = y + 1)
-            for (x = 0; x < HA; x = x + 8) begin
-                w = {fbpix(x+7,y), fbpix(x+6,y), fbpix(x+5,y), fbpix(x+4,y),
-                     fbpix(x+3,y), fbpix(x+2,y), fbpix(x+1,y), fbpix(x,y)};
-                ddr.mem[(FB + y*STRIDE + x*2) >> 4] = w;
+            for (x = 0; x < HA; x = x + 16) begin
+                w = {fbpix(x+15,y), fbpix(x+14,y), fbpix(x+13,y), fbpix(x+12,y),
+                     fbpix(x+11,y), fbpix(x+10,y), fbpix(x+9,y),  fbpix(x+8,y),
+                     fbpix(x+7,y),  fbpix(x+6,y),  fbpix(x+5,y),  fbpix(x+4,y),
+                     fbpix(x+3,y),  fbpix(x+2,y),  fbpix(x+1,y),  fbpix(x,y)};
+                ddr.mem[(FB + y*STRIDE + x*2) >> 5] = w;
             end
         model_crc = 32'hFFFFFFFF;
         for (y = 0; y < VA; y = y + 1)

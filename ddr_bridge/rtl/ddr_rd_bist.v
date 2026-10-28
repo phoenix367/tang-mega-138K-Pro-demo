@@ -4,7 +4,8 @@
 // Memory Interface IP user port (runs in the IP's clk_out domain).
 //
 // Question it answers: when several BL8 reads are in flight, does the MC
-// return exactly the data of each read, in command order?
+// return exactly the data of each read, in command order?  (x32 bus: a BL8
+// is 256 bits = one 32 B line.)
 //
 // Per iteration: pick 4 addresses (pattern), read them one at a time, each
 // waiting for its data (ground truth -- DDR is not written meanwhile, the
@@ -13,13 +14,13 @@
 // per cycle).  A mismatch whose data equals truth k (k != j) is a reorder.
 //
 // Patterns: 0 random (any bank/row)   1 same row, 4 columns
-//           2 line pairs (A, A+16 B)  3 descending line pairs (A+16 B, A)
+//           2 line pairs (A, A+32 B)  3 descending line pairs (A+32 B, A)
 //
 // Only reads are issued, so the BIST can run under a live OS; the bridge
 // stalls for the duration (a few ms).
 //============================================================================
 module ddr_rd_bist #(
-    parameter AW = 27                   // x16 word address bits (DDR bytes = 2**(AW+1))
+    parameter AW = 28                   // x32 word address bits (DDR bytes = 2**(AW+2))
 ) (
     input  wire         clk,
     input  wire         rst_n,
@@ -34,7 +35,7 @@ module ddr_rd_bist #(
     input  wire         cmd_ok,         // command may be issued this cycle
     output wire         cmd_en,
     output wire [AW-1:0] addr,
-    input  wire [127:0] rd_data,
+    input  wire [255:0] rd_data,
     input  wire         rd_data_valid,
     // results (static once done)
     output reg  [31:0]  r_status,       // {running, done, 2'b0, iterations[27:0]}
@@ -52,8 +53,8 @@ module ddr_rd_bist #(
     reg  [2:0]   st;
     reg  [31:0]  lfsr;
     reg  [AW-1:0] a [0:3];
-    reg  [127:0] truth [0:3];
-    reg  [127:0] got   [0:3];
+    reg  [255:0] truth [0:3];
+    reg  [255:0] got   [0:3];
     reg  [1:0]   i, n_ret;
     reg  [2:0]   n_iss;
     reg  [27:0]  iter, iters;
@@ -61,8 +62,8 @@ module ddr_rd_bist #(
     reg  [AW-11:0] base;                // bank+row of the iteration (pattern 1)
     reg          first_n;               // first mismatch of this run captured
     reg  [1:0]   cph;                   // S_CMP phase: 0 select, 1 partial compares, 2 verdict
-    reg  [127:0] g_sel;                 // got[i], registered
-    reg  [15:0]  eqp;                   // eqp[4k+q]: got[i] word q == truth[k] word q
+    reg  [255:0] g_sel;                 // got[i], registered
+    reg  [31:0]  eqp;                   // eqp[8k+q]: got[i] word q == truth[k] word q
     reg  [31:0]  g_lo, t_lo;            // got[i] / truth[i] bits [31:0]
     reg          extra_q;               // stray rd_data_valid last cycle
     reg  [15:0]  n_extra;               // 16 bits: any count is a fault (timing: short +1)
@@ -88,8 +89,8 @@ module ddr_rd_bist #(
         if (!rst_n) begin
             st <= S_IDLE; lfsr <= 32'h1BADF00D; i <= 2'd0; n_iss <= 3'd0; n_ret <= 2'd0;
             iter <= 28'd0; iters <= 28'd0; pat <= 2'd0; base <= {(AW-10){1'b0}}; first_n <= 1'b0;
-            cph <= 2'd0; eqp <= 16'd0; g_lo <= 32'd0; t_lo <= 32'd0; extra_q <= 1'b0;
-            g_sel <= 128'd0;
+            cph <= 2'd0; eqp <= 32'd0; g_lo <= 32'd0; t_lo <= 32'd0; extra_q <= 1'b0;
+            g_sel <= 256'd0;
             r_status <= 32'd0; r_err <= 32'd0; r_reorder <= 32'd0; r_first <= 32'd0;
             r_first_addr <= 32'd0; r_first_got <= 32'd0; r_first_exp <= 32'd0; n_extra <= 16'd0;
         end else begin
@@ -103,7 +104,7 @@ module ddr_rd_bist #(
                 end
                 S_WAIT: if (port_idle) begin st <= S_GEN; i <= 2'd0; end
                 S_GEN: begin
-                    // 16 B aligned x16 word address {bank[2:0], row, col[9:0]}
+                    // 32 B aligned x32 word address {bank[2:0], row, col[9:0]}
                     lfsr <= lfsr_n;
                     if (i == 2'd0) base <= lfsr[AW-1:10];
                     case (pat)
@@ -134,29 +135,29 @@ module ddr_rd_bist #(
                 end
                 S_CMP: if (cph == 2'd0) begin
                     // phase 0: select arrival i; phase 1: 32-bit partial compares
-                    // against every truth k -- keeps the 4:1 select, 128-bit
+                    // against every truth k -- keeps the 4:1 select, 256-bit
                     // compares and the reorder search out of one 100 MHz cycle
                     g_sel <= got[i];
                     t_lo  <= truth[i][31:0];
                     cph   <= 2'd1;
                 end else if (cph == 2'd1) begin
-                    for (k = 0; k < 16; k = k + 1)
-                        eqp[k] <= (g_sel[(k % 4)*32 +: 32] == truth[k / 4][(k % 4)*32 +: 32]);
+                    for (k = 0; k < 32; k = k + 1)
+                        eqp[k] <= (g_sel[(k % 8)*32 +: 32] == truth[k / 8][(k % 8)*32 +: 32]);
                     g_lo <= g_sel[31:0];
                     cph  <= 2'd2;
                 end else begin
                     // phase 2: arrival j = i vs truth i; else which truth k it holds
                     cph <= 2'd0;
-                    if (!(&eqp[i*4 +: 4])) begin
+                    if (!(&eqp[i*8 +: 8])) begin
                         km = 3'd7;
                         for (k = 3; k >= 0; k = k - 1)
-                            if (k != i && (&eqp[k*4 +: 4])) km = k[2:0];
+                            if (k != i && (&eqp[k*8 +: 8])) km = k[2:0];
                         r_err <= r_err + 32'd1;
                         if (km != 3'd7) r_reorder <= r_reorder + 32'd1;
                         if (!first_n) begin
                             first_n      <= 1'b1;
                             r_first      <= {pat, i, 1'b0, km, iter[23:0]};
-                            r_first_addr <= {5'd0, a[i]};
+                            r_first_addr <= {{(32-AW){1'b0}}, a[i]};
                             r_first_got  <= g_lo;
                             r_first_exp  <= t_lo;
                         end

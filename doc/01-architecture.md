@@ -34,7 +34,7 @@ graph TB
   end
 
   FLASH[("SPI NOR W25Q128<br/>16 MB")]
-  DDR[("DDR3 SDRAM<br/>512 MB")]
+  DDR[("DDR3 SDRAM<br/>1 GB (2 x16, 32-bit bus)")]
   PHYC["RTL8211F<br/>RGMII PHY"]
 
   FLASH -.config + XIP.-> SOC
@@ -76,7 +76,7 @@ Key integration facts (`src/ae350_demo.v`):
 
 | Region | Base | Size | Notes |
 |---|---|---|---|
-| DDR3 SDRAM (data) | `0x0000_0000` | 512 MB (of 1 GB on board) | DDR_H* AHB → `ddr_bridge/ahb_ddr3_top` → DDR3 PHY |
+| DDR3 SDRAM (data) | `0x0000_0000` | 1 GB (all of it: 2 x16 chips, 32-bit bus) | DDR_H* AHB → `ddr_bridge/ahb_ddr3_top` → DDR3 PHY (x32, 256-bit user port) |
 | Flash XIP (instr.) | `0x8000_0000` | 16 MB | maps to SPI-NOR offset `0x60_0000`; U-Boot runs here |
 | PLIC | `0xE400_0000` | — | interrupt controller |
 | PLMT (mtime) | `0xE600_0000` | — | machine timer, **50 MHz** tick |
@@ -148,7 +148,7 @@ src/
   gowin_pll_ae350/        core/AHB/RTC PLL
   gowin_pll_ddr3/         DDR3 PLL
   gowin_pll_eth/          Ethernet 125/25 MHz PLL
-  ddr3_memory_interface/  hard DDR3 PHY IP
+  ddr3_memory_interface_1g/  hard DDR3 PHY IP netlist (x32, 1 GB; _512 / _400 / plain: older x16 ones, disabled)
   gw_ahb_ddr3*.v          AHB→DDR3 bridge
   triple_speed_ethernet_mac/  Gowin TSE MAC (encrypted)
 eth_dma/

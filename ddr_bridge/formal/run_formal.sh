@@ -9,7 +9,7 @@
 # (KeyError 'asserts'), and Z3 through yosys-smtbmc does not finish even step 0
 # of this model.  bridge_ahb.sby keeps the Z3 BMC tasks for newer tools.
 # Usage: [PDR=0] formal/run_formal.sh [small|full] [depth]
-#   small: 12-bit address space, 4 line buffers (default)   full: 28-bit, 8 buffers
+#   small: 12-bit address space, 4 line buffers (default)   full: 30-bit, 8 buffers
 #   PDR=0 skips the unbounded proof (it can take a long time on the full size)
 set -u
 CFG="${1:-small}"

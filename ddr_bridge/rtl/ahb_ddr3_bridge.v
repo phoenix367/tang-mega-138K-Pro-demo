@@ -1,19 +1,21 @@
 `default_nettype none
 //============================================================================
 // ahb_ddr3_bridge.v -- AHB-lite (64-bit) slave -> Gowin DDR3 Memory Interface
-// IP user port (1:4 clock ratio, x16 DRAM, BL8 = 128 bits per command).
+// IP user port (1:4 clock ratio, x32 DRAM bus, BL8 = 256 bits per command).
 //
 // Replaces Gowin's gw_ahb_ddr3, which turns EVERY 64-bit AHB beat into its
 // own DDR3 command with a full clock-domain round trip (~1 us per beat, so a
 // 32 B L1 line fill = 4 round trips ~ 5 us).  This bridge works in cache
-// lines instead:
+// lines instead -- and with the 32-bit DDR3 bus one BL8 command moves exactly
+// one 32 B line, so every DDR command is one whole line:
 //
 //  * Read: NBUF line buffers (32 B each, the A25 L1 line).  A miss fetches
-//    the whole line as two BL8 reads (critical 16 B half first; per-half
-//    valid bits release the stalled beat as soon as its half lands), so the 4
-//    beats of a WRAP4/INCR4 line fill cost ONE DDR round trip.  The line being
-//    read is copied (cl_data) and its remaining beats are predicted and
-//    answered with zero wait states.
+//    the line as ONE BL8 read; the whole line lands at once, so the 4 beats
+//    of a WRAP4/INCR4 line fill cost ONE DDR round trip.  The line being read
+//    is copied (cl_data) and its remaining beats are predicted and answered
+//    with zero wait states.  (The x16 version fetched a line as two 16 B
+//    halves, critical half first, with per-half valid bits; see git history
+//    before the 1 GB / 32-bit change.)
 //  * AHB side built for a 100 MHz DDR_HCLK: AHB inputs are only registered
 //    and HREADY / HRDATA come straight from flops (long routes to and from
 //    the hard AE350 macro); see the "AHB side" section below.
@@ -21,10 +23,11 @@
 //    (memcpy src + dst + the instruction stream interleave fine) and keeps
 //    lines L+1..L+PF_DIST in flight, so streaming overlaps PF_DIST+1 DDR
 //    round trips instead of paying one per line.
-//  * Write: posted.  Beats are merged into a 16 B block (byte mask) and
-//    pushed as one masked BL8 write; HREADY stays high unless the command
-//    FIFO is full.  Every accepted write invalidates any buffered copy of its
-//    line (a generation tag drops data still in flight for it).
+//  * Write: posted.  Beats are merged into a 32 B line block (byte mask) and
+//    pushed as one masked BL8 write -- a WRAP4 eviction is a single DDR
+//    command; HREADY stays high unless the command FIFO is full.  Every
+//    accepted write invalidates any buffered copy of its line (a generation
+//    tag drops data still in flight for it).
 //  * Ordering: reads and writes share ONE command FIFO into the DDR clock
 //    domain, and a read is never queued while a merged write is still held
 //    back, so DDR sees accesses in program order.  The bridge is the only
@@ -54,12 +57,13 @@
 // Clocks: hclk = SoC DDR_HCLK (AHB side), uclk = DDR3 IP clk_out (memory
 // clock / 4).  The two are asynchronous; ddr_async_fifo crosses both ways.
 //
-// DDR address: byte address [ADDR_BITS-1:0] -> IP word address (x16) = byte>>1
+// DDR address: byte address [ADDR_BITS-1:0] -> IP word address (x32) = byte>>2
 // in the IP's {bank,row,column} order; the IP's addr port is one bit wider
-// than the word address (its top bit stays 0), i.e. ADDR_BITS wide.
+// than the word address (its top bit stays 0), i.e. ADDR_BITS-1 wide.  A BL8
+// covers 8 words = 32 B, so every command address is {line, 3'b000}.
 //============================================================================
 module ahb_ddr3_bridge #(
-    parameter ADDR_BITS = 28,        // DDR bytes = 2**ADDR_BITS (256 MB)
+    parameter ADDR_BITS = 30,        // DDR bytes = 2**ADDR_BITS (1 GB)
     parameter NBUF      = 8,         // read line buffers (2, 4 or 8)
     parameter PREFETCH  = 1,         // stream prefetch on/off
     parameter PF_DIST   = 2,         // lines kept in flight ahead of a stream (1..3)
@@ -89,10 +93,10 @@ module ahb_ddr3_bridge #(
     //   [10] no read within G of a read     [11] no write within G of a read
     //   [16] let reads to different rows overlap (the default, MODE 0x10000)
     //   [17] UNSAFE: same-cycle-only cmd_ready/wr_data_rdy handshake (pre-fix)
-    //   [18] no early release: a read beat waits until its WHOLE line is in
+    //   [18] no effect (was "no early release of a half line"; a line is one BL8)
     //   [19] no predicted beats: every read beat takes >= 1 wait state
     //   [20] reads overlap only within one line (another line waits)
-    //   [21] fetch a line's half 0 first (no critical-half-first)
+    //   [21] no effect (was "fetch half 0 first")
     //   read BIST (ddr_rd_bist): [24] start (toggle)  [26:25] pattern
     //   [31:28] iterations = 2**(n+8); results in perf_cnt[511:256]
     input  wire [31:0]  mode,
@@ -107,33 +111,32 @@ module ahb_ddr3_bridge #(
     input  wire         cmd_ready,
     output wire [2:0]   cmd,
     output wire         cmd_en,
-    output wire [ADDR_BITS-1:0] addr,
+    output wire [ADDR_BITS-2:0] addr,    // {1'b0, x32 word address}
     input  wire         wr_data_rdy,
-    output wire [127:0] wr_data,
+    output wire [255:0] wr_data,
     output wire         wr_data_en,
     output wire         wr_data_end,
-    output wire [15:0]  wr_data_mask,
-    input  wire [127:0] rd_data,
+    output wire [31:0]  wr_data_mask,
+    input  wire [255:0] rd_data,
     input  wire         rd_data_valid,
 
     // ---------------- video read port (uclk, read-only) ----------------
     output wire         v_rstn,          // uclk-domain reset (released after calibration)
     input  wire         v_req,           // a BL8 read of v_addr is wanted
-    input  wire [ADDR_BITS-1:0] v_addr,  // byte address, 16 B aligned
+    input  wire [ADDR_BITS-1:0] v_addr,  // byte address, 32 B aligned
     output wire         v_ack,           // ... issued this cycle
     output wire         v_rvalid,        // data of the oldest video read in flight
-    output wire [127:0] v_rdata
+    output wire [255:0] v_rdata
 );
-    localparam LB = ADDR_BITS - 5;           // line address bits
-    localparam BB = ADDR_BITS - 4;           // 16 B block address bits
+    localparam LB = ADDR_BITS - 5;           // line address bits (32 B lines)
     localparam EB = (NBUF > 4) ? 3 : (NBUF > 2) ? 2 : 1;   // entry index bits
     localparam GB = 4;                       // generation tag bits
 
-    // command FIFO entry: {is_read, blk[BB-1:0], data[127:0], mask[15:0]}
-    //   read:  blk = {line, crit_half}, mask = {.., gen, entry}
-    localparam CW = 1 + BB + 128 + 16;
-    // return FIFO entry: {line, entry, gen, half, data} (line: integrity check)
-    localparam RW = LB + EB + GB + 1 + 128;
+    // command FIFO entry: {is_read, line[LB-1:0], data[255:0], mask[31:0]}
+    //   read:  mask = {.., gen, entry}
+    localparam CW = 1 + LB + 256 + 32;
+    // return FIFO entry: {line, entry, gen, data} (line: integrity check)
+    localparam RW = LB + EB + GB + 256;
 
     assign hresp = 2'b00;
 
@@ -151,9 +154,7 @@ module ahb_ddr3_bridge #(
         if (!hrst_n) begin mode_s1 <= 32'd0; mode_s2 <= 32'd0; end
         else         begin mode_s1 <= mode; mode_s2 <= mode_s1; end
     wire m_nopf   = mode_s2[0] | mode_s2[1];
-    wire m_noret  = mode_s2[1];
     wire m_nomrg  = mode_s2[2];
-    wire m_wline  = mode_s2[18];
     wire m_nofast = mode_s2[19];
 
     reg [1:0] urst_s;
@@ -176,9 +177,9 @@ module ahb_ddr3_bridge #(
     //  * anything else waits: 1 wait state on a current-line hit, 2 on a line
     //    buffer hit, a DDR round trip on a miss (slow path, sp_*).
     // Writes are posted: beats go into a 4-entry queue (wq) and a head register
-    // (wh), then merge into the 16 B block buffer (wb).  A read data phase waits
-    // until queued writes are processed: they invalidate stale line-buffer and
-    // current-line copies and must reach DDR first.
+    // (wh), then merge into the 32 B line block buffer (wb).  A read data phase
+    // waits until queued writes are processed: they invalidate stale line-buffer
+    // and current-line copies and must reach DDR first.
     //========================================================================
     localparam [2:0] HB_WRAP4 = 3'b010, HB_INCR4 = 3'b011;
 
@@ -192,7 +193,6 @@ module ahb_ddr3_bridge #(
     reg [ADDR_BITS-1:0] aq_addr;
     reg [2:0]           aq_size, aq_burst;
     wire [LB-1:0] aq_line = aq_addr[ADDR_BITS-1:5];
-    wire          aq_half = aq_addr[4];
     wire [1:0]    aq_beat = aq_addr[4:3];
     wire          rd_wait = aq_v & ~aq_wr & ~hready_q;   // read data phase being held
     wire          wr_dph  = aq_v &  aq_wr;               // write data phase this cycle
@@ -201,7 +201,7 @@ module ahb_ddr3_bridge #(
     // line buffer entries
     reg [LB-1:0]  ent_tag  [0:NBUF-1];
     reg           ent_alloc[0:NBUF-1];       // tag valid (data may be in flight)
-    reg [1:0]     ent_hv   [0:NBUF-1];       // per-16 B-half data valid
+    reg           ent_v    [0:NBUF-1];       // line data valid (the whole 32 B)
     reg [GB-1:0]  ent_gen  [0:NBUF-1];
     reg [EB-1:0]  ent_age  [0:NBUF-1];       // LRU age, 0 = most recent
     reg [255:0]   ent_data [0:NBUF-1];
@@ -224,26 +224,25 @@ module ahb_ddr3_bridge #(
     wire          rf_empty;
     wire [RW-1:0] rf_rdata;
 
-    function pending_f(input alloc, input [1:0] hv);
-        pending_f = alloc & ~(&hv);
+    function pending_f(input alloc, input v);
+        pending_f = alloc & ~v;
     endfunction
 
     // ---- current line: a copy of the line the read bursts are served from ----
     reg           cl_v;
     reg [EB-1:0]  cl_idx;                    // its line buffer entry + generation:
-    reg [GB-1:0]  cl_gen;                    //   returning halves update the copy too
+    reg [GB-1:0]  cl_gen;                    //   the returning line updates the copy too
     reg [LB-1:0]  cl_line;
-    reg [1:0]     cl_hv;
+    reg           cl_dv;                     // its data has arrived
     reg [255:0]   cl_data;
 
     // ---- predicted burst beats (served from cl_data) ----
     reg           nb_v;
     reg [1:0]     nb_left, nb_beat;          // beats still to come / next beat in the line
-    wire          nb_ok   = nb_v & (nb_left != 2'd0) & cl_v & cl_hv[nb_beat[1]]
-                          & (~m_wline | (&cl_hv)) & ~m_nofast;
+    wire          nb_ok   = nb_v & (nb_left != 2'd0) & cl_v & cl_dv & ~m_nofast;
     wire [63:0]   nb_data = cl_data[nb_beat*64 +: 64];
 
-    // ---- posted writes: queue -> head register -> 16 B merge buffer ----
+    // ---- posted writes: queue -> head register -> 32 B merge buffer ----
     localparam WQW = ADDR_BITS + 3 + 64;
     reg  [WQW-1:0]      wq_mem [0:3];
     reg  [1:0]          wq_wp, wq_rp;
@@ -257,11 +256,10 @@ module ahb_ddr3_bridge #(
     wire                wspace  = ({1'b0, wq_n} + {3'd0, wr_take}) <= 4'd2;
 
     reg           wb_valid;
-    reg [BB-1:0]  wb_blk;
-    reg [127:0]   wb_data;
-    reg [15:0]    wb_mask;                     // 1 = byte written
+    reg [LB-1:0]  wb_line;
+    reg [255:0]   wb_data;
+    reg [31:0]    wb_mask;                     // 1 = byte written
 
-    wire [BB-1:0] wh_blk  = wh_addr[ADDR_BITS-1:4];
     wire [LB-1:0] wh_line = wh_addr[ADDR_BITS-1:5];
     reg [7:0] be8;
     always @(*) begin
@@ -272,11 +270,11 @@ module ahb_ddr3_bridge #(
             default: be8 = 8'hFF;
         endcase
     end
-    wire [15:0] be16 = wh_addr[3] ? {be8, 8'h00} : {8'h00, be8};
+    wire [31:0] be32 = {24'd0, be8} << {wh_addr[4:3], 3'b000};
 
-    // wh_sb: wh's 16 B block is the (valid) merge block -- compared when the
-    // head is loaded, against wb as it is after that edge (wb only changes
-    // when wh is consumed, or by an idle flush while wh is empty)
+    // wh_sb: wh's line is the (valid) merge block -- compared when the head
+    // is loaded, against wb as it is after that edge (wb only changes when
+    // wh is consumed, or by an idle flush while wh is empty)
     reg  wh_sb;
     wire same_blk   = wh_sb & ~m_nomrg;
     wire flush_wr   = wh_v & wb_valid & ~same_blk;              // push the old block first
@@ -299,7 +297,7 @@ module ahb_ddr3_bridge #(
     always @(*) begin
         for (e = 0; e < NBUF; e = e + 1) begin
             ent_free[e] = ~ent_alloc[e];
-            ent_pend[e] = pending_f(ent_alloc[e], ent_hv[e]);
+            ent_pend[e] = pending_f(ent_alloc[e], ent_v[e]);
         end
         for (e = 0; e < NBUF; e = e + 1) begin
             ent_oldest[e] = ~ent_pend[e];
@@ -342,7 +340,7 @@ module ahb_ddr3_bridge #(
         tag_idx = {EB{1'b0}};
         for (e = 0; e < NBUF; e = e + 1) begin
             tag_hit[e]  = ent_alloc[e] && (ent_tag[e] == aq_line);
-            data_hit[e] = tag_hit[e] && (m_wline ? (&ent_hv[e]) : ent_hv[e][aq_half]);
+            data_hit[e] = tag_hit[e] && ent_v[e];
             if (tag_hit[e]) tag_idx = tag_idx | e[EB-1:0];   // one-hot -> binary (OR)
         end
     end
@@ -353,7 +351,7 @@ module ahb_ddr3_bridge #(
     wire sp_wait  = (sp_st == SP_WAIT);
     wire sp_go    = rd_wait & (sp_st == SP_IDLE) & ~wq_busy;
     wire cl_match = cl_v & (cl_line == aq_line);
-    wire cl_rdy   = cl_hv[aq_half] & (~m_wline | (&cl_hv));
+    wire cl_rdy   = cl_dv;
     wire lk_go    = sp_go & ~cl_match;                       // full lookup this cycle
     // deliveries at the end of this cycle (HREADY high next cycle)
     wire dl_cl    = cl_v & cl_rdy & ((sp_go & cl_match) | sp_wait);
@@ -464,11 +462,11 @@ module ahb_ddr3_bridge #(
         cf_wdata = {CW{1'b0}};
         if (push_wr) begin
             cf_push  = 1'b1;
-            cf_wdata = {1'b0, wb_blk, wb_data, wb_mask};
-        end else if (alloc_go) begin         // line read: critical half first
-            cf_push  = 1'b1;                 // (a prefetch starts at half 0)
-            cf_wdata = {1'b1, alloc_line, push_dem & aq_half, 128'd0,
-                        {(16-GB-EB){1'b0}}, vic_gen_n, vic_q};
+            cf_wdata = {1'b0, wb_line, wb_data, wb_mask};
+        end else if (alloc_go) begin         // line read (one BL8)
+            cf_push  = 1'b1;
+            cf_wdata = {1'b1, alloc_line, 256'd0,
+                        {(32-GB-EB){1'b0}}, vic_gen_n, vic_q};
         end
     end
 
@@ -480,17 +478,17 @@ module ahb_ddr3_bridge #(
     wire          rf_pop  = ~rf_empty;
     reg           rfq_v;
     reg  [RW-1:0] rfq_d;
-    reg           rf_v, rf_half;
+    reg           rf_v;
     reg  [LB-1:0] rf_line;
     reg  [EB-1:0] rf_ent;
     reg  [GB-1:0] rf_gen;
-    reg  [127:0]  rf_data;
+    reg  [255:0]  rf_data;
     reg  [NBUF-1:0] rf_oh;
     always @(posedge hclk or negedge hrst_n)
         if (!hrst_n) begin
             rfq_v <= 1'b0; rfq_d <= {RW{1'b0}};
-            rf_v <= 1'b0; rf_half <= 1'b0; rf_line <= {LB{1'b0}}; rf_ent <= {EB{1'b0}};
-            rf_gen <= {GB{1'b0}}; rf_data <= 128'd0; rf_oh <= {NBUF{1'b0}};
+            rf_v <= 1'b0; rf_line <= {LB{1'b0}}; rf_ent <= {EB{1'b0}};
+            rf_gen <= {GB{1'b0}}; rf_data <= 256'd0; rf_oh <= {NBUF{1'b0}};
         end else begin
             rfq_v   <= rf_pop;
             rfq_d   <= rf_rdata;
@@ -498,8 +496,7 @@ module ahb_ddr3_bridge #(
             rf_line <= rfq_d[RW-1 -: LB];
             rf_ent  <= rfq_d[RW-LB-1 -: EB];
             rf_gen  <= rfq_d[RW-LB-EB-1 -: GB];
-            rf_half <= rfq_d[128];
-            rf_data <= rfq_d[127:0];
+            rf_data <= rfq_d[255:0];
             rf_oh   <= rfq_v ? ({{(NBUF-1){1'b0}}, 1'b1} << rfq_d[RW-LB-1 -: EB]) : {NBUF{1'b0}};
         end
     reg [NBUF-1:0] rf_hit;                   // return lands in entry e
@@ -507,9 +504,9 @@ module ahb_ddr3_bridge #(
         for (e = 0; e < NBUF; e = e + 1)
             rf_hit[e] = rf_oh[e] && ent_alloc[e] && (ent_gen[e] == rf_gen);
 
-    // a returning half also updates the current line copy -- including the
+    // a returning line also updates the current line copy -- including the
     // one loaded from line buffer lk_idx this cycle (it would otherwise copy
-    // the entry just before the half lands).  A fresh allocation (push_dem)
+    // the entry just before the data lands).  A fresh allocation (push_dem)
     // cannot receive data in its first cycle.
     wire          rf_cl   = rf_v & ~push_dem &
                             (cl_ld_ent ? (rf_ent == lk_idx) && (rf_gen == ent_gen[lk_idx])
@@ -538,11 +535,11 @@ module ahb_ddr3_bridge #(
             aq_v <= 1'b0; aq_wr <= 1'b0; aq_seq <= 1'b0;
             aq_addr <= {ADDR_BITS{1'b0}}; aq_size <= 3'd0; aq_burst <= 3'd0;
             cl_v <= 1'b0; cl_idx <= {EB{1'b0}}; cl_gen <= {GB{1'b0}}; cl_line <= {LB{1'b0}};
-            cl_hv <= 2'b00; cl_data <= 256'd0;
+            cl_dv <= 1'b0; cl_data <= 256'd0;
             nb_v <= 1'b0; nb_left <= 2'd0; nb_beat <= 2'd0;
             wq_wp <= 2'd0; wq_rp <= 2'd0; wq_n <= 3'd0;
             wh_v <= 1'b0; wh_addr <= {ADDR_BITS{1'b0}}; wh_size <= 3'd0; wh_data <= 64'd0;
-            wb_valid <= 1'b0; wb_blk <= {BB{1'b0}}; wb_data <= 128'd0; wb_mask <= 16'd0;
+            wb_valid <= 1'b0; wb_line <= {LB{1'b0}}; wb_data <= 256'd0; wb_mask <= 32'd0;
             vic_ok_q <= 1'b0; pvic_ok_q <= 1'b0; vic_q <= {EB{1'b0}}; alloc_cool <= 1'b0;
             sp_st <= SP_IDLE; lk_tag <= 1'b0; lk_data <= 1'b0; lk_idx <= {EB{1'b0}};
             lk_oh <= {NBUF{1'b0}}; wh_sb <= 1'b0;
@@ -558,7 +555,7 @@ module ahb_ddr3_bridge #(
             pfc_valid <= 1'b0; pfc_slot <= 2'd0; pfc_line <= {LB{1'b0}};
             cfq_push  <= 1'b0; cfq_data <= {CW{1'b0}};
             for (k = 0; k < NBUF; k = k + 1) begin
-                ent_tag[k] <= {LB{1'b0}}; ent_alloc[k] <= 1'b0; ent_hv[k] <= 2'b00;
+                ent_tag[k] <= {LB{1'b0}}; ent_alloc[k] <= 1'b0; ent_v[k] <= 1'b0;
                 ent_gen[k] <= {GB{1'b0}}; ent_age[k] <= k[EB-1:0];
                 ent_data[k] <= 256'd0;
             end
@@ -626,23 +623,21 @@ module ahb_ddr3_bridge #(
             // ---- current line copy ----
             if (push_dem) begin
                 cl_v <= 1'b1; cl_idx <= vic_q; cl_gen <= vic_gen_n;
-                cl_line <= aq_line; cl_hv <= 2'b00;
+                cl_line <= aq_line; cl_dv <= 1'b0;
             end else if (cl_ld_ent) begin
                 cl_v <= 1'b1; cl_idx <= lk_idx; cl_gen <= ent_gen[lk_idx];
-                cl_line <= aq_line; cl_hv <= ent_hv[lk_idx]; cl_data <= lk_line_d;
+                cl_line <= aq_line; cl_dv <= ent_v[lk_idx]; cl_data <= lk_line_d;
             end
-            if (rf_cl) begin                     // a half of the current line returns
-                if (rf_half) cl_data[255:128] <= rf_data;
-                else         cl_data[127:0]   <= rf_data;
-                cl_hv[rf_half] <= 1'b1;
+            if (rf_cl) begin                     // the current line returns
+                cl_data <= rf_data;
+                cl_dv   <= 1'b1;
             end
 
             // ---- return data into line buffers ----
             for (k = 0; k < NBUF; k = k + 1)
                 if (rf_hit[k]) begin
-                    if (rf_half) ent_data[k][255:128] <= rf_data;
-                    else         ent_data[k][127:0]   <= rf_data;
-                    ent_hv[k][rf_half] <= 1'b1;
+                    ent_data[k] <= rf_data;
+                    ent_v[k]    <= 1'b1;
                 end
 
             // ---- LRU ----
@@ -659,7 +654,7 @@ module ahb_ddr3_bridge #(
             pvic_ok_q  <= pvic_ok_c;
             alloc_cool <= alloc_go;
             if (alloc_go) begin
-                ent_alloc[vic_q] <= 1'b1; ent_tag[vic_q] <= alloc_line; ent_hv[vic_q] <= 2'b00;
+                ent_alloc[vic_q] <= 1'b1; ent_tag[vic_q] <= alloc_line; ent_v[vic_q] <= 1'b0;
                 ent_gen[vic_q]   <= vic_gen_n;
             end
             if (pf_adv) begin
@@ -732,8 +727,8 @@ module ahb_ddr3_bridge #(
                 wq_rp <= wq_rp + 2'd1;
                 // against wb after this edge: a consumed head becomes the block
                 // (both compares in parallel, the late wh_cons only selects)
-                wh_sb <= wh_cons ? (wq_mem[wq_rp][WQW-1 -: BB] == wh_blk)
-                                 : (wb_valid & (wq_mem[wq_rp][WQW-1 -: BB] == wb_blk));
+                wh_sb <= wh_cons ? (wq_mem[wq_rp][WQW-1 -: LB] == wh_line)
+                                 : (wb_valid & (wq_mem[wq_rp][WQW-1 -: LB] == wb_line));
             end
             wq_n <= wq_n + {2'd0, wr_take} - {2'd0, wh_load};
             if (wh_load)      wh_v <= 1'b1;
@@ -741,19 +736,19 @@ module ahb_ddr3_bridge #(
 
             if (wh_cons) begin
                 if (same_blk) begin
-                    for (k = 0; k < 16; k = k + 1)
-                        if (be16[k]) wb_data[k*8 +: 8] <= wh_data[(k%8)*8 +: 8];
-                    wb_mask <= wb_mask | be16;
+                    for (k = 0; k < 32; k = k + 1)
+                        if (be32[k]) wb_data[k*8 +: 8] <= wh_data[(k%8)*8 +: 8];
+                    wb_mask <= wb_mask | be32;
                 end else begin
                     wb_valid <= 1'b1;
-                    wb_blk   <= wh_blk;
-                    wb_data  <= {wh_data, wh_data};
-                    wb_mask  <= be16;
+                    wb_line  <= wh_line;
+                    wb_data  <= {4{wh_data}};
+                    wb_mask  <= be32;
                 end
                 for (k = 0; k < NBUF; k = k + 1)
                     if (ent_alloc[k] && ent_tag[k] == wh_line) begin
                         ent_alloc[k] <= 1'b0;
-                        ent_hv[k]    <= 2'b00;
+                        ent_v[k]     <= 1'b0;
                         ent_gen[k]   <= ent_gen[k] + 1'b1;
                     end
                 if (cl_v && cl_line == wh_line) begin
@@ -803,9 +798,8 @@ module ahb_ddr3_bridge #(
     // the reads in flight is compared once, on load (row_ne_q / line_ne_q):
     // rd_row / rd_line only change when this slot issues a read.  The slot
     // loads only while empty (a cycle after it issues), so cmd_ready -- a late
-    // IP output -- never reaches the load enables of is_d / hq_d (~340 flops);
-    // the bubble costs ~1-4 % of throughput in simulation, less at the real
-    // command rate.
+    // IP output -- never reaches the load enables of is_d / hq_d; the bubble
+    // costs ~1-4 % of throughput in simulation, less at the real command rate.
     reg           is_v;
     reg  [CW-1:0] is_d;
     reg           row_ne_q, line_ne_q;
@@ -814,16 +808,16 @@ module ahb_ddr3_bridge #(
     assign        hq_done = is_load;
 
     wire          c_read = is_d[CW-1];
-    wire [BB-1:0] c_blk  = is_d[CW-2 -: BB];
-    wire [127:0]  c_data = is_d[16 +: 128];
-    wire [15:0]   c_mask = is_d[15:0];
-    wire [BB-1:0] h_blk  = hq_d[CW-2 -: BB];
+    wire [LB-1:0] c_line = is_d[CW-2 -: LB];
+    wire [255:0]  c_data = is_d[32 +: 256];
+    wire [31:0]   c_mask = is_d[31:0];
+    wire [LB-1:0] h_line = hq_d[CW-2 -: LB];
 
     // tag FIFO: one entry per issued BL8 read, popped by rd_data_valid.  The
     // entry is written the cycle after the issue (tq_push_q / tq_wd_q), so
     // issue_rd does not drive the write enable of every entry; the MC answers
     // ~28 uclk later, and "in flight" / "full" count the pending write.
-    localparam TW = LB + EB + GB + 1 + 16;   // {line, entry, gen, half, issue timestamp}
+    localparam TW = LB + EB + GB + 16;       // {line, entry, gen, issue timestamp}
     reg  [TW-1:0] tq [0:15];
     reg  [4:0]    tq_w, tq_r;
     reg           tq_push_q;
@@ -831,22 +825,22 @@ module ahb_ddr3_bridge #(
     reg  [4:0]    tq_n;                      // entries written (= tq_w - tq_r), a register
     wire          tq_full  = tq_push_q ? (tq_n >= 5'd14) : (tq_n >= 5'd15);
 
-    reg           rd_second;                 // issuing the 2nd half of a line read
     reg  [15:0]   ucnt;                      // free-running uclk timestamp
 
     // debug command spacing (mode[11:5], gap mode[15:12]; synchronized into uclk)
     reg  [31:0]   umode_s1, umode_s2;
-    // row of the reads in flight (all in-flight reads share one row)
-    localparam    RB = BB - 7;               // bank+row bits = byte addr [27:11]
+    // row of the reads in flight (all in-flight reads share one row): x32
+    // column = 10 bits x 4 B = 4 KB rows, so bank+row = line address [LB-1:7]
+    localparam    RB = LB - 7;
     reg  [RB-1:0] rd_row;
-    wire [RB-1:0] c_row    = c_blk[BB-1:7];
+    wire [RB-1:0] c_row    = c_line[LB-1:7];
     reg  [5:0]    wgap, rgap;                // uclk since the last write / read command
     wire [5:0]    gap       = (umode_s2[15:12] == 4'd0) ? 6'd32 : {umode_s2[15:12], 2'b00};
     wire          wr_recent = (wgap < gap);
     wire          rd_recent = (rgap < gap);
     wire          rd_out    = (tq_n != 5'd0) | tq_push_q;
     wire          row_blk   = rd_out & row_ne_q & ~umode_s2[16];
-    reg  [BB-2:0] rd_line;                   // line of the last read issued
+    reg  [LB-1:0] rd_line;                   // line of the last read issued
     wire          line_blk  = umode_s2[20] & rd_out & line_ne_q;
     wire          blk_rd    = row_blk | line_blk
                             | (umode_s2[5] & wr_recent) | (umode_s2[6] & (wr_recent | rd_out))
@@ -861,11 +855,9 @@ module ahb_ddr3_bridge #(
     wire          wdat_ok  = wr_data_rdy & (wr_rdy_q    | u_hs_old);
 
     wire          c_valid  = is_v;
-    wire          c_first  = c_blk[0] & ~umode_s2[21];            // crit half first
-    wire          c_half   = rd_second ? ~c_first : c_first;
     // read BIST: holds the bridge off, then owns the port (read-only)
     wire          bist_hold, bist_own, bist_cmd_en;
-    wire [ADDR_BITS-2:0] bist_addr;
+    wire [ADDR_BITS-3:0] bist_addr;          // x32 word address
     reg           bist_tgl_q;
     wire          bist_start = umode_s2[24] ^ bist_tgl_q;
     wire [255:0]  bist_res;
@@ -885,7 +877,7 @@ module ahb_ddr3_bridge #(
 
     wire          issue_wr = c_valid & ~c_read & cmd_ok & wdat_ok & ~blk_wr & ~bist_hold & ~v_pri;
     wire          issue_rd = c_valid &  c_read & cmd_ok & ~tq_full & ~blk_rd & ~bist_hold & ~v_pri;
-    assign        is_done  = issue_wr | (issue_rd & rd_second);
+    assign        is_done  = issue_wr | issue_rd;
 
     wire          issue_v  = v_req & v_slot & cmd_ok & ~bist_hold & ~bist_own & v_room;
     // issue order of the reads in flight, 1 = video (bridge <= 15 + video <= 8
@@ -908,8 +900,8 @@ module ahb_ddr3_bridge #(
         end else if (is_load) begin
             is_v      <= 1'b1;
             is_d      <= hq_d;
-            row_ne_q  <= (h_blk[BB-1:7] != rd_row);      // (no issue while empty)
-            line_ne_q <= (h_blk[BB-1:1] != rd_line);
+            row_ne_q  <= (h_line[LB-1:7] != rd_row);     // (no issue while empty)
+            line_ne_q <= (h_line != rd_line);
         end else begin
             if (is_done)  is_v <= 1'b0;
             if (issue_rd) begin row_ne_q <= 1'b0; line_ne_q <= 1'b0; end
@@ -920,11 +912,10 @@ module ahb_ddr3_bridge #(
     assign cmd_en       = bist_own ? bist_cmd_en : (issue_wr | issue_rd | issue_v);
     assign cmd          = (bist_own | c_read | v_slot) ? 3'b001 : 3'b000;
     assign addr         = bist_own ? {1'b0, bist_addr}
-                        : v_slot ? {1'b0, v_addr[ADDR_BITS-1:4], 3'b000}
-                        : c_read ? {1'b0, c_blk[BB-1:1], c_half, 3'b000}
-                                 : {1'b0, c_blk, 3'b000};
+                        : v_slot ? {1'b0, v_addr[ADDR_BITS-1:5], 3'b000}
+                                 : {1'b0, c_line, 3'b000};
 
-    ddr_rd_bist #(.AW(ADDR_BITS-1)) u_bist (
+    ddr_rd_bist #(.AW(ADDR_BITS-2)) u_bist (
         .clk(uclk), .rst_n(urst_n),
         .start(bist_start), .pattern(umode_s2[26:25]), .iter_log2(umode_s2[31:28]),
         .port_idle(!rd_out && v_n == 4'd0),
@@ -957,11 +948,10 @@ module ahb_ddr3_bridge #(
 
     always @(posedge uclk or negedge urst_n) begin
         if (!urst_n) begin
-            rd_second <= 1'b0;
             tq_w <= 5'd0; tq_r <= 5'd0; tq_push_q <= 1'b0; tq_wd_q <= {TW{1'b0}}; tq_n <= 5'd0;
             umode_s1 <= 32'd0; umode_s2 <= 32'd0; wgap <= 6'd63; rgap <= 6'd63;
             rd_row   <= {RB{1'b0}};
-            rd_line  <= {(BB-1){1'b0}};
+            rd_line  <= {LB{1'b0}};
             cmd_ready_q <= 1'b0; wr_rdy_q <= 1'b0; bist_tgl_q <= 1'b0;
             v_n <= 4'd0; v_age <= 4'd0; v_pri <= 1'b0; who <= 32'd0; who_w <= 5'd0; who_r <= 5'd0; who_hd <= 1'b0;
             ucnt <= 16'd0;
@@ -977,10 +967,9 @@ module ahb_ddr3_bridge #(
             tq_push_q <= issue_rd;
             if (issue_rd) begin
                 rd_row    <= c_row;
-                rd_line   <= c_blk[BB-1:1];
+                rd_line   <= c_line;
                 rgap      <= 6'd0;
-                rd_second <= ~rd_second;
-                tq_wd_q   <= {c_blk[BB-1:1], c_mask[EB-1:0], c_mask[EB +: GB], c_half, ucnt};
+                tq_wd_q   <= {c_line, c_mask[EB-1:0], c_mask[EB +: GB], ucnt};
             end else if (rgap != 6'd63)  rgap <= rgap + 6'd1;
             if (tq_push_q) tq_w <= tq_w + 5'd1;
             if (br_valid) tq_r <= tq_r + 5'd1;
@@ -1021,7 +1010,7 @@ module ahb_ddr3_bridge #(
     wire rf_full;
     ddr_async_fifo #(.W(RW), .AW(4), .WREG(1)) u_ret_fifo (
         .wclk(uclk), .wrst_n(urst_n), .wr(br_valid),
-        .wdata({tq_head[TW-1 -: LB+EB+GB+1], rd_data}), .full(rf_full), .wlevel(),
+        .wdata({tq_head[TW-1 -: LB+EB+GB], rd_data}), .full(rf_full), .wlevel(),
         .rclk(hclk), .rrst_n(hrst_n), .rd(rf_pop), .rdata(rf_rdata), .empty(rf_empty)
     );
 
@@ -1075,12 +1064,11 @@ module ahb_ddr3_bridge #(
             for (f_j = f_i + 1; f_j < NBUF; f_j = f_j + 1)
                 assert(!(ent_alloc[f_i] && ent_alloc[f_j] && ent_tag[f_i] == ent_tag[f_j]));
         // allocations never take an entry whose data is still in flight
-        if (push_dem || push_pf) assert(!pending_f(ent_alloc[vic_q], ent_hv[vic_q]));
-        // read data comes only from valid halves of the right line
-        if (pred_take) assert(cl_v && cl_hv[nb_beat[1]]);
-        if (dl_cl)     assert(cl_v && cl_line == aq_line && cl_hv[aq_half]);
-        if (dl_ent)    assert(ent_alloc[lk_idx] && ent_tag[lk_idx] == aq_line
-                              && ent_hv[lk_idx][aq_half]);
+        if (push_dem || push_pf) assert(!pending_f(ent_alloc[vic_q], ent_v[vic_q]));
+        // read data comes only from an arrived copy of the right line
+        if (pred_take) assert(cl_v && cl_dv);
+        if (dl_cl)     assert(cl_v && cl_line == aq_line && cl_dv);
+        if (dl_ent)    assert(ent_alloc[lk_idx] && ent_tag[lk_idx] == aq_line && ent_v[lk_idx]);
     end
 `endif
 endmodule

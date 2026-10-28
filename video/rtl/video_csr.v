@@ -7,8 +7,8 @@
 // Register map (byte offset):
 //   0x00 CTRL      rw  [0] enable scan-out  [1] test pattern (colour bars, no DMA)
 //   0x08 FB_BASE   rw  framebuffer physical address (16-byte aligned), RGB565
-//   0x0C STRIDE    rw  [15:0] bytes per framebuffer line (multiple of 16)
-//   0x10 HTIM      rw  [15:0] active pixels (multiple of 8, <= 1024) [31:16] total
+//   0x0C STRIDE    rw  [15:0] bytes per framebuffer line (multiple of 32)
+//   0x10 HTIM      rw  [15:0] active pixels (multiple of 16, <= 1024) [31:16] total
 //   0x14 HSTART    rw  [15:0] first active pixel of a line (DE start)
 //   0x18 VTIM      rw  [15:0] active lines  [31:16] total lines
 //   0x1C VSTART    rw  [15:0] first active line of a frame

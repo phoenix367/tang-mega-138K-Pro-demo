@@ -16,9 +16,9 @@ tb/run_tb.sh        3 runs: no back-pressure, 50 %, starved (underruns must be c
 ```
                   EXTS (regs)                       DDR3 IP user port
   CPU ──────────────► video_csr        ahb_ddr3_bridge ──video port──► video_fetch
-                          │ config                (BL8 = 16 B reads)          │
+                          │ config                (BL8 = 32 B reads)          │
                           ▼                                                   ▼
-  panel ◄── video_out ◄── line RAM: 2 lines × 128 × 128 bit (write: DDR clock, read: pclk)
+  panel ◄── video_out ◄── line RAM: 2 lines × 64 × 256 bit (write: DDR clock, read: pclk)
 ```
 
 ## Panel and timing
@@ -36,9 +36,9 @@ repeating the 5-bit channels' MSB.
 | offset | name | |
 |---|---|---|
 | 0x00 | CTRL | [0] enable scan-out, [1] test pattern (colour bars, no fetch) |
-| 0x08 | FB_BASE | framebuffer physical address, 16 B aligned |
-| 0x0C | STRIDE | bytes per line, multiple of 16 |
-| 0x10 | HTIM | [15:0] active pixels (multiple of 8, ≤ 1024), [31:16] total |
+| 0x08 | FB_BASE | framebuffer physical address, 32 B aligned |
+| 0x0C | STRIDE | bytes per line, multiple of 32 |
+| 0x10 | HTIM | [15:0] active pixels (multiple of 16, ≤ 1024), [31:16] total |
 | 0x14 | HSTART | first active pixel (DE start) |
 | 0x18 | VTIM | [15:0] active lines, [31:16] total |
 | 0x1C | VSTART | first active line |
@@ -55,8 +55,9 @@ The reset values are the panel above.
 ## How a line is fetched
 
 Early in each line period (at h = 7) `video_out` requests the line shown during the *next*
-period (toggle handshake into the DDR clock). `video_fetch` reads it as `hactive/8`
-BL8 reads (16 B = 8 pixels each) into the free half of the line RAM and toggles back.
+period (toggle handshake into the DDR clock). `video_fetch` reads it as `hactive/16`
+BL8 reads (32 B = 16 pixels each on the 32-bit DDR3 bus; 16 B = 8 pixels before the 1 GB
+change) into the free half of the line RAM and toggles back.
 The answer tags that half with {frame parity, line}. If an active line's half does not
 carry its tag at the first pixel, UNDERRUN counts it and the stale half is shown: a
 late fetch costs one line, never the frame alignment.
@@ -72,8 +73,8 @@ That is ~24 % of the bus at 40 MB/s of scan-out, and it cost:
   (single-beat reads) held EXTM for ~150 µs, about 4 line periods.
 
 The bridge now has a read-only video port next to its own DDR command stream (see
-`ddr_bridge/README.md`). A line is 100 BL8 reads, ~2 µs of controller time per 35.8 µs
-line, and the CPU's bus and EXTM never see it. The bridge goes first, but a video
+`ddr_bridge/README.md`). A line is 50 BL8 reads (100 on the old 16-bit bus), ~1 µs of
+controller time per 35.8 µs line, and the CPU's bus and EXTM never see it. The bridge goes first, but a video
 request that has waited 8 DDR clocks takes the next command slot, so a CPU write
 stream cannot starve the scan-out.
 

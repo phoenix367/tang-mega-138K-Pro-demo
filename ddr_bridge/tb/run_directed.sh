@@ -15,6 +15,7 @@ SRC="tb/ddr3_ui_model.v rtl/ahb_ddr3_bridge.v rtl/ddr_async_fifo.v rtl/ddr_rd_bi
 iverilog -g2012 -o "$OUT/tb" tb/tb_ahb_ddr3_bridge.v $SRC || exit 1
 iverilog -g2012 -P tb_ahb_ddr3_bridge.XROW_REORDER=1 -o "$OUT/tb_xrow" tb/tb_ahb_ddr3_bridge.v $SRC || exit 1
 iverilog -g2012 -P tb_ahb_ddr3_bridge.ADDR_BITS=29 -o "$OUT/tb_a29" tb/tb_ahb_ddr3_bridge.v $SRC || exit 1
+iverilog -g2012 -P tb_ahb_ddr3_bridge.ADDR_BITS=28 -o "$OUT/tb_a28" tb/tb_ahb_ddr3_bridge.v $SRC || exit 1
 
 #     name                 binary   expect   plusargs (hclk/uclk in ns; 10/10 = 100 MHz bus)
 TESTS=(
@@ -52,6 +53,7 @@ TESTS=(
   "video_bist           tb       BIST0    +video=30 +bist=0"
   "addr29_random        tb_a29   PASS     +video=30 +mode=0x10000 +hclk_ns=10 +uclk_ns=10"
   "addr29_bist          tb_a29   BIST0    +bist=0"
+  "addr28_random        tb_a28   PASS     +video=30 +mode=0x10000 +hclk_ns=10 +uclk_ns=10"
   "video_write_stream   tb       PASS     +video=100 +wrheavy +rdy_pct=60 +mode=0x10000 +hclk_ns=10 +uclk_ns=10 +vmaxwait=200"
 )
 

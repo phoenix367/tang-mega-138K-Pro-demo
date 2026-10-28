@@ -1,6 +1,7 @@
 # DDR3 IP netlist, 400 MHz, 15 row bits (512 MB)
 
-**Active** since 2026-10-29. Same generation flow and timings as `../ddr3_memory_interface_400/`
+**Superseded** on 2026-10-29 by `../ddr3_memory_interface_1g/` (same with `DQ_WIDTH = 32`: both
+chips, 1 GB); kept in the project with `enable="0"`. Was active between the 400 MHz x16 netlist and the 1 GB one. Same generation flow and timings as `../ddr3_memory_interface_400/`
 (H5TQ4G63EFR at DDR3-800, see its README), with `ROW_WIDTH = 15` in `gwmc_param.v`: the
 board's Hynix 4 Gbit x16 chip has 15 row bits, so the 16-bit bus reaches all 512 MB of it
 (the stock 14-row netlist aliased the upper half onto the lower). User port: `addr[28:0]`

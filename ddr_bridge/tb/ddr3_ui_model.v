@@ -1,10 +1,10 @@
 `timescale 1ns/1ps
 // Behavioral model of the Gowin DDR3 Memory Interface IP *user port* (1:4,
-// x16, BL8 = 128 bits per command), enough to exercise ahb_ddr3_bridge:
+// x32 bus, BL8 = 256 bits = 32 B per command), enough to exercise ahb_ddr3_bridge:
 //  * cmd/cmd_en/cmd_ready and wr_data_* handshakes with random back-pressure
 //  * in-order read returns after a random latency (1 command = 1 beat)
 //  * byte-masked writes (wr_data_mask 1 = byte NOT written)
-//  * checks: write data must accompany its command, read addresses 16 B aligned,
+//  * checks: write data must accompany its command, command addresses 32 B aligned,
 //    and (LOOKAHEAD_CHECK) a command is only issued when cmd_ready (and
 //    wr_data_rdy) was also high in the previous cycle -- the contract Sipeed's
 //    known-good DDR test relies on (cmd_en registered from cmd_ready)
@@ -15,12 +15,12 @@
 module ddr3_ui_model #(
     parameter XROW_REORDER = 0,
     parameter LOOKAHEAD_CHECK = 1,
-    parameter ROW_SHIFT = 7,            // 16 B word index -> bank+row (2 KB rows, x16)
-    parameter WORDS   = 4096,           // 16 B words modelled (64 KB)
+    parameter ROW_SHIFT = 7,            // 32 B word index -> bank+row (4 KB rows, x32)
+    parameter WORDS   = 2048,           // 32 B words modelled (64 KB)
     parameter LAT_MIN = 6,
     parameter LAT_MAX = 24,
     parameter RDY_PCT = 80,             // % of cycles cmd_ready / wr_data_rdy high
-    parameter ADDR_W  = 28              // addr port width (= bridge ADDR_BITS)
+    parameter ADDR_W  = 29              // addr port width (= bridge ADDR_BITS - 1)
 ) (
     input  wire         clk,
     output reg          calib_done,
@@ -29,19 +29,19 @@ module ddr3_ui_model #(
     input  wire         cmd_en,
     input  wire [ADDR_W-1:0] addr,
     output reg          wr_data_rdy,
-    input  wire [127:0] wr_data,
+    input  wire [255:0] wr_data,
     input  wire         wr_data_en,
     input  wire         wr_data_end,
-    input  wire [15:0]  wr_data_mask,
-    output reg  [127:0] rd_data,
+    input  wire [31:0]  wr_data_mask,
+    output reg  [255:0] rd_data,
     output reg          rd_data_valid,
     output integer      errors
 );
-    reg [127:0] mem [0:WORDS-1];
+    reg [255:0] mem [0:WORDS-1];
     integer i, now;
 
     // read return queue
-    reg [127:0] q_data [0:255];
+    reg [255:0] q_data [0:255];
     integer     q_time [0:255];
     integer     q_w, q_r, last_time;
     reg         q_done [0:255];
@@ -61,7 +61,7 @@ module ddr3_ui_model #(
 
     initial begin
         for (i = 0; i < WORDS; i = i + 1)
-            mem[i] = {4{$random}};
+            mem[i] = {8{$random}};
         calib_done = 0; cmd_ready = 0; wr_data_rdy = 0;
         rd_data = 0; rd_data_valid = 0; errors = 0;
         q_w = 0; q_r = 0; now = 0; last_time = 0; last_row = 32'hffffffff;
@@ -69,17 +69,17 @@ module ddr3_ui_model #(
         calib_done <= 1;
     end
 
-    function [127:0] wmerge(input [127:0] old, input [127:0] d, input [15:0] m);
+    function [255:0] wmerge(input [255:0] old, input [255:0] d, input [31:0] m);
         integer b;
         begin
             wmerge = old;
-            for (b = 0; b < 16; b = b + 1)
+            for (b = 0; b < 32; b = b + 1)
                 if (!m[b]) wmerge[b*8 +: 8] = d[b*8 +: 8];
         end
     endfunction
 
-    wire [ADDR_W-2:0] waddr = addr[ADDR_W-2:0];  // x16 word address
-    wire [31:0] widx  = (waddr >> 3) % WORDS;    // 16 B word index
+    wire [ADDR_W-2:0] waddr = addr[ADDR_W-2:0];  // x32 word address
+    wire [31:0] widx  = (waddr >> 3) % WORDS;    // 32 B word index
 
     always @(posedge clk) begin
         now = now + 1;

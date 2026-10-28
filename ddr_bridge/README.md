@@ -2,13 +2,20 @@
 
 Replaces Gowin's `gw_ahb_ddr3` (src/gw_ahb_ddr3*.v, now disabled in the .gprj) between
 the AE350 SoC's customized data-memory AHB bus (`DDR_H*`, 64-bit, **100 MHz**) and the
-Gowin DDR3 Memory Interface IP (`DDR3_Memory_Interface_Top`, 1:4, x16, BL8, **DDR3-800**).
-`ADDR_BITS` (ahb_ddr3_top) is the DDR size: 29 = **512 MB** since 2026-10-29 (15 row bits,
-`src/ddr3_memory_interface_512/`); it was 28 = 256 MB, a quarter of the board's 1 GB. The
-AE350 forwards its whole 2 GB data window (0x00000000–0x7FFFFFFF) to `DDR_H*`; addresses
-beyond the DDR size alias. The other half of the board's memory is the second x16 chip of a
-32-bit bus: reaching it means `DQ_WIDTH = 32` in the IP, a 256-bit bridge datapath (one BL8 per
-32 B line instead of two halves) and 20 more pins — not done.
+Gowin DDR3 Memory Interface IP (`DDR3_Memory_Interface_Top`, 1:4, **x32 bus** = both x16
+chips, BL8 = **256 bits = one 32 B line**, **DDR3-800**, `src/ddr3_memory_interface_1g/`).
+`ADDR_BITS` (ahb_ddr3_top) is the DDR size: 30 = **1 GB** since 2026-10-29, all of the
+board's memory. The AE350 forwards its whole 2 GB data window (0x00000000–0x7FFFFFFF) to
+`DDR_H*`; addresses beyond the DDR size alias.
+
+History: the bridge started on the x16 IP (BL8 = 128 bits = half a line: a line fill was two
+reads, critical half first, with per-half valid bits, and a 16 B write-merge block), first with
+14 row bits (256 MB, `src/ddr3_memory_interface_400/`), then 15 (512 MB,
+`src/ddr3_memory_interface_512/`, `ADDR_BITS = 29`). The 32-bit version dropped the half
+machinery instead of parameterizing it: every DDR command is now one whole line, the line
+buffers / current line have one valid bit, the merge block is 32 B with a 32-bit mask (a WRAP4
+eviction is a single DDR write), and the command / return FIFOs and the video port carry 256
+bits. The x16 configuration is gone from the RTL (git history before the 1 GB change has it).
 
 ```
 rtl/ahb_ddr3_top.v      drop-in for gw_ahb_ddr3_top: bridge + DDR3 IP (+HPROT, perf hookup)
@@ -35,14 +42,16 @@ during `md5sum`. The DDR3 MC's own read latency is ~28 user clocks.
 ## What the bridge does
 
 * **Reads** — 8 line buffers of 32 B (the A25 L1 line). A miss fetches the whole line as
-  two BL8 reads (critical half first, per-half valid). The line being read is copied into
+  **one BL8 read** (the 32-bit bus delivers all 32 B in one return, so there is no
+  critical-half-first and no partial valid any more). The line being read is copied into
   `cl_data` (the *current line*), and the remaining beats of its WRAP4 (or line-aligned
   INCR4) burst are **predicted**: each is staged from the copy and answered with zero wait
   states.
 * **Prefetch** — a 4-slot stream table detects ascending line streams and keeps
   `PF_DIST` (2) lines in flight ahead.
-* **Writes** — posted with zero wait states. A 4-entry queue feeds a 16 B merge block with
-  a byte mask, written as one masked BL8 write. Every write invalidates buffered copies of
+* **Writes** — posted with zero wait states. A 4-entry queue feeds a 32 B merge block with
+  a byte mask, written as one masked BL8 write (a 4-beat line eviction is one DDR command,
+  it was two). Every write invalidates buffered copies of
   its line (line buffers and the current line); a generation tag drops data still in
   flight for an invalidated entry.
 * **Ordering** — reads and writes share one command FIFO into the DDR clock. A read waits
@@ -84,6 +93,10 @@ of routing to reach fabric logic, and `HRDATA`/`HREADY` take a similar route bac
   returning data, a registered write-merge flag, a 3-stage prefetch pipeline, and stream
   table updates applied a cycle after the compare.
 
+The 256-bit datapath (1 GB build) kept this structure: the FIFOs, `is_d`, `wb_data` and the
+return registers simply got wider (the command FIFO entry is 314 bits), the per-half valid /
+select logic disappeared, and no decision term gained a level.
+
 Timing closes at 100 MHz with a 0.3 ns setup uncertainty in the SDC (real margin; the
 placer stops at the constraint otherwise). The DDR side runs at 100 MHz too (DDR3-800 /
 4) and closed with: a 3-phase BIST compare, the tag queue written the cycle after the
@@ -116,10 +129,10 @@ hardware results (memtest, display CRCs, network, zero underruns).
 | 15:12 | G = n*4 uclk (0 → 32) |
 | **16** | **allow overlapping reads to different rows** (otherwise same-row only); **default `0x10000`** |
 | 17 | same-cycle ready handshake (~15% more memcpy; also runs clean on hardware) |
-| 18 | release a read beat only when its whole line is in |
+| 18 | no effect since the 32-bit bus (was: release a read beat only when its whole line is in) |
 | 19 | no predicted beats (every read beat ≥ 1 wait) |
 | 20 | overlapping reads only within one line |
-| 21 | fetch half 0 first (no critical-half-first) |
+| 21 | no effect since the 32-bit bus (was: fetch half 0 first) |
 | 24 | read BIST start (toggle), 26:25 pattern, 31:28 iterations = 2^(n+8) |
 
 BIST results: ddr_perf counters 44..51 (`0xF80001B0..`): status, errors, reorders, first
@@ -134,6 +147,19 @@ mismatch {pattern, j, k, iteration}, its word address, got, expected, stray vali
 | memcpy | 2.2 MB/s | 17–20 MB/s | 26.4 MB/s | **36.6–37.0 MB/s** |
 | random dependent miss | 7980 ns | 2.4–2.6 µs | 1.6–1.7 µs | **1.34–1.42 µs** |
 | kernel boot to /init | 33.5 s | 4.9 s | 3.4 s | **2.83 s** |
+
+**1 GB / 32-bit bus (256-bit datapath, first build, 2026-10-29), same memtest, kernel #50/51
+(still declaring 512 MB; the upper half tested from userspace through /dev/mem):** seq read
+148.1 MB/s, memset 120.2 MB/s, **memcpy 73.2 MB/s** (was 62–64 with the scan-out running),
+random dependent miss 1.44 µs (1.33–1.42 before: the whole 32 B now arrives in one return,
+the x32 MC's read latency is slightly longer, and the A25 side of a line fill dominates). The
+DDR command count halved: `mc_rd_cmds = br_demand + br_prefetch` and `mc_wr_cmds =
+wr_bursts` exactly. /dev/mem pattern test over all of 0x20000000–0x3FFFFFFF (write 512 MB,
+then verify): 0 errors with the kernel alive in the lower half (any 29-bit aliasing would have
+destroyed it); ddr_memtest 200 MB x2 PASS; fbtest check/bars/noise MATCH with 0 underruns;
+read BIST 4 patterns x 4096 iterations: 0 errors / reorders / stray returns; Ethernet up.
+PnR: ae350_ddr_clk 100.30 MHz (4 logic levels), ddr3_sysclk 112.3 MHz (3), lcd_pclk 145 MHz,
+TNS 0 on every clock.
 
 The stock column is DDR3-400 with a 50 MHz bus. With the PATCHES/0005 kernel (#46), the
 default build (Build 33) passes memtest, 3000 fork + 500 exec rounds with 0 oopses, and
@@ -176,11 +202,15 @@ transfer is fixed time on the core side of the macro.
 * **mutants** (`run_mutants.sh`): 13 deliberately broken copies of the RTL, one per rule
   the bridge relies on, including the video port's return routing, its issue-slot rule
   and its aging. Each must be caught (data errors, protocol errors or the deadlock watchdog).
+  With the 256-bit datapath two were retargeted: "predict from a missing half" became
+  "deliver a current-line hit before its data arrived" (`cl_rdy`), and "one-read mode
+  ignores the pending tag write" became "one-read mode ignores the in-flight count" -- the
+  pending-tag term is unobservable now that a line is one read behind the issue-slot bubble.
 * **ddr_perf** unit test.
 * **formal** (`formal/run_formal.sh`, properties under `ifdef FORMAL` in the bridge): no
   lost DDR command, no FIFO or write-queue overflow, reads queued only after earlier
   writes, AHB OKAY / zero-wait IDLE-BUSY / HREADY low only in a data phase, no allocation
-  of an in-flight entry, no line in two entries, read data only from valid halves of the
+  of an in-flight entry, no line in two entries, read data only from an arrived copy of the
   right line, and the invariants the decision terms are simplified with (the slow path
   leaves IDLE only inside a held read data phase, a prefetch candidate never meets a
   stream-table update, the LRU ages are a permutation, nothing to flush while an

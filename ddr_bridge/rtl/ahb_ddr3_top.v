@@ -3,13 +3,14 @@
 // ahb_ddr3_top.v -- SoC data-memory AHB (DDR_H*) -> DDR3 SDRAM.
 //
 // ahb_ddr3_bridge (line-buffered, burst-aware AHB slave) in front of the
-// Gowin DDR3 Memory Interface IP (DDR3_Memory_Interface_Top, 1:4, x16).
+// Gowin DDR3 Memory Interface IP (DDR3_Memory_Interface_Top, 1:4, x32 bus =
+// both x16 chips, BL8 = 256 bits = one 32 B line per command).
 // Drop-in replacement for Gowin's gw_ahb_ddr3_top (same DDR3/AHB ports), plus
 // HPROT, the ddr_perf counter hookup and the bridge's read-only video port
 // (in the DDR3 IP user clock, exported as VCLK).
 //============================================================================
 module ahb_ddr3_top #(
-    parameter ADDR_BITS = 29,          // DDR bytes = 2**ADDR_BITS: 512 MB (x16, 15 row bits)
+    parameter ADDR_BITS = 30,          // DDR bytes = 2**ADDR_BITS: 1 GB (2 x16 chips, 15 row bits)
     parameter NBUF     = 8,
     parameter PREFETCH = 1,
     parameter PF_DIST  = 2
@@ -31,11 +32,11 @@ module ahb_ddr3_top #(
     output wire         DDR3_CKE,
     output wire         DDR3_RESET_N,
     output wire         DDR3_ODT,
-    output wire [ADDR_BITS-15:0] DDR3_ADDR,   // row address: ADDR_BITS-14 bits
-    output wire [1:0]   DDR3_DM,
-    inout  wire [15:0]  DDR3_DQ,
-    inout  wire [1:0]   DDR3_DQS,
-    inout  wire [1:0]   DDR3_DQS_N,
+    output wire [ADDR_BITS-16:0] DDR3_ADDR,   // row address: ADDR_BITS-15 bits
+    output wire [3:0]   DDR3_DM,
+    inout  wire [31:0]  DDR3_DQ,
+    inout  wire [3:0]   DDR3_DQS,
+    inout  wire [3:0]   DDR3_DQS_N,
     // AHB bus interface (SoC customized data memory)
     input  wire         HCLK,
     input  wire         HRESETN,
@@ -54,14 +55,14 @@ module ahb_ddr3_top #(
     input  wire         PERF_EN,
     input  wire         PERF_CLR,
     output wire [511:0] PERF_CNT,
-    // video read port (VCLK domain, see ahb_ddr3_bridge): BL8 = 16 B reads
+    // video read port (VCLK domain, see ahb_ddr3_bridge): BL8 = 32 B reads
     output wire         VCLK,               // DDR3 IP user clock (100 MHz)
     output wire         VRSTN,              // VCLK reset, released after calibration
     input  wire         V_REQ,
-    input  wire [31:0]  V_ADDR,             // byte address, 16 B aligned (bits above ADDR_BITS ignored)
+    input  wire [31:0]  V_ADDR,             // byte address, 32 B aligned (bits above ADDR_BITS ignored)
     output wire         V_ACK,
     output wire         V_RVALID,
-    output wire [127:0] V_RDATA
+    output wire [255:0] V_RDATA
 );
     // IP reset: synchronous release in the IP's clk domain (IPUG281 4.4.3)
     reg [1:0] rst_s;
@@ -72,9 +73,9 @@ module ahb_ddr3_top #(
     wire         calib_done;
     wire         cmd_ready, cmd_en, wr_data_rdy, wr_data_en, wr_data_end, rd_data_valid;
     wire [2:0]   cmd;
-    wire [ADDR_BITS-1:0] addr;
-    wire [127:0] wr_data, rd_data;
-    wire [15:0]  wr_data_mask;
+    wire [ADDR_BITS-2:0] addr;             // {1'b0, x32 word address}
+    wire [255:0] wr_data, rd_data;
+    wire [31:0]  wr_data_mask;
 
     assign DDR3_INIT = calib_done;
     assign VCLK      = uclk;

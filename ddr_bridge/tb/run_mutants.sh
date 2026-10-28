@@ -29,9 +29,9 @@ M = [
   ("write_keeps_line_buffers",
    "                    if (ent_alloc[k] && ent_tag[k] == wh_line) begin",
    "                    if (1'b0) begin"),
-  ("predict_from_missing_half",
-   "wire          nb_ok   = nb_v & (nb_left != 2'd0) & cl_v & cl_hv[nb_beat[1]]",
-   "wire          nb_ok   = nb_v & (nb_left != 2'd0) & cl_v"),
+  ("deliver_from_missing_line",
+   "wire cl_rdy   = cl_dv;",
+   "wire cl_rdy   = 1'b1;"),
   ("predict_counts_busy",
    "wire t_seq     = (htrans == 2'b11);",
    "wire t_seq     = htrans[0];"),
@@ -42,17 +42,21 @@ M = [
    "(cl_ld_ent ? (rf_ent == lk_idx) && (rf_gen == ent_gen[lk_idx])",
    "(1'b0      ? (rf_ent == lk_idx) && (rf_gen == ent_gen[lk_idx])"),
   ("merge_flag_ignores_consumed_head",
-   "wh_sb <= wh_cons ? (wq_mem[wq_rp][WQW-1 -: BB] == wh_blk)",
-   "wh_sb <= wh_cons ? (wq_mem[wq_rp][WQW-1 -: BB] == wb_blk)"),
+   "wh_sb <= wh_cons ? (wq_mem[wq_rp][WQW-1 -: LB] == wh_line)",
+   "wh_sb <= wh_cons ? (wq_mem[wq_rp][WQW-1 -: LB] == wb_line)"),
   # needs a held merged write while the command FIFO is nearly full: heavy
   # DDR back-pressure and longer runs
   ("read_overtakes_held_write",
    "wire can_alloc = vic_ok_q & ~alloc_cool & ~cf_afull & ~wb_valid & ~wq_busy;",
    "wire can_alloc = vic_ok_q & ~alloc_cool & ~cf_afull & ~wq_busy;",
    "+mode=0 +rdy_pct=20 +ops=8000"),
-  ("one_read_mode_ignores_pending_tag",
+  # (the tq_push_q term of rd_out is no longer observable: since the issue slot
+  #  reloads only after a bubble and a line is one read, tq_n is always updated
+  #  before the next command can issue -- the x16 version issued a line's two
+  #  halves back to back.  The mode must still count the reads in flight.)
+  ("one_read_mode_ignores_inflight",
    "    wire          rd_out    = (tq_n != 5'd0) | tq_push_q;",
-   "    wire          rd_out    = (tq_n != 5'd0);",
+   "    wire          rd_out    = tq_push_q;",
    "+mode=0x100 +max_rd=1"),
   # video port (needs in-order returns, like MODE 0x10000)
   ("video_head_ignores_pop",

@@ -27,15 +27,15 @@ module ddr_async_fifo #(
     assign empty  = f_empty;
 endmodule
 
-module ddr_rd_bist (
+module ddr_rd_bist #(parameter AW = 28) (
     input  wire clk, rst_n, start, input wire [1:0] pattern, input wire [3:0] iter_log2,
     input  wire port_idle,
-    output wire hold, own, input wire cmd_ok, output wire cmd_en, output wire [26:0] addr,
-    input  wire [127:0] rd_data, input wire rd_data_valid,
+    output wire hold, own, input wire cmd_ok, output wire cmd_en, output wire [AW-1:0] addr,
+    input  wire [255:0] rd_data, input wire rd_data_valid,
     output wire [31:0] r_status, r_err, r_reorder, r_first, r_first_addr,
                        r_first_got, r_first_exp, r_extra
 );
-    assign hold = 1'b0; assign own = 1'b0; assign cmd_en = 1'b0; assign addr = 27'd0;
+    assign hold = 1'b0; assign own = 1'b0; assign cmd_en = 1'b0; assign addr = {AW{1'b0}};
     assign r_status = 0; assign r_err = 0; assign r_reorder = 0; assign r_first = 0;
     assign r_first_addr = 0; assign r_first_got = 0; assign r_first_exp = 0; assign r_extra = 0;
 endmodule

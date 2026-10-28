@@ -17,7 +17,7 @@
 // line's fetch may well finish before this line starts: it fills the other
 // half.)
 //
-// Pixels: line RAM (128-bit words = 8 RGB565 pixels) read with one cycle of
+// Pixels: line RAM (256-bit words = 16 RGB565 pixels) read with one cycle of
 // latency; RGB565 is expanded to the panel's RGB666 (5-bit channels repeat
 // their MSB).  Outputs are registered.  A zlib CRC-32 of each frame's active
 // pixels (as RGB565, little-endian) is kept for checking the picture against
@@ -50,8 +50,8 @@ module video_out (
     input  wire        done_tgl,      // asynchronous
     input  wire [15:0] done_line,     // a req_line value, stable when done_tgl toggles
     // line RAM read port
-    output wire [7:0]   ram_raddr,
-    input  wire [127:0] ram_rdata,
+    output wire [6:0]   ram_raddr,
+    input  wire [255:0] ram_rdata,
     // frame status (to the bus clock)
     output reg         frame_tgl,
     output reg  [31:0] frame_crc,     // stable after frame_tgl toggles
@@ -128,7 +128,8 @@ module video_out (
     reg  [15:0] tsel2, ytag2;
     // stage 3: RAM data valid
     reg         de3, test3, ev3, tok3;
-    reg  [2:0]  lane3, bar3;
+    reg  [3:0]  lane3;
+    reg  [2:0]  bar3;
     // stages 4..6: pixel, CRC data term, CRC state
     reg         de4, de5, ur4;
     reg  [15:0] pix4;
@@ -140,7 +141,7 @@ module video_out (
     reg  [15:0] tag0, tag1;             // request held by each RAM half
     wire        done_edge = done_s[2] ^ done_s[1];
 
-    assign ram_raddr = {y2[0], x2[9:3]};
+    assign ram_raddr = {y2[0], x2[9:4]};
 
     wire        in_h_n = (hs1 & c_hact_nz) | (in_h2 & ~he1 & ~hz1);
 
@@ -233,7 +234,7 @@ module video_out (
             // ---- stage 3: RAM data valid ----
             de3   <= de2;
             test3 <= test2;
-            lane3 <= x2[2:0];
+            lane3 <= x2[3:0];
             bar3  <= x2[9:7];
             ev3   <= ev2;
             tok3  <= (tsel2 == ytag2);

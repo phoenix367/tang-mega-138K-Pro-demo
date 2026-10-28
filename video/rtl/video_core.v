@@ -5,7 +5,7 @@
 //   CPU --EXTS--> video_csr (registers, bus clock)
 //   DDR3 --ahb_ddr3_bridge video port (BL8 reads)--> video_fetch --+
 //                                         (DDR3 user clock)        v
-//              line RAM: 2 lines x 128 x 128 bit, dual clock (write: DDR clock)
+//              line RAM: 2 lines x 64 x 256 bit, dual clock (write: DDR clock)
 //                                                                  |
 //   panel <-- video_out (timing, RGB565 -> RGB666, frame CRC) <----+
 //                (pixel clock)
@@ -39,7 +39,7 @@ module video_core (
     output wire [31:0]  v_addr,
     input  wire         v_ack,
     input  wire         v_rvalid,
-    input  wire [127:0] v_rdata,
+    input  wire [255:0] v_rdata,
     // pixel clock + panel
     input  wire         pclk,
     output wire         lcd_de,
@@ -73,8 +73,8 @@ module video_core (
     wire         req_tgl, done_tgl;
     wire [15:0]  req_line, done_line;
     wire         ram_we;
-    wire [7:0]   ram_waddr, ram_raddr;
-    wire [127:0] ram_wdata, ram_rdata;
+    wire [6:0]   ram_waddr, ram_raddr;
+    wire [255:0] ram_wdata, ram_rdata;
     video_fetch fetch (
         .clk(vclk), .rstn(vrstn),
         .fb_base(fb_base), .stride(stride), .hactive(hactive),
@@ -85,10 +85,10 @@ module video_core (
         .ram_we(ram_we), .ram_waddr(ram_waddr), .ram_wdata(ram_wdata)
     );
 
-    // ---- line RAM: 2 x 128 x 128 bit ----
+    // ---- line RAM: 2 x 64 x 256 bit ----
     RAM_Simple_Dual_Port_Dual_Clock #(
-        .WORD_WIDTH(128), .ADDR_WIDTH(8), .DEPTH(256), .RAMSTYLE(""),
-        .USE_INIT_FILE(0), .INIT_FILE(""), .INIT_VALUE(128'd0)
+        .WORD_WIDTH(256), .ADDR_WIDTH(7), .DEPTH(128), .RAMSTYLE(""),
+        .USE_INIT_FILE(0), .INIT_FILE(""), .INIT_VALUE(256'd0)
     ) lram (
         .write_clock(vclk), .wren(ram_we), .write_addr(ram_waddr), .write_data(ram_wdata),
         .read_clock(pclk), .rden(1'b1), .read_addr(ram_raddr), .read_data(ram_rdata)

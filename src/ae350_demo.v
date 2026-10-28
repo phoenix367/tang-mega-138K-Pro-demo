@@ -29,12 +29,11 @@ module ae350_demo_top
     output DDR3_CKE,
     output DDR3_RESET_N,
     output DDR3_ODT,
-    output [13:0] DDR3_ADDR,
-    output DDR3_ADDR14,         // DRAM row bit 14 (512 MB map; the cst names it separately)
-    output [1:0] DDR3_DM,
-    inout [15:0] DDR3_DQ,
-    inout [1:0] DDR3_DQS,
-    inout [1:0] DDR3_DQS_N,
+    output [14:0] DDR3_ADDR,    // DRAM row address, 15 bits (4 Gbit x16 chips)
+    output [3:0] DDR3_DM,       // 32-bit bus: both x16 chips (1 GB)
+    inout [31:0] DDR3_DQ,
+    inout [3:0] DDR3_DQS,
+    inout [3:0] DDR3_DQS_N,
     // JTAG
     input TCK_IN,
     input TMS_IN,
@@ -137,7 +136,7 @@ wire VID_CLK;       // 33.3 MHz - LCD pixel clock
 // DDR bridge video read port (DDR3 user clock) -> LCD video core
 wire         ddr_vclk, ddr_vrstn, ddr_v_req, ddr_v_ack, ddr_v_rvalid;
 wire [31:0]  ddr_v_addr;
-wire [127:0] ddr_v_rdata;
+wire [255:0] ddr_v_rdata;
 
 // SoC external-AHB-slave bus (SoC masters; the MAC bridge is the slave)
 wire [31:0] EXTS_HRDATA, EXTS_HADDR, EXTS_HWDATA;
@@ -231,10 +230,6 @@ Gowin_PLL u_Gowin_PLL_ETH
     .enclk3(1'b1)
 );
 
-
-wire [14:0] ddr3_row_addr;          // {DDR3_ADDR14, DDR3_ADDR[13:0]}
-assign DDR3_ADDR   = ddr3_row_addr[13:0];
-assign DDR3_ADDR14 = ddr3_row_addr[14];
 
 wire ae350_rstn;                    // AE350 power on and hardware reset in
 wire ddr3_rstn;                     // DDR3 memory reset in
@@ -402,7 +397,7 @@ ahb_ddr3_top u_ahb_ddr3_top
     .DDR3_CKE(DDR3_CKE),
     .DDR3_RESET_N(DDR3_RESET_N),
     .DDR3_ODT(DDR3_ODT),
-    .DDR3_ADDR(ddr3_row_addr),
+    .DDR3_ADDR(DDR3_ADDR),
     .DDR3_DM(DDR3_DM),
     .DDR3_DQ(DDR3_DQ),
     .DDR3_DQS(DDR3_DQS),

@@ -3,14 +3,14 @@
 // video_fetch.v -- DDR-clock side of the LCD video core: line fetcher.
 //
 // Runs in the DDR3 user clock on the read-only video port of ahb_ddr3_bridge
-// (BL8 reads of 16 B = 8 RGB565 pixels, returned in issue order).  For each
+// (BL8 reads of 32 B = 16 RGB565 pixels, returned in issue order).  For each
 // line request from video_out (req_tgl toggles; req_line = {frame parity,
 // index} is stable until the next request) it reads hactive*2 bytes from
 // fb_base + index*stride into line-RAM half (index & 1), then reports
 // completion (done_tgl toggles with done_line = the line).  A request arriving
 // while a fetch runs is kept (only the latest one: an older line it replaces
-// is already late).  fb_base and stride must be 16 B aligned, hactive a
-// multiple of 8 (<= 1024).
+// is already late).  fb_base and stride must be 32 B aligned, hactive a
+// multiple of 16 (<= 1024).
 //============================================================================
 module video_fetch (
     input  wire         clk,           // DDR3 user clock
@@ -29,11 +29,11 @@ module video_fetch (
     output reg  [31:0]  v_addr,
     input  wire         v_ack,
     input  wire         v_rvalid,
-    input  wire [127:0] v_rdata,
-    // line RAM write port (128-bit words = 8 pixels)
+    input  wire [255:0] v_rdata,
+    // line RAM write port (256-bit words = 16 pixels)
     output reg          ram_we,
-    output reg  [7:0]   ram_waddr,
-    output reg  [127:0] ram_wdata
+    output reg  [6:0]   ram_waddr,
+    output reg  [255:0] ram_wdata
 );
     localparam [1:0] S_IDLE = 2'd0, S_MUL = 2'd1, S_ADDR = 2'd2, S_RUN = 2'd3;
 
@@ -43,8 +43,8 @@ module video_fetch (
     reg  [1:0]  st;
     reg  [15:0] line;
     reg  [30:0] offs;                   // index * stride
-    reg  [7:0]  n_iss, n_ret;           // reads left to issue / to return
-    reg  [6:0]  widx;
+    reg  [6:0]  n_iss, n_ret;           // reads left to issue / to return
+    reg  [5:0]  widx;
 
     always @(posedge clk or negedge rstn) begin
         if (!rstn) begin
@@ -71,26 +71,26 @@ module video_fetch (
             end
             S_ADDR: begin
                 v_addr <= fb_base + {1'b0, offs};
-                v_req  <= (hactive[15:3] != 13'd0);
-                n_iss  <= hactive[10:3];        // 16 B reads
-                n_ret  <= hactive[10:3];
-                widx   <= 7'd0;
+                v_req  <= (hactive[15:4] != 12'd0);
+                n_iss  <= hactive[10:4];        // 32 B reads
+                n_ret  <= hactive[10:4];
+                widx   <= 6'd0;
                 st     <= S_RUN;
             end
             default: begin                      // S_RUN
                 if (v_ack) begin
-                    v_addr <= v_addr + 32'd16;
-                    n_iss  <= n_iss - 8'd1;
-                    v_req  <= (n_iss != 8'd1);
+                    v_addr <= v_addr + 32'd32;
+                    n_iss  <= n_iss - 7'd1;
+                    v_req  <= (n_iss != 7'd1);
                 end
                 if (v_rvalid) begin
                     ram_we    <= 1'b1;
                     ram_waddr <= {line[0], widx};
                     ram_wdata <= v_rdata;
-                    widx      <= widx + 7'd1;
-                    n_ret     <= n_ret - 8'd1;
+                    widx      <= widx + 6'd1;
+                    n_ret     <= n_ret - 7'd1;
                 end
-                if (n_ret == 8'd0 || (v_rvalid && n_ret == 8'd1)) begin
+                if (n_ret == 7'd0 || (v_rvalid && n_ret == 7'd1)) begin
                     done_line <= line;
                     done_tgl  <= ~done_tgl;
                     st        <= S_IDLE;
