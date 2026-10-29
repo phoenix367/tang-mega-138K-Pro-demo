@@ -84,6 +84,13 @@ of routing to reach fabric logic, and `HRDATA`/`HREADY` take a similar route bac
   small decision into the `HREADY` flop (zero-wait for IDLE/BUSY, posted writes and
   predicted beats);
 * `HREADY`/`HRDATA` are **flops** (`hready_q`/`hrdata_q`);
+* the "a predicted beat can be served" term is itself a **flop** (`nb_arm_q`,
+  computed from the next values of its inputs; FORMAL proves `nb_arm_q == nb_ok`),
+  and its two candidates are precomputed (`arm_pred`/`arm_npred`, `syn_keep`), so the
+  late `HTRANS`/`HWRITE` meet one LUT before the decision flops (was five);
+* the 256-bit line registers' write enables (`rf_cl`, `rf_hit[e]`) are written out
+  four times (`syn_keep`, one copy per 64-bit slice): one 256-load enable net cost
+  4 ns of the DDR-side budget — ddr3_sysclk went from 101 to 111–116 MHz with the copies;
 * first beats and anything not predicted take the slow path: **1 wait state** on a
   current-line hit, **2** on a line-buffer hit, a DDR round trip on a miss. A line fill is
   6 cycles of 10 ns (it was 5 cycles of 20 ns at 50 MHz);

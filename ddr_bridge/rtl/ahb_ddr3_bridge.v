@@ -239,7 +239,13 @@ module ahb_ddr3_bridge #(
     // ---- predicted burst beats (served from cl_data) ----
     reg           nb_v;
     reg [1:0]     nb_left, nb_beat;          // beats still to come / next beat in the line
-    wire          nb_ok   = nb_v & (nb_left != 2'd0) & cl_v & cl_dv & ~m_nofast;
+    // "a predicted beat can be served": kept as a FLOP (nb_arm_q), computed from
+    // the next values of its terms (see nb_v_n etc. below), so that the SoC's
+    // late HTRANS/HWRITE (a long route from the hard macro) meet a single LUT
+    // in front of the HREADY / predicted-beat registers.  nb_ok is the same
+    // function of the current state; FORMAL asserts nb_arm_q == nb_ok.
+    reg           nb_arm_q, m_nofast_q;
+    wire          nb_ok   = nb_v & (nb_left != 2'd0) & cl_v & cl_dv & ~m_nofast_q;
     wire [63:0]   nb_data = cl_data[nb_beat*64 +: 64];
 
     // ---- posted writes: queue -> head register -> 32 B merge buffer ----
@@ -452,9 +458,9 @@ module ahb_ddr3_bridge #(
 
     // ---- the late decision: HREADY for the transfer the bus samples now ----
     wire t_seq     = (htrans == 2'b11);
-    wire hr_samp   = ~htrans[1] | (hwrite ? wspace : (t_seq & nb_ok));
+    wire hr_samp   = ~htrans[1] | (hwrite ? wspace : (t_seq & nb_arm_q));
     wire hr_wait   = aq_wr ? wspace : sp_dlv;
-    wire pred_take = hready_q & t_seq & ~hwrite & nb_ok;    // zero-wait predicted beat
+    wire pred_take /* synthesis syn_keep = 1 */ = hready_q & t_seq & ~hwrite & nb_arm_q; // zero-wait predicted beat
 
     // ---- command FIFO write mux ----
     always @(*) begin
@@ -511,6 +517,21 @@ module ahb_ddr3_bridge #(
     wire          rf_cl   = rf_v & ~push_dem &
                             (cl_ld_ent ? (rf_ent == lk_idx) && (rf_gen == ent_gen[lk_idx])
                                        : cl_v && (rf_ent == cl_idx) && (rf_gen == cl_gen));
+    // The 256-bit line registers' write enables (rf_cl, rf_hit[e]) each fan out
+    // to 256 flops: one enable net then spans the die (Build 56b: 4 ns of the
+    // 10 ns budget).  Four syn_keep copies of each, one per 64-bit slice, keep
+    // the nets short; synthesis would otherwise merge the identical cells.
+    wire [3:0]      rf_cl_d  /* synthesis syn_keep = 1 */;
+    wire [4*NBUF-1:0] rf_hit_d /* synthesis syn_keep = 1 */;
+    genvar gs, ge;
+    generate for (gs = 0; gs < 4; gs = gs + 1) begin : g_ce_dup
+        assign rf_cl_d[gs] = rf_v & ~push_dem &
+                             (cl_ld_ent ? (rf_ent == lk_idx) && (rf_gen == ent_gen[lk_idx])
+                                        : cl_v && (rf_ent == cl_idx) && (rf_gen == cl_gen));
+        for (ge = 0; ge < NBUF; ge = ge + 1) begin : g_hit
+            assign rf_hit_d[gs*NBUF + ge] = rf_oh[ge] && ent_alloc[ge] && (ent_gen[ge] == rf_gen);
+        end
+    end endgenerate
 
     // ---- LRU touch (applied one cycle later from lru_* registers) ----
     reg           touch;
@@ -528,7 +549,25 @@ module ahb_ddr3_bridge #(
     reg [31:0] pc_hit0, pc_dem, pc_pf, pc_wr, pc_tagmis;
     reg        pred_q, tagmis_q;
 
-    integer k;
+    // next values of nb_arm_q's terms: the same precedence as their update
+    // sites in the always block below (a later assignment wins there)
+    wire       wh_inv    = wh_cons & cl_v & (cl_line == wh_line);   // write hits the current line
+    wire       sp_first  = sp_dlv & ~aq_seq;                        // first beat delivered
+    wire       nb_v_new  = (aq_size == 3'd3) &&
+                           (aq_burst == HB_WRAP4 || (aq_burst == HB_INCR4 && aq_beat == 2'd0));
+    wire       nb_v_n    = wh_inv ? 1'b0 : sp_first ? nb_v_new : nb_v;
+    wire       cl_v_n    = wh_inv ? 1'b0 : (push_dem | cl_ld_ent) ? 1'b1 : cl_v;
+    wire       cl_dv_n   = rf_cl ? 1'b1 : push_dem ? 1'b0 : cl_ld_ent ? ent_v[lk_idx] : cl_dv;
+    // nb_left's next value depends on pred_take (the late port inputs): keep
+    // that out of the flag's logic cone by precomputing both candidates from
+    // register-derived terms and letting pred_take only select at the end
+    wire [1:0] nb_left_np = sp_first ? 2'd3 : (sp_dlv & nb_v) ? nb_left - 2'd1 : nb_left;
+    // (syn_keep: synthesis must not fold these back into the pred_take cone)
+    wire       arm_common = nb_v_n & cl_v_n & cl_dv_n & ~m_nofast;
+    wire       arm_pred  /* synthesis syn_keep = 1 */ = arm_common & (nb_left != 2'd1);   // after this beat: left-1 != 0
+    wire       arm_npred /* synthesis syn_keep = 1 */ = arm_common & (nb_left_np != 2'd0);
+
+    integer k, s;
     always @(posedge hclk or negedge hrst_n) begin
         if (!hrst_n) begin
             hready_q <= 1'b1; hrdata_q <= 64'd0;
@@ -537,6 +576,7 @@ module ahb_ddr3_bridge #(
             cl_v <= 1'b0; cl_idx <= {EB{1'b0}}; cl_gen <= {GB{1'b0}}; cl_line <= {LB{1'b0}};
             cl_dv <= 1'b0; cl_data <= 256'd0;
             nb_v <= 1'b0; nb_left <= 2'd0; nb_beat <= 2'd0;
+            nb_arm_q <= 1'b0; m_nofast_q <= 1'b0;
             wq_wp <= 2'd0; wq_rp <= 2'd0; wq_n <= 3'd0;
             wh_v <= 1'b0; wh_addr <= {ADDR_BITS{1'b0}}; wh_size <= 3'd0; wh_data <= 64'd0;
             wb_valid <= 1'b0; wb_line <= {LB{1'b0}}; wb_data <= 256'd0; wb_mask <= 32'd0;
@@ -584,13 +624,14 @@ module ahb_ddr3_bridge #(
             end
 
             // ---- predicted beats ----
+            m_nofast_q <= m_nofast;
+            nb_arm_q   <= pred_take ? arm_pred : arm_npred;
             if (pred_take) begin
                 nb_left <= nb_left - 2'd1;
                 nb_beat <= nb_beat + 2'd1;
             end else if (sp_dlv) begin
                 if (!aq_seq) begin               // first beat: set up the rest of the burst
-                    nb_v    <= (aq_size == 3'd3) &&
-                               (aq_burst == HB_WRAP4 || (aq_burst == HB_INCR4 && aq_beat == 2'd0));
+                    nb_v    <= nb_v_new;
                     nb_left <= 2'd3;
                     nb_beat <= aq_beat + 2'd1;
                 end else if (nb_v) begin         // a SEQ beat that took the slow path
@@ -628,17 +669,16 @@ module ahb_ddr3_bridge #(
                 cl_v <= 1'b1; cl_idx <= lk_idx; cl_gen <= ent_gen[lk_idx];
                 cl_line <= aq_line; cl_dv <= ent_v[lk_idx]; cl_data <= lk_line_d;
             end
-            if (rf_cl) begin                     // the current line returns
-                cl_data <= rf_data;
-                cl_dv   <= 1'b1;
-            end
+            if (rf_cl) cl_dv <= 1'b1;            // the current line returns
+            for (s = 0; s < 4; s = s + 1)        // (data per slice, duplicated enable)
+                if (rf_cl_d[s]) cl_data[s*64 +: 64] <= rf_data[s*64 +: 64];
 
             // ---- return data into line buffers ----
-            for (k = 0; k < NBUF; k = k + 1)
-                if (rf_hit[k]) begin
-                    ent_data[k] <= rf_data;
-                    ent_v[k]    <= 1'b1;
-                end
+            for (k = 0; k < NBUF; k = k + 1) begin
+                if (rf_hit[k]) ent_v[k] <= 1'b1;
+                for (s = 0; s < 4; s = s + 1)    // (data per slice, duplicated enable)
+                    if (rf_hit_d[s*NBUF + k]) ent_data[k][s*64 +: 64] <= rf_data[s*64 +: 64];
+            end
 
             // ---- LRU ----
             lru_v <= touch; lru_idx <= touch_idx;
@@ -1067,6 +1107,8 @@ module ahb_ddr3_bridge #(
         if (push_dem || push_pf) assert(!pending_f(ent_alloc[vic_q], ent_v[vic_q]));
         // read data comes only from an arrived copy of the right line
         if (pred_take) assert(cl_v && cl_dv);
+        // the registered "predicted beat possible" flag tracks the state exactly
+        assert(nb_arm_q == nb_ok);
         if (dl_cl)     assert(cl_v && cl_line == aq_line && cl_dv);
         if (dl_ent)    assert(ent_alloc[lk_idx] && ent_tag[lk_idx] == aq_line && ent_v[lk_idx]);
     end

@@ -80,7 +80,9 @@ with open(out + "/mutants.list", "w") as lst:
     for m in M:
         name, old, new = m[:3]
         args = m[3] if len(m) > 3 else "+mode=0"
-        assert src.count(old) == 1, (name, old)
+        # every occurrence is mutated (the return-forwarding condition is
+        # written out four times for the duplicated line-register enables)
+        assert src.count(old) >= 1, (name, old)
         open("%s/mut_%s.v" % (out, name), "w").write(src.replace(old, new))
         lst.write("%s|%s\n" % (name, args))
 EOF
