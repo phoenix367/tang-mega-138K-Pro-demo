@@ -39,6 +39,12 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    NCO sample rate, frame counter + CRC for bit-exact checks; no DMA. Linux ALSA driver
    `PATCHES/0007` (`gowin-pt8211`, card 0). Sim `audio/tb/run_tb.sh`, hardware check
    `tests/wavplay.c` (raw ALSA ioctl player, 16-bit mono/stereo WAV). See audio/README.md.
+   **Sensors:** `sensor/` = the FPGA's two hard ADC cores (ADCLRC die temperature,
+   ADCULC supply rails; primitives instantiated directly, no pins, internal OSC) behind
+   a free-running scan sequencer on EXTS @ `0xE8004000` (`HADDR[14]`). Linux hwmon
+   driver `PATCHES/0008` (`gowin-adc`: temp1_input, in0..7). The AE350 SoC itself has no
+   thermal block; the board has no current sense, so no power measurement. See
+   sensor/README.md.
 2. **`led_blink` — a disabled sample.** Counter-based LED blinker (`CLK_FREQ_HZ` /
    `BLINK_HZ` params) on the board's `clk`=P16 / `rst_n`=K16 / `led`=J14. Files present
    but `enable="0"` in the `.gprj`. To switch back to it: enable its three files, disable

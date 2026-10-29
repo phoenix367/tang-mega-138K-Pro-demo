@@ -23,6 +23,8 @@
         <File path="audio/rtl/audio_core.v" type="file.verilog" enable="1"/>
         <File path="audio/rtl/audio_csr.v" type="file.verilog" enable="1"/>
         <File path="audio/rtl/audio_out.v" type="file.verilog" enable="1"/>
+        <File path="sensor/rtl/sensor_core.v" type="file.verilog" enable="1"/>
+        <File path="sensor/rtl/sensor_adc.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/csr.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/extm_bridge.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/eth_ahb_arbiter.v" type="file.verilog" enable="1"/>

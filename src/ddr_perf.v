@@ -140,7 +140,14 @@ module ddr_perf #(
     end
     assign en  = en_s[1];
     wire   arm = arm_s[1];
-    assign clr = clr_s[2] ^ clr_s[1];
+    // The clear pulse fans out to every counter bit (~700 loads): register it
+    // and let synthesis duplicate that register (syn_maxfan) so no single net
+    // has to cross the die -- Build 55 failed ae350_ddr_clk on exactly this net.
+    reg clr_q /* synthesis syn_maxfan = 100 */;
+    always @(posedge hclk or negedge hresetn)
+        if (!hresetn) clr_q <= 1'b0;
+        else          clr_q <= clr_s[2] ^ clr_s[1];
+    assign clr = clr_q;
 
     // ---------------- monitored bus, registered on entry ----------------
     // The SoC's DDR_H* outputs reach the fabric late (long route from the hard

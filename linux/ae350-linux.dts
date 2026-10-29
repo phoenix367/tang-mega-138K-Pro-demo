@@ -123,6 +123,13 @@
 			interrupt-parent = <&plic0>;
 		};
 
+		/* sensor/ -- on-die temperature (ADCLRC) + supply voltages (ADCULC),
+		 * free-running scan; hwmon driver gowin-adc (no interrupt) */
+		sensor0: sensor@e8004000 {
+			compatible = "gowin,ae350-adc";
+			reg = <0xe8004000 0x100>;
+		};
+
 		gmac0: ethernet@e8000000 {
 			compatible = "gowin,ae350-tse";
 			reg = <0xe8000000 0x800>;

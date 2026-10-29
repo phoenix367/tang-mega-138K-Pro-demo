@@ -14,6 +14,7 @@ git apply 0004-linux-a25-cctl-cmo.patch                         # in linux/ (aft
 git apply 0005-linux-a25-ptw-pagetable-writeback.patch         # in linux/ (after 0004)
 git apply 0006-linux-gowin-lcdfb.patch                         # in linux/ (needs 0004's CCTL ops)
 git apply 0007-linux-gowin-pt8211.patch                        # in linux/ (independent)
+git apply 0008-linux-gowin-adc-hwmon.patch                     # in linux/ (independent)
 ```
 (or `patch -p1 < <file>`). Base versions used: OpenSBI v1.8, Linux 6.12, U-Boot 2026.07-rc3.
 
@@ -105,8 +106,18 @@ git apply 0007-linux-gowin-pt8211.patch                        # in linux/ (inde
   threshold), so the SoC's missing cache coherence does not matter.  See
   `../audio/README.md`.
 - **Not in the patch** (Kconfig): `CONFIG_SND=y`, `CONFIG_SND_PCM=y`,
-  `CONFIG_SND_GOWIN_PT8211=y`, and the `audio@e8002000` node (PLIC source 5 =
+  `CONFIG_SND_GOWIN_PT8211=y`, and the `audio@e8002000` node (PLIC source 11 =
   EXT_INT[1]) in `linux/ae350-linux.dts`.
+
+## 0008 — Linux hwmon driver for the gateware's temperature / voltage sensor core
+- `drivers/hwmon/gowin-adc.c` (new) + Kconfig `SENSORS_GOWIN_ADC` + Makefile: hwmon
+  driver for the sensor core in `../sensor/` (registers at 0xE8004000, DT compatible
+  `"gowin,ae350-adc"`, no interrupt).  The core scans the FPGA's hard ADC blocks by
+  itself; the driver exposes `temp1_input` (die temperature, m°C), `in0..in7_input`
+  (ADCULC voltage buses, mV, with `_label` naming the rail and its divider) and
+  `_fault` (last conversion timed out).  See `../sensor/README.md`.
+- **Not in the patch** (Kconfig): `CONFIG_HWMON=y`, `CONFIG_SENSORS_GOWIN_ADC=y`, and
+  the `sensor@e8004000` node in `linux/ae350-linux.dts`.
 
 ## Note on correctness
 The soft atomics are correct **only because the system is single-hart** (the only

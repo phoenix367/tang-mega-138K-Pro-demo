@@ -59,3 +59,6 @@ create_clock -name lcd_pclk -period 30 -waveform {0 15} [get_pins {u_Gowin_PLL_E
 set_clock_groups -exclusive -group [get_clocks {lcd_pclk}] -group [get_clocks {ae350_ahb_clk}]
 set_clock_groups -asynchronous -group [get_clocks {lcd_pclk}] -group [get_clocks {ddr3_sysclk}]
 set_clock_groups -asynchronous -group [get_clocks {ae350_ahb_clk}] -group [get_clocks {ddr3_sysclk}]
+
+# DDR bridge AHB side (100 MHz) -- the tightest clock; keep its worst paths in the report
+report_timing -setup -to_clock [get_clocks {ae350_ddr_clk}] -max_paths 12

@@ -21,9 +21,9 @@ Boot is **automatic** (U-Boot `bootcmd`) and from **flash only** (no SD): ~24 s 
 
 | Flash offset | XIP addr   | Contents                                  |
 |--------------|------------|-------------------------------------------|
-| `0x000000`   | —          | FPGA bitstream (binary ~4.8 MB, ends `0x48C000`); `MODE=flash scripts/gw_program.sh`. Build 54 (2026-10-29): LCD + 1 GB DDR (32-bit bus) + PT8211 audio core |
+| `0x000000`   | —          | FPGA bitstream (binary ~4.8 MB, ends `0x48C000`); `MODE=flash scripts/gw_program.sh`. Build 55 (2026-10-29): LCD + 1 GB DDR (32-bit bus) + PT8211 audio + temperature/voltage sensor core |
 | `0x600000`   | `0x80000000` | U-Boot (XIP, with appended DTB @0xf0000) |
-| `0x800000`   | `0x80200000` | `fw_payload.bin.gz` (OpenSBI+kernel+DTB, gzip); kernel #55 (2026-10-29): ALSA PT8211 driver, `/usr/libexec/sftp-server` for scp/sftp, LCD console (`console=tty0`, `tty1` in inittab) |
+| `0x800000`   | `0x80200000` | `fw_payload.bin.gz` (OpenSBI+kernel+DTB, gzip); kernel #57 (2026-10-29): ALSA PT8211 driver, hwmon gowin-adc (die temperature + rails), `/usr/libexec/sftp-server` for scp/sftp, LCD console (`console=tty0`, `tty1` in inittab) |
 
 U-Boot auto-runs (`CONFIG_BOOTCOMMAND`): `unzip 0x80200000 0 0x2000000; sdboot 0`
 — gunzips the ~5 MB image into DRAM `0x0` (OpenSBI @0x0, kernel @0x400000) and jumps.
