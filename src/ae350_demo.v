@@ -65,11 +65,10 @@ module ae350_demo_top
     // Fan header (Dock M1 Fan_CPU_4pin): PWM out, tacho in (10k pull-up on the Dock)
     output FAN_PWM,
     input  FAN_TACH,
-    // microSD slot (Dock J19) in SPI mode: SCK=CLK, MOSI=CMD, MISO=DAT0, CS=DAT3, DET
+    // microSD slot (Dock J19), native SD bus: CLK, CMD, DAT[3:0], card detect
     output SD_CLK,
-    output SD_CMD,
-    input  SD_DAT0,
-    output SD_DAT3,
+    inout  SD_CMD,
+    inout  [3:0] SD_DAT,
     input  SD_DET,
     output [1:0] DBG            // EXTM probe: {hreadyout, hsel} (W21/P21 are JTAG)
 );
@@ -207,19 +206,26 @@ assign eth_hresp[1]         = 1'b0;
 
 // EXTS register window: 0xE8000000 gw_eth_dma CSRs, 0xE8001000 LCD video core,
 // 0xE8002000 audio core, 0xE8004000 temperature/voltage sensor core,
-// 0xE8008000 fan PWM/tacho, 0xE8010000 microSD SPI master (8 KB).  All
-// slaves are zero-wait; the data phase is muxed by the select registered at
-// the accepted address phase.
-wire        exts_sd  = EXTS_HADDR[16];
-wire        exts_fan = EXTS_HADDR[15] & ~EXTS_HADDR[16];
-wire        exts_sen = EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[16];
-wire        exts_aud = EXTS_HADDR[13] & ~EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[16];
-wire        exts_vid = EXTS_HADDR[12] & ~EXTS_HADDR[13] & ~EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[16];
+// 0xE8008000 fan PWM/tacho, 0xE8020000 microSD host (native 4-bit, DMA).
+// All slaves are zero-wait; the data phase is muxed by the select registered
+// at the accepted address phase.
+wire        exts_sd  = EXTS_HADDR[17];
+wire        exts_fan = EXTS_HADDR[15] & ~EXTS_HADDR[17];
+wire        exts_sen = EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[17];
+wire        exts_aud = EXTS_HADDR[13] & ~EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[17];
+wire        exts_vid = EXTS_HADDR[12] & ~EXTS_HADDR[13] & ~EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[17];
 reg         exts_vid_d, exts_aud_d, exts_sen_d, exts_fan_d, exts_sd_d;
 wire [31:0] eth_s_hrdata, vid_s_hrdata, aud_s_hrdata, sen_s_hrdata, fan_s_hrdata, sd_s_hrdata;
 wire        eth_s_hready, vid_s_hready, eth_s_hresp, vid_s_hresp;
 wire        aud_s_hready, aud_s_hresp, intr_audio, sen_s_hready, sen_s_hresp;
 wire        fan_s_hready, fan_s_hresp, sd_s_hready, sd_s_hresp;
+wire        sd_m_busy, sd_m_hwrite, sd_m_hready, sd_m_hresp;
+wire [31:0] sd_m_haddr;
+wire [1:0]  sd_m_htrans;
+wire [2:0]  sd_m_hsize, sd_m_hburst;
+wire [63:0] sd_m_hwdata, sd_m_hrdata;
+wire        sd_cmd_o, sd_cmd_oe, sd_dat_oe, sd_dat_oe_hi, intr_sd;
+wire [3:0]  sd_dat_o;
 always @(posedge EXTS_HCLK or negedge EXTS_HRSTN)
     if (!EXTS_HRSTN) begin
         exts_vid_d <= 1'b0; exts_aud_d <= 1'b0; exts_sen_d <= 1'b0; exts_fan_d <= 1'b0; exts_sd_d <= 1'b0;
@@ -321,7 +327,7 @@ RiscV_AE350_SOC_Top u_RiscV_AE350_SOC_Top
     .TDO_OUT(TDO_OUT),
     .TDO_OE(),
     // External interrupts - Ethernet MAC IRQ on bit 0
-    .EXT_INT({14'b0, intr_audio, intr_ethernet}),
+    .EXT_INT({13'b0, intr_sd, intr_audio, intr_ethernet}),
     // External AHB slave port -> Ethernet MAC bridge (gw_ahb_ethernet_top)
     .EXTS_HRDATA(EXTS_HRDATA),
     .EXTS_HREADYIN(EXTS_HREADY),
@@ -542,7 +548,7 @@ gw_eth_dma_core u_gw_eth_dma_core
 // Custom 2-master AHB arbiter: full 32-bit address space, fixed priority RX>TX.
 // (The Gowin AHBBusArbiter only forwards a 0x80000000 register window -- not a
 //  DMA fabric; see eth_dma/rtl/eth_ahb_arbiter.v.)
-eth_ahb_arbiter u_eth_ahb_arbiter
+ahb_arbiter3 u_eth_ahb_arbiter
 (
     .clk(EXTS_HCLK), .rstn(EXTS_HRSTN),
     .m0_busy(m0_busy), .m0_haddr(m0_haddr), .m0_htrans(m0_htrans), .m0_hwrite(m0_hwrite),
@@ -551,6 +557,9 @@ eth_ahb_arbiter u_eth_ahb_arbiter
     .m1_busy(m1_busy), .m1_haddr(m1_haddr), .m1_htrans(m1_htrans), .m1_hwrite(m1_hwrite),
     .m1_hsize(m1_hsize), .m1_hburst(m1_hburst), .m1_hwdata(m1_hwdata),
     .m1_hrdata(m1_hrdata), .m1_hready(m1_hready), .m1_hresp(m1_hresp),
+    .m2_busy(sd_m_busy), .m2_haddr(sd_m_haddr), .m2_htrans(sd_m_htrans), .m2_hwrite(sd_m_hwrite),
+    .m2_hsize(sd_m_hsize), .m2_hburst(sd_m_hburst), .m2_hwdata(sd_m_hwdata),
+    .m2_hrdata(sd_m_hrdata), .m2_hready(sd_m_hready), .m2_hresp(sd_m_hresp),
     .active(arb_active), .haddr(arb_haddr), .htrans(arb_htrans), .hwrite(arb_hwrite),
     .hsize(arb_hsize), .hburst(arb_hburst), .hwdata(arb_hwdata),
     .hrdata(arb_hrdata), .hready(arb_hready), .hresp(arb_hresp)
@@ -610,16 +619,25 @@ fan_core #(.BUS_MHZ(50)) u_fan_core
     .fan_pwm(FAN_PWM), .fan_tach(FAN_TACH)
 );
 
-// microSD in SPI mode: SPI master with 2 KB TX/RX buffers on EXTS @
-// 0xE8010000 (8 KB window), Dock slot J19.  Linux: spi-gowin + mmc_spi.
-sdspi_core #(.BUS_MHZ(50)) u_sdspi_core
+// microSD host: native SD bus (1/4-bit) with CRC engines and a 64-bit DMA
+// master (arbiter master 2) on EXTS @ 0xE8020000, Dock slot J19.  Interrupt
+// on EXT_INT[2] (PLIC source 12).  Linux: drivers/mmc/host/gowin-sdhost.c.
+sdhost_core #(.BUS_MHZ(50)) u_sdhost_core
 (
     .hclk(EXTS_HCLK), .hresetn(EXTS_HRSTN),
     .s_haddr(EXTS_HADDR), .s_htrans(EXTS_HTRANS), .s_hwrite(EXTS_HWRITE),
     .s_hsel(EXTS_HSEL & exts_sd), .s_hready_in(EXTS_HREADY), .s_hwdata(EXTS_HWDATA),
     .s_hrdata(sd_s_hrdata), .s_hready(sd_s_hready), .s_hresp(sd_s_hresp),
-    .spi_sck(SD_CLK), .spi_mosi(SD_CMD), .spi_miso(SD_DAT0), .spi_cs_n(SD_DAT3), .sd_det_n(SD_DET)
+    .m_busy(sd_m_busy), .m_haddr(sd_m_haddr), .m_htrans(sd_m_htrans), .m_hwrite(sd_m_hwrite),
+    .m_hsize(sd_m_hsize), .m_hburst(sd_m_hburst), .m_hwdata(sd_m_hwdata), .m_hrdata(sd_m_hrdata),
+    .m_hready(sd_m_hready), .m_hresp(sd_m_hresp),
+    .sd_clk(SD_CLK), .cmd_o(sd_cmd_o), .cmd_oe(sd_cmd_oe), .cmd_i(SD_CMD),
+    .dat_o(sd_dat_o), .dat_oe(sd_dat_oe), .dat_oe_hi(sd_dat_oe_hi), .dat_i(SD_DAT),
+    .sd_det_n(SD_DET), .irq(intr_sd)
 );
+assign SD_CMD      = sd_cmd_oe ? sd_cmd_o : 1'bz;
+assign SD_DAT[0]   = sd_dat_oe ? sd_dat_o[0] : 1'bz;
+assign SD_DAT[3:1] = sd_dat_oe_hi ? sd_dat_o[3:1] : 3'bzzz;
 
 // 32-bit arbiter master -> 64-bit SoC EXTM slave port
 extm_bridge u_extm_bridge

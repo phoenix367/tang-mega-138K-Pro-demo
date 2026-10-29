@@ -17,6 +17,7 @@ git apply 0007-linux-gowin-pt8211.patch                        # in linux/ (inde
 git apply 0008-linux-gowin-adc-hwmon.patch                     # in linux/ (independent)
 git apply 0009-linux-gowin-fan-hwmon.patch                     # in linux/ (independent)
 git apply 0010-linux-gowin-spi-mmc.patch                      # in linux/ (independent; enable CONFIG_MMC_SPI)
+git apply 0011-linux-gowin-sdhost.patch                       # in linux/ (independent; native SD host, supersedes 0010 for the card)
 ```
 (or `patch -p1 < <file>`). Base versions used: OpenSBI v1.8, Linux 6.12, U-Boot 2026.07-rc3.
 
@@ -141,4 +142,12 @@ with a coherence manager (or AXI exclusive-access support).
   register bit, SCK = 50 MHz / (2·(DIV+1))). The card itself is driven by the mainline
   `mmc_spi` host (`CONFIG_MMC_SPI`, DT child `mmc-spi-slot`, 25 MHz, 3.3 V, polled card
   detect) → `/dev/mmcblk0`. Gateware: `sdspi/` (Build 58+). Kernel #62.
+
+## 0011 — Linux MMC host driver for the gateware's native SD host core
+- New `drivers/mmc/host/gowin-sdhost.c` (`MMC_GOWIN_SDHOST`, DT `"gowin,ae350-sdhost"`,
+  node `sdhost0: mmc@e8020000`, PLIC source 12): a plain `mmc_host` — commands with
+  48/136-bit responses, data via the core's 64-bit DMA through a 64 KB bounce buffer
+  (streaming DMA mapping, cache ops from 0004), completion by interrupt, driver-issued
+  CMD12. On the first fast read the driver tunes the clock/sampling phase (fastest of 25 MHz late, 25 MHz on-edge, 12.5 MHz, ... that passes four clean reads of block 0). Gateware: `sdhost/` (Build 61+). Kernel #66. The SPI route
+  (0010) stays available but its core is no longer in the gateware.
 

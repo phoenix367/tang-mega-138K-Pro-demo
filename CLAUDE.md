@@ -56,11 +56,13 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    fan's PWM pin, rev 4071f switches its 5 V through a P-MOSFET (inverted: DT
    `gowin,pwm-inverted`). Linux hwmon `PATCHES/0009` (`gowin-fan`: pwm1, fan1_input),
    fan curve `S80fan`. See fan/README.md.
-   **microSD:** `sdspi/` = SPI master core on EXTS @ `0xE8010000` (`HADDR[16]`, 8 KB
-   window) for the Dock slot J19 in SPI mode (SCK D23, MOSI D24, MISO H23, CS B25,
-   detect J15). Linux `PATCHES/0010` (`spi-gowin` spi_controller) under the mainline
-   `mmc_spi` host → `/dev/mmcblk0`, mounted at `/mnt/sd` by `S45sdcard`. Gowin's native
-   SD IPs never answered on this board; see sdspi/README.md.
+   **microSD:** `sdhost/` = native 4-bit SD host with CRC engines and a 64-bit DMA
+   master (arbiter master 2) on EXTS @ `0xE8020000` (`HADDR[17]`), IRQ EXT_INT[2] =
+   PLIC 12, for the Dock slot J19 (CLK D23, CMD D24, DAT0..3 H23/J23/A25/B25, detect
+   J15). Linux `PATCHES/0011` (`gowin-sdhost` mmc_host, 64 KB bounce buffer) →
+   `/dev/mmcblk0`, mounted at `/mnt/sd` by `S45sdcard`. `sdspi/` (SPI-mode master +
+   `spi-gowin` + mmc_spi, PATCHES/0010) is the earlier, slower route, kept but disabled.
+   Gowin's native SD IPs never answered on this board; see sdhost/README.md.
 2. **`led_blink` — a disabled sample.** Counter-based LED blinker (`CLK_FREQ_HZ` /
    `BLINK_HZ` params) on the board's `clk`=P16 / `rst_n`=K16 / `led`=J14. Files present
    but `enable="0"` in the `.gprj`. To switch back to it: enable its three files, disable

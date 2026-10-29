@@ -140,23 +140,17 @@
 			gowin,pulses-per-rev = <2>;
 		};
 
-		/* sdspi/ -- SPI master for the Dock's microSD slot J19 (card in SPI
-		 * mode: SCK=CLK D23, MOSI=CMD D24, MISO=DAT0 H23, CS=DAT3 B25);
-		 * the mainline mmc_spi host runs the card -> /dev/mmcblk0.
-		 * No card-detect GPIO: the MMC core polls the slot. */
-		spi0: spi@e8010000 {
-			compatible = "gowin,ae350-spi";
-			reg = <0xe8010000 0x2000>;
+		/* sdhost/ -- native 4-bit SD host with DMA for the Dock's microSD
+		 * slot J19 (CLK D23, CMD D24, DAT0..3 H23/J23/A25/B25), EXT_INT[2] =
+		 * GP2 = PLIC src 12; MMC host driver gowin-sdhost -> /dev/mmcblk0. */
+		sdhost0: mmc@e8020000 {
+			compatible = "gowin,ae350-sdhost";
+			reg = <0xe8020000 0x100>;
 			clock-frequency = <50000000>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-
-			mmc@0 {
-				compatible = "mmc-spi-slot";
-				reg = <0>;
-				spi-max-frequency = <25000000>;
-				voltage-ranges = <3300 3300>;
-			};
+			interrupts = <12 4>;
+			interrupt-parent = <&plic0>;
+			bus-width = <4>;
+			max-frequency = <25000000>;
 		};
 
 		gmac0: ethernet@e8000000 {

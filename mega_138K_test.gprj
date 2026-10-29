@@ -26,7 +26,9 @@
         <File path="sensor/rtl/sensor_core.v" type="file.verilog" enable="1"/>
         <File path="sensor/rtl/sensor_adc.v" type="file.verilog" enable="1"/>
         <File path="fan/rtl/fan_core.v" type="file.verilog" enable="1"/>
-        <File path="sdspi/rtl/sdspi_core.v" type="file.verilog" enable="1"/>
+        <File path="sdspi/rtl/sdspi_core.v" type="file.verilog" enable="0"/>
+        <File path="sdhost/rtl/sdhost_core.v" type="file.verilog" enable="1"/>
+        <File path="sdhost/rtl/ahb_arbiter3.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/csr.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/extm_bridge.v" type="file.verilog" enable="1"/>
         <File path="eth_dma/rtl/eth_ahb_arbiter.v" type="file.verilog" enable="1"/>
