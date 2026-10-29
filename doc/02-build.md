@@ -148,6 +148,8 @@ in and the kernel reflashed — edits on the live device do **not** persist.
   desktop/README.md.
 - Fan: `S80fan` temperature curve for the `gowin-fan` hwmon device (kernel #60+,
   `PATCHES/0009`, gateware Build 57+). See fan/README.md.
+- microSD: `S45sdcard` mounts `/dev/mmcblk0(p1)` at `/mnt/sd` (kernel #62+,
+  `PATCHES/0010` spi-gowin + `CONFIG_MMC_SPI`, gateware Build 58+). See sdspi/README.md.
 
 ## 5. Program the board
 

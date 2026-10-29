@@ -1,0 +1,32 @@
+#!/bin/busybox sh
+# /etc/init.d/S45sdcard -- mount the microSD card (mmc_spi over the gateware
+# SPI master) at /mnt/sd if one is present: first partition, else the whole
+# device.  The MMC stack probes the slot about a second after boot, so wait
+# briefly.  Hot-plug later: "S45sdcard start" again (or mount by hand).
+
+MNT=/mnt/sd
+
+case "$1" in
+	start)
+		mkdir -p $MNT
+		n=0
+		while [ ! -e /dev/mmcblk0 ] && [ $n -lt 8 ]; do sleep 1; n=$((n+1)); done
+		if [ -e /dev/mmcblk0p1 ]; then dev=/dev/mmcblk0p1
+		elif [ -e /dev/mmcblk0 ]; then dev=/dev/mmcblk0
+		else echo "sdcard: no card"; exit 0; fi
+		if mount -o noatime $dev $MNT 2>/dev/null; then
+			echo "sdcard: $dev on $MNT ($(df -h $MNT | awk 'NR==2{print $2" total, "$4" free"}'))"
+		else
+			echo "sdcard: $dev present but not mountable (unformatted? mkfs.vfat $dev)"
+		fi
+		;;
+	stop)
+		umount $MNT 2>/dev/null
+		;;
+	restart|reload)
+		"$0" stop
+		"$0" start
+		;;
+	*)
+		echo "usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

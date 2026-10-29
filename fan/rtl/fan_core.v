@@ -83,7 +83,7 @@ module fan_core #(
 
     reg [31:0] rd;
     always @(*) begin
-        case (s_haddr[7:2])
+        case (a_off)
             6'h00: rd = {30'd0, inv, en};
             6'h01: rd = {12'd0, period};
             6'h02: rd = {12'd0, duty};

@@ -352,6 +352,15 @@ static void restyle_tree(lv_obj_t *obj, lv_color_t bg, lv_color_t fg)
     for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) restyle_tree(lv_obj_get_child(obj, i), bg, fg);
 }
 
+/* rename a quick-access entry (the explorer's labels are fixed) */
+static void relabel_tree(lv_obj_t *obj, const char *from, const char *to)
+{
+    if (!obj) return;
+    if (lv_obj_check_type(obj, &lv_label_class) && strstr(lv_label_get_text(obj), from))
+        lv_label_set_text(obj, to);
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) relabel_tree(lv_obj_get_child(obj, i), from, to);
+}
+
 void panel_files(lv_obj_t *parent)
 {
     lv_obj_t *fe = lv_file_explorer_create(parent);
@@ -360,6 +369,7 @@ void panel_files(lv_obj_t *parent)
     lv_file_explorer_set_quick_access_path(fe, LV_EXPLORER_HOME_DIR, "A:/home/ae350");
     lv_file_explorer_set_quick_access_path(fe, LV_EXPLORER_MUSIC_DIR, "A:/tmp");
     lv_file_explorer_set_quick_access_path(fe, LV_EXPLORER_DOCS_DIR, "A:/etc");
+    lv_file_explorer_set_quick_access_path(fe, LV_EXPLORER_VIDEO_DIR, "A:/mnt/sd");   /* microSD (S45sdcard) */
     lv_file_explorer_set_quick_access_path(fe, LV_EXPLORER_FS_DIR, "A:/");
     lv_file_explorer_open_dir(fe, "A:/home/ae350");
     lv_obj_add_event_cb(fe, file_clicked, LV_EVENT_VALUE_CHANGED, NULL);
@@ -380,6 +390,7 @@ void panel_files(lv_obj_t *parent)
     lv_obj_set_style_bg_color(lv_file_explorer_get_file_table(fe), bg2, LV_PART_ITEMS);
     lv_obj_set_style_text_color(lv_file_explorer_get_path_label(fe), fg, 0);
     restyle_tree(lv_file_explorer_get_quick_access_area(fe), bg, fg);
+    relabel_tree(lv_file_explorer_get_quick_access_area(fe), "Video", LV_SYMBOL_SD_CARD " SD card");
 }
 
 /* ====================================================================== */

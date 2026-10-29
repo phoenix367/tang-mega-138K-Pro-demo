@@ -16,6 +16,7 @@ git apply 0006-linux-gowin-lcdfb.patch                         # in linux/ (need
 git apply 0007-linux-gowin-pt8211.patch                        # in linux/ (independent)
 git apply 0008-linux-gowin-adc-hwmon.patch                     # in linux/ (independent)
 git apply 0009-linux-gowin-fan-hwmon.patch                     # in linux/ (independent)
+git apply 0010-linux-gowin-spi-mmc.patch                      # in linux/ (independent; enable CONFIG_MMC_SPI)
 ```
 (or `patch -p1 < <file>`). Base versions used: OpenSBI v1.8, Linux 6.12, U-Boot 2026.07-rc3.
 
@@ -133,4 +134,11 @@ with a coherence manager (or AXI exclusive-access support).
   `gowin,pulses-per-rev`), `fan1_fault`. DT `gowin,pwm-inverted` for Dock rev 4071f
   (P-MOSFET supply switch), `gowin,pwm-frequency` to change the 25 kHz default.
   Gateware: `fan/` (Build 57+). Kernel #60.
+
+## 0010 — Linux SPI master driver for the gateware's microSD SPI core
+- New `drivers/spi/spi-gowin.c` (`SPI_GOWIN`, DT `"gowin,ae350-spi"`, node
+  `spi0: spi@e8010000`): buffered, polled `spi_controller` (2 KB TX/RX buffers, CS as a
+  register bit, SCK = 50 MHz / (2·(DIV+1))). The card itself is driven by the mainline
+  `mmc_spi` host (`CONFIG_MMC_SPI`, DT child `mmc-spi-slot`, 25 MHz, 3.3 V, polled card
+  detect) → `/dev/mmcblk0`. Gateware: `sdspi/` (Build 58+). Kernel #62.
 

@@ -53,7 +53,7 @@ $(BUILD)/lvdesk: $(APP_OBJ) $(BUILD)/liblvgl.a
 
 install: all
 	install -m 755 -s --strip-program=$(CROSS)strip inputd $(BUILD)/lvdesk ../tests/wavplay $(ROOTFS)/usr/bin/
-	install -m 755 rootfs/S60inputd rootfs/S70desktop rootfs/S80fan $(ROOTFS)/etc/init.d/
+	install -m 755 rootfs/S45sdcard rootfs/S60inputd rootfs/S70desktop rootfs/S80fan $(ROOTFS)/etc/init.d/
 
 clean:
 	rm -rf $(BUILD) inputd
