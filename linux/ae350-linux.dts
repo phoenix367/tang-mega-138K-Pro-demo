@@ -130,6 +130,16 @@
 			reg = <0xe8004000 0x100>;
 		};
 
+		/* fan/ -- Dock fan header M1: PWM (T17) + tacho (T18); hwmon driver
+		 * gowin-fan.  Dock rev 4071f switches the fan's 5 V through a
+		 * P-MOSFET from the PWM pin: add gowin,pwm-inverted; there. */
+		fan0: fan@e8008000 {
+			compatible = "gowin,ae350-fan";
+			reg = <0xe8008000 0x100>;
+			clock-frequency = <50000000>;
+			gowin,pulses-per-rev = <2>;
+		};
+
 		gmac0: ethernet@e8000000 {
 			compatible = "gowin,ae350-tse";
 			reg = <0xe8000000 0x800>;

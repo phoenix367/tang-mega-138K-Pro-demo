@@ -1,0 +1,35 @@
+#!/bin/busybox sh
+# /etc/init.d/S70desktop -- LVGL desktop on the LCD (/dev/fb0, VT 1).
+# A supervisor loop restarts lvdesk if it exits; "S70desktop stop" ends both.
+# Disable at boot by creating /etc/nodesktop (not persistent: RAM rootfs).
+
+PIDF=/run/desktop.pid
+
+case "$1" in
+	start)
+		[ -e /etc/nodesktop ] && exit 0
+		(
+			while :; do
+				lvdesk >/run/desktop.log 2>&1
+				[ -e /run/desktop.stop ] && break
+				sleep 2
+			done
+		) &
+		echo $! > $PIDF
+		rm -f /run/desktop.stop
+		echo "desktop: lvdesk on /dev/fb0 (log /run/desktop.log)"
+		;;
+	stop)
+		touch /run/desktop.stop
+		[ -f $PIDF ] && kill "$(cat $PIDF)" 2>/dev/null
+		killall lvdesk 2>/dev/null
+		rm -f $PIDF
+		;;
+	restart|reload)
+		"$0" stop
+		sleep 1
+		"$0" start
+		;;
+	*)
+		echo "usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

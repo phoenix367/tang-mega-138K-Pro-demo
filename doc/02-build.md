@@ -141,6 +141,13 @@ in and the kernel reflashed — edits on the live device do **not** persist.
   unprivileged), gated by `/etc/busybox.conf`.
 - Extra static tools cross-built into `/usr/bin`: **htop** (ncurses w/ compiled-in
   terminfo fallbacks), **tcpdump** (+libpcap, run via `doas`), **nstat** (iproute2).
+- Desktop: **lvdesk** (LVGL 9.6 on `/dev/fb0`, `S70desktop`) and **inputd** (uinput
+  bridge fed by `desktop/host/netinput.py` over tcp/5555, `S60inputd`), plus
+  **wavplay**; built with `desktop/Makefile` (`make install` copies them here).
+  Needs `CONFIG_INPUT_EVDEV`/`INPUT_MISC`/`INPUT_UINPUT` (kernel #59+). See
+  desktop/README.md.
+- Fan: `S80fan` temperature curve for the `gowin-fan` hwmon device (kernel #60+,
+  `PATCHES/0009`, gateware Build 57+). See fan/README.md.
 
 ## 5. Program the board
 

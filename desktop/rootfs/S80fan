@@ -1,0 +1,50 @@
+#!/bin/busybox sh
+# /etc/init.d/S80fan -- fan curve: die temperature (gowin-adc) -> fan PWM
+# (gowin-fan), re-evaluated every 5 s.  Linear between LOW_C (PWM_MIN) and
+# HIGH_C (255); below LOW_C the fan idles at PWM_MIN.  Stop it to drive
+# pwm1 by hand:  S80fan stop; echo 128 > /sys/class/hwmon/hwmonN/pwm1
+
+LOW_C=35
+HIGH_C=60
+PWM_MIN=64
+PIDF=/run/fand.pid
+
+find_hwmon() {   # $1 = name -> prints /sys/class/hwmon/hwmonN
+	for h in /sys/class/hwmon/hwmon*; do
+		[ "$(cat $h/name 2>/dev/null)" = "$1" ] && { echo $h; return 0; }
+	done
+	return 1
+}
+
+fand() {
+	ADC=$(find_hwmon gowin_adc) || exit 0
+	FAN=$(find_hwmon gowin_fan) || exit 0
+	echo 1 > $FAN/pwm1_enable
+	while :; do
+		t=$(( $(cat $ADC/temp1_input) / 1000 ))
+		if [ $t -le $LOW_C ]; then pwm=$PWM_MIN
+		elif [ $t -ge $HIGH_C ]; then pwm=255
+		else pwm=$(( PWM_MIN + (255 - PWM_MIN) * (t - LOW_C) / (HIGH_C - LOW_C) ))
+		fi
+		echo $pwm > $FAN/pwm1
+		sleep 5
+	done
+}
+
+case "$1" in
+	start)
+		fand &
+		echo $! > $PIDF
+		echo "fan: curve ${LOW_C}C=${PWM_MIN} .. ${HIGH_C}C=255 (every 5 s)"
+		;;
+	stop)
+		[ -f $PIDF ] && kill "$(cat $PIDF)" 2>/dev/null
+		rm -f $PIDF
+		;;
+	restart|reload)
+		"$0" stop
+		"$0" start
+		;;
+	*)
+		echo "usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

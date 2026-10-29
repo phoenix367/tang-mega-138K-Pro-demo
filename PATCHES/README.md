@@ -15,6 +15,7 @@ git apply 0005-linux-a25-ptw-pagetable-writeback.patch         # in linux/ (afte
 git apply 0006-linux-gowin-lcdfb.patch                         # in linux/ (needs 0004's CCTL ops)
 git apply 0007-linux-gowin-pt8211.patch                        # in linux/ (independent)
 git apply 0008-linux-gowin-adc-hwmon.patch                     # in linux/ (independent)
+git apply 0009-linux-gowin-fan-hwmon.patch                     # in linux/ (independent)
 ```
 (or `patch -p1 < <file>`). Base versions used: OpenSBI v1.8, Linux 6.12, U-Boot 2026.07-rc3.
 
@@ -124,3 +125,12 @@ The soft atomics are correct **only because the system is single-hart** (the onl
 concurrency is traps, which SIE-disable blocks). They are NOT SMP-safe. This is a
 workaround for a SoC that cannot do atomics on DRAM; the proper fix is gateware/IP
 with a coherence manager (or AXI exclusive-access support).
+
+## 0009 — Linux hwmon driver for the gateware's fan PWM / tachometer core
+- New `drivers/hwmon/gowin-fan.c` (`SENSORS_GOWIN_FAN`, DT `"gowin,ae350-fan"`, node
+  `fan0: fan@e8008000`): hwmon `gowin_fan` with `pwm1`/`pwm1_enable` (manual duty,
+  0..255 over the core's PERIOD) and `fan1_input` (RPM from the one-second edge count,
+  `gowin,pulses-per-rev`), `fan1_fault`. DT `gowin,pwm-inverted` for Dock rev 4071f
+  (P-MOSFET supply switch), `gowin,pwm-frequency` to change the 25 kHz default.
+  Gateware: `fan/` (Build 57+). Kernel #60.
+

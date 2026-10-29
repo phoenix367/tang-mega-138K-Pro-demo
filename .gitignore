@@ -47,3 +47,6 @@ __pycache__/
 /tests/ddr_memtest
 /tests/fbtest
 /tests/wavplay
+desktop/build/
+desktop/inputd
+desktop/build_lvgl.log

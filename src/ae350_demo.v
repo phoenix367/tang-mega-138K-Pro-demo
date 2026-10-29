@@ -62,6 +62,9 @@ module ae350_demo_top
     output I2S_LRCK,
     output I2S_DIN,
     output PA_EN,               // headphone amplifier (XPT4809) enable, active high
+    // Fan header (Dock M1 Fan_CPU_4pin): PWM out, tacho in (10k pull-up on the Dock)
+    output FAN_PWM,
+    input  FAN_TACH,
     output [1:0] DBG            // EXTM probe: {hreadyout, hsel} (W21/P21 are JTAG)
 );
 
@@ -197,25 +200,27 @@ assign tx_pause_source_addr = 48'b0;
 assign eth_hresp[1]         = 1'b0;
 
 // EXTS register window: 0xE8000000 gw_eth_dma CSRs, 0xE8001000 LCD video core,
-// 0xE8002000 audio core, 0xE8004000 temperature/voltage sensor core.  All
-// slaves are zero-wait; the data phase is muxed by the select registered at
-// the accepted address phase.
-wire        exts_sen = EXTS_HADDR[14];
-wire        exts_aud = EXTS_HADDR[13] & ~EXTS_HADDR[14];
-wire        exts_vid = EXTS_HADDR[12] & ~EXTS_HADDR[13] & ~EXTS_HADDR[14];
-reg         exts_vid_d, exts_aud_d, exts_sen_d;
-wire [31:0] eth_s_hrdata, vid_s_hrdata, aud_s_hrdata, sen_s_hrdata;
+// 0xE8002000 audio core, 0xE8004000 temperature/voltage sensor core,
+// 0xE8008000 fan PWM/tacho.  All slaves are zero-wait; the data phase is
+// muxed by the select registered at the accepted address phase.
+wire        exts_fan = EXTS_HADDR[15];
+wire        exts_sen = EXTS_HADDR[14] & ~EXTS_HADDR[15];
+wire        exts_aud = EXTS_HADDR[13] & ~EXTS_HADDR[14] & ~EXTS_HADDR[15];
+wire        exts_vid = EXTS_HADDR[12] & ~EXTS_HADDR[13] & ~EXTS_HADDR[14] & ~EXTS_HADDR[15];
+reg         exts_vid_d, exts_aud_d, exts_sen_d, exts_fan_d;
+wire [31:0] eth_s_hrdata, vid_s_hrdata, aud_s_hrdata, sen_s_hrdata, fan_s_hrdata;
 wire        eth_s_hready, vid_s_hready, eth_s_hresp, vid_s_hresp;
 wire        aud_s_hready, aud_s_hresp, intr_audio, sen_s_hready, sen_s_hresp;
+wire        fan_s_hready, fan_s_hresp;
 always @(posedge EXTS_HCLK or negedge EXTS_HRSTN)
     if (!EXTS_HRSTN) begin
-        exts_vid_d <= 1'b0; exts_aud_d <= 1'b0; exts_sen_d <= 1'b0;
+        exts_vid_d <= 1'b0; exts_aud_d <= 1'b0; exts_sen_d <= 1'b0; exts_fan_d <= 1'b0;
     end else if (EXTS_HSEL && EXTS_HTRANS[1] && EXTS_HREADY) begin
-        exts_vid_d <= exts_vid; exts_aud_d <= exts_aud; exts_sen_d <= exts_sen;
+        exts_vid_d <= exts_vid; exts_aud_d <= exts_aud; exts_sen_d <= exts_sen; exts_fan_d <= exts_fan;
     end
-assign EXTS_HRDATA  = exts_sen_d ? sen_s_hrdata : exts_aud_d ? aud_s_hrdata : exts_vid_d ? vid_s_hrdata : eth_s_hrdata;
-assign EXTS_HREADY  = exts_sen_d ? sen_s_hready : exts_aud_d ? aud_s_hready : exts_vid_d ? vid_s_hready : eth_s_hready;
-assign eth_hresp[0] = exts_sen_d ? sen_s_hresp  : exts_aud_d ? aud_s_hresp  : exts_vid_d ? vid_s_hresp  : eth_s_hresp;
+assign EXTS_HRDATA  = exts_fan_d ? fan_s_hrdata : exts_sen_d ? sen_s_hrdata : exts_aud_d ? aud_s_hrdata : exts_vid_d ? vid_s_hrdata : eth_s_hrdata;
+assign EXTS_HREADY  = exts_fan_d ? fan_s_hready : exts_sen_d ? sen_s_hready : exts_aud_d ? aud_s_hready : exts_vid_d ? vid_s_hready : eth_s_hready;
+assign eth_hresp[0] = exts_fan_d ? fan_s_hresp  : exts_sen_d ? sen_s_hresp  : exts_aud_d ? aud_s_hresp  : exts_vid_d ? vid_s_hresp  : eth_s_hresp;
 
 assign eth_rstn = EXTS_HRSTN;
 
@@ -502,7 +507,7 @@ gw_eth_dma_core u_gw_eth_dma_core
     .s_haddr(EXTS_HADDR),
     .s_htrans(EXTS_HTRANS),
     .s_hwrite(EXTS_HWRITE),
-    .s_hsel(EXTS_HSEL & ~exts_vid & ~exts_aud & ~exts_sen),
+    .s_hsel(EXTS_HSEL & ~exts_vid & ~exts_aud & ~exts_sen & ~exts_fan),
     .s_hready_in(EXTS_HREADY),
     .s_hwdata(EXTS_HWDATA),
     .s_hrdata(eth_s_hrdata),
@@ -584,6 +589,17 @@ sensor_core #(.BUS_MHZ(50)) u_sensor_core
     .s_hsel(EXTS_HSEL & exts_sen), .s_hready_in(EXTS_HREADY), .s_hwdata(EXTS_HWDATA),
     .s_hrdata(sen_s_hrdata), .s_hready(sen_s_hready), .s_hresp(sen_s_hresp),
     .adc_clk(ETH_CLK)
+);
+
+// Fan PWM + tacho: registers on EXTS @ 0xE8008000, Dock fan header M1
+// (T17 PWM, T18 tacho).  Reset state = 25 kHz, 100 % duty.
+fan_core #(.BUS_MHZ(50)) u_fan_core
+(
+    .hclk(EXTS_HCLK), .hresetn(EXTS_HRSTN),
+    .s_haddr(EXTS_HADDR), .s_htrans(EXTS_HTRANS), .s_hwrite(EXTS_HWRITE),
+    .s_hsel(EXTS_HSEL & exts_fan), .s_hready_in(EXTS_HREADY), .s_hwdata(EXTS_HWDATA),
+    .s_hrdata(fan_s_hrdata), .s_hready(fan_s_hready), .s_hresp(fan_s_hresp),
+    .fan_pwm(FAN_PWM), .fan_tach(FAN_TACH)
 );
 
 // 32-bit arbiter master -> 64-bit SoC EXTM slave port

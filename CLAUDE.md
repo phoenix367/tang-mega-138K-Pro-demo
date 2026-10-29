@@ -45,6 +45,17 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    driver `PATCHES/0008` (`gowin-adc`: temp1_input, in0..7). The AE350 SoC itself has no
    thermal block; the board has no current sense, so no power measurement. See
    sensor/README.md.
+   **Desktop + input:** `desktop/` = LVGL 9.6 desktop (`lvdesk`, static musl) on
+   `/dev/fb0` with system monitor, file browser, WAV player, network, console and
+   settings panels, started on VT 1 by `S70desktop`; keyboard/mouse come from the PC
+   over TCP (`desktop/host/netinput.py` → `inputd` on the board → `/dev/uinput`, kernel
+   #59+ with EVDEV/UINPUT). LVGL sources live in `~/projects/ae350_linux_user_level/lvgl/`.
+   See desktop/README.md.
+   **Fan:** `fan/` = PWM + tacho core on EXTS @ `0xE8008000` (`HADDR[15]`) for the
+   Dock's 4-pin fan header M1 (PWM T17, tacho T18, bank 2). Dock rev 4071d drives the
+   fan's PWM pin, rev 4071f switches its 5 V through a P-MOSFET (inverted: DT
+   `gowin,pwm-inverted`). Linux hwmon `PATCHES/0009` (`gowin-fan`: pwm1, fan1_input),
+   fan curve `S80fan`. See fan/README.md.
 2. **`led_blink` — a disabled sample.** Counter-based LED blinker (`CLK_FREQ_HZ` /
    `BLINK_HZ` params) on the board's `clk`=P16 / `rst_n`=K16 / `led`=J14. Files present
    but `enable="0"` in the `.gprj`. To switch back to it: enable its three files, disable

@@ -21,9 +21,9 @@ Boot is **automatic** (U-Boot `bootcmd`) and from **flash only** (no SD): ~24 s 
 
 | Flash offset | XIP addr   | Contents                                  |
 |--------------|------------|-------------------------------------------|
-| `0x000000`   | —          | FPGA bitstream (binary ~4.8 MB, ends `0x48C000`); `MODE=flash scripts/gw_program.sh`. Build 55 (2026-10-29): LCD + 1 GB DDR (32-bit bus) + PT8211 audio + temperature/voltage sensor core |
+| `0x000000`   | —          | FPGA bitstream (binary ~4.8 MB, ends `0x48C000`); `MODE=flash scripts/gw_program.sh`. Build 57 (2026-10-29): Build 55 (LCD + 1 GB DDR + PT8211 audio + sensor core) + fan PWM/tacho core (`fan/`, EXTS 0xE8008000, T17/T18) + the registered-predicted-beat bridge (b9717f5); PnR Place_Option 2 (3 aborts the router on this netlist) |
 | `0x600000`   | `0x80000000` | U-Boot (XIP, with appended DTB @0xf0000) |
-| `0x800000`   | `0x80200000` | `fw_payload.bin.gz` (OpenSBI+kernel+DTB, gzip); kernel #57 (2026-10-29): ALSA PT8211 driver, hwmon gowin-adc (die temperature + rails), `/usr/libexec/sftp-server` for scp/sftp, LCD console (`console=tty0`, `tty1` in inittab) |
+| `0x800000`   | `0x80200000` | `fw_payload.bin.gz` (OpenSBI+kernel+DTB, gzip); kernel #61 (2026-10-29; payload 7.31 MB; #60 + fan status-bar indicator, XZ initramfs — the region ends at 0x1000000, keep it under 8 MB): #59 (#57 + evdev/uinput) + hwmon gowin-fan (`PATCHES/0009`, DT `fan0`) + `S80fan` temperature curve; #59 = #57 (ALSA PT8211, hwmon gowin-adc, sftp-server) + evdev/uinput for the network input bridge (`inputd`) and the LVGL desktop (`lvdesk` on VT 1, no getty on tty1); `console=tty0` still prints boot messages on the LCD |
 
 U-Boot auto-runs (`CONFIG_BOOTCOMMAND`): `unzip 0x80200000 0 0x2000000; sdboot 0`
 — gunzips the ~5 MB image into DRAM `0x0` (OpenSBI @0x0, kernel @0x400000) and jumps.
