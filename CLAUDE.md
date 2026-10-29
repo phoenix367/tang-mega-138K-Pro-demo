@@ -34,6 +34,11 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    EXTM — reading over EXTM cost the CPU ~37% of its memory bandwidth). Linux fbdev
    driver `PATCHES/0006` (software rendering, fbcon); sim `video/tb/run_tb.sh`,
    hardware check `tests/fbtest.c`. See video/README.md.
+   **Audio:** `audio/` = PT8211 (I2S-like DAC, E22/F24/G24, PA_EN H17) output core on
+   EXTS @ `0xE8002000`, 2048-frame FIFO + threshold IRQ (EXT_INT[1] = PLIC source 11),
+   NCO sample rate, frame counter + CRC for bit-exact checks; no DMA. Linux ALSA driver
+   `PATCHES/0007` (`gowin-pt8211`, card 0). Sim `audio/tb/run_tb.sh`, hardware check
+   `tests/wavplay.c` (raw ALSA ioctl player, 16-bit mono/stereo WAV). See audio/README.md.
 2. **`led_blink` — a disabled sample.** Counter-based LED blinker (`CLK_FREQ_HZ` /
    `BLINK_HZ` params) on the board's `clk`=P16 / `rst_n`=K16 / `led`=J14. Files present
    but `enable="0"` in the `.gprj`. To switch back to it: enable its three files, disable
@@ -111,3 +116,13 @@ synthesizes and place-and-routes unchanged on `-007` — verified (≈5% LUT, 8%
   on any missing or invalid pin. Get real pad numbers from the board schematic/pinout
   or the IDE FloorPlanner.
 - Generated `impl/` artifacts are build output, not source.
+
+## Linux userspace sources
+
+Sources (and tarballs) of every library and application cross-built for the board's
+rootfs — busybox, dropbear, musl-linked tools, sftp-server, etc. — live **outside this
+repo** in `/home/ivan/projects/ae350_linux_user_level/`, one subdirectory per package
+(plus any build script next to it). Put every new userspace package there, not in the
+session scratchpad or `/tmp`, so it can be rebuilt later. The binaries go into
+`linux/rootfs/` (static musl, soft-atomic libc — see doc/02-build.md), from which the
+kernel build bakes the initramfs; nothing copied onto the live board persists.

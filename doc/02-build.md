@@ -132,6 +132,11 @@ in and the kernel reflashed — edits on the live device do **not** persist.
 - busybox (musl static, soft-atomic), `init`→busybox, `/etc/inittab` → `rcS`.
 - Privilege: **doas** (`permit persist :wheel`), users `root` / `ae350` (pw `ae350`).
 - SSH: **dropbear** (`dropbearmulti` + symlinks), stable host keys in `/etc/dropbear/`.
+  `scp`/`sftp` from a modern OpenSSH client need the SFTP subsystem: a static
+  OpenSSH `sftp-server` (built without OpenSSL/zlib, see
+  `~/projects/ae350_linux_user_level/openssh/build_sftp.sh`) sits at
+  `/usr/libexec/sftp-server`, the path dropbear execs. Legacy `scp -O` works via
+  dropbear's own `scp` too.
 - `ping`: a **separate setuid-root copy** `/bin/ping` (the main busybox stays
   unprivileged), gated by `/etc/busybox.conf`.
 - Extra static tools cross-built into `/usr/bin`: **htop** (ncurses w/ compiled-in
