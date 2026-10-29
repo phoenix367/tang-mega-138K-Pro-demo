@@ -57,6 +57,11 @@ module ae350_demo_top
     output [5:0] LCD_R,
     output [5:0] LCD_G,
     output [5:0] LCD_B,
+    // Audio: PT8211 stereo DAC (headphone jack / speaker), 16-bit LSB-justified
+    output I2S_BCK,
+    output I2S_LRCK,
+    output I2S_DIN,
+    output PA_EN,               // headphone amplifier (XPT4809) enable, active high
     output [1:0] DBG            // EXTM probe: {hreadyout, hsel} (W21/P21 are JTAG)
 );
 
@@ -191,19 +196,24 @@ assign tx_pause_val         = 16'b0;
 assign tx_pause_source_addr = 48'b0;
 assign eth_hresp[1]         = 1'b0;
 
-// EXTS register window: 0xE8000000 gw_eth_dma CSRs, 0xE8001000 LCD video core.
-// Both slaves are zero-wait; the data phase is muxed by the select registered
-// at the accepted address phase.
-wire        exts_vid = EXTS_HADDR[12];
-reg         exts_vid_d;
-wire [31:0] eth_s_hrdata, vid_s_hrdata;
+// EXTS register window: 0xE8000000 gw_eth_dma CSRs, 0xE8001000 LCD video core,
+// 0xE8002000 audio core.  All slaves are zero-wait; the data phase is muxed by
+// the select registered at the accepted address phase.
+wire        exts_aud = EXTS_HADDR[13];
+wire        exts_vid = EXTS_HADDR[12] & ~EXTS_HADDR[13];
+reg         exts_vid_d, exts_aud_d;
+wire [31:0] eth_s_hrdata, vid_s_hrdata, aud_s_hrdata;
 wire        eth_s_hready, vid_s_hready, eth_s_hresp, vid_s_hresp;
+wire        aud_s_hready, aud_s_hresp, intr_audio;
 always @(posedge EXTS_HCLK or negedge EXTS_HRSTN)
-    if (!EXTS_HRSTN)                                exts_vid_d <= 1'b0;
-    else if (EXTS_HSEL && EXTS_HTRANS[1] && EXTS_HREADY) exts_vid_d <= exts_vid;
-assign EXTS_HRDATA  = exts_vid_d ? vid_s_hrdata : eth_s_hrdata;
-assign EXTS_HREADY  = exts_vid_d ? vid_s_hready : eth_s_hready;
-assign eth_hresp[0] = exts_vid_d ? vid_s_hresp  : eth_s_hresp;
+    if (!EXTS_HRSTN) begin
+        exts_vid_d <= 1'b0; exts_aud_d <= 1'b0;
+    end else if (EXTS_HSEL && EXTS_HTRANS[1] && EXTS_HREADY) begin
+        exts_vid_d <= exts_vid; exts_aud_d <= exts_aud;
+    end
+assign EXTS_HRDATA  = exts_aud_d ? aud_s_hrdata : exts_vid_d ? vid_s_hrdata : eth_s_hrdata;
+assign EXTS_HREADY  = exts_aud_d ? aud_s_hready : exts_vid_d ? vid_s_hready : eth_s_hready;
+assign eth_hresp[0] = exts_aud_d ? aud_s_hresp  : exts_vid_d ? vid_s_hresp  : eth_s_hresp;
 
 assign eth_rstn = EXTS_HRSTN;
 
@@ -296,7 +306,7 @@ RiscV_AE350_SOC_Top u_RiscV_AE350_SOC_Top
     .TDO_OUT(TDO_OUT),
     .TDO_OE(),
     // External interrupts - Ethernet MAC IRQ on bit 0
-    .EXT_INT({15'b0, intr_ethernet}),
+    .EXT_INT({14'b0, intr_audio, intr_ethernet}),
     // External AHB slave port -> Ethernet MAC bridge (gw_ahb_ethernet_top)
     .EXTS_HRDATA(EXTS_HRDATA),
     .EXTS_HREADYIN(EXTS_HREADY),
@@ -490,7 +500,7 @@ gw_eth_dma_core u_gw_eth_dma_core
     .s_haddr(EXTS_HADDR),
     .s_htrans(EXTS_HTRANS),
     .s_hwrite(EXTS_HWRITE),
-    .s_hsel(EXTS_HSEL & ~exts_vid),
+    .s_hsel(EXTS_HSEL & ~exts_vid & ~exts_aud),
     .s_hready_in(EXTS_HREADY),
     .s_hwdata(EXTS_HWDATA),
     .s_hrdata(eth_s_hrdata),
@@ -548,6 +558,18 @@ video_core u_video_core
 // change after the rising edge, the panel samples on the falling edge.
 ODDR #(.TXCLK_POL(1'b0), .INIT(1'b0)) u_lcd_clk_oddr (
     .Q0(LCD_CLK), .Q1(), .D0(1'b1), .D1(1'b0), .TX(1'b0), .CLK(VID_CLK)
+);
+
+// Audio core: registers on EXTS @ 0xE8002000, sample FIFO filled by the CPU
+// (EXT_INT[1] when it runs low), BCK/WS/DIN to the PT8211 DAC.
+audio_core u_audio_core
+(
+    .hclk(EXTS_HCLK), .hresetn(EXTS_HRSTN),
+    .s_haddr(EXTS_HADDR), .s_htrans(EXTS_HTRANS), .s_hwrite(EXTS_HWRITE),
+    .s_hsel(EXTS_HSEL & exts_aud), .s_hready_in(EXTS_HREADY), .s_hwdata(EXTS_HWDATA),
+    .s_hrdata(aud_s_hrdata), .s_hready(aud_s_hready), .s_hresp(aud_s_hresp),
+    .irq(intr_audio), .i2s_bck(I2S_BCK), .i2s_ws(I2S_LRCK), .i2s_din(I2S_DIN),
+    .pa_en(PA_EN)
 );
 
 // 32-bit arbiter master -> 64-bit SoC EXTM slave port

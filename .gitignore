@@ -46,3 +46,4 @@ __pycache__/
 /tests/cctl_probe
 /tests/ddr_memtest
 /tests/fbtest
+/tests/wavplay

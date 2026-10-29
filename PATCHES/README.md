@@ -13,6 +13,7 @@ git apply 0003-uboot-ae350-sd-boot-and-cache.patch              # in u-boot/
 git apply 0004-linux-a25-cctl-cmo.patch                         # in linux/ (after 0002; needs 0003's CCTL_SUEN)
 git apply 0005-linux-a25-ptw-pagetable-writeback.patch         # in linux/ (after 0004)
 git apply 0006-linux-gowin-lcdfb.patch                         # in linux/ (needs 0004's CCTL ops)
+git apply 0007-linux-gowin-pt8211.patch                        # in linux/ (independent)
 ```
 (or `patch -p1 < <file>`). Base versions used: OpenSBI v1.8, Linux 6.12, U-Boot 2026.07-rc3.
 
@@ -94,6 +95,18 @@ git apply 0006-linux-gowin-lcdfb.patch                         # in linux/ (need
 - **Not in the patch** (Kconfig): `CONFIG_FB=y`, `CONFIG_FB_GOWIN_LCD=y`,
   `CONFIG_FRAMEBUFFER_CONSOLE=y`, `CONFIG_LOGO=y` (+ `LOGO_LINUX_CLUT224`), and the
   `lcd@e8001000` node in `linux/ae350-linux.dts`.
+
+## 0007 — Linux ALSA driver for the gateware's PT8211 audio core
+- `sound/drivers/gowin-pt8211.c` (new) + Kconfig `SND_GOWIN_PT8211` + Makefile: ALSA
+  platform driver for the sample-FIFO audio core in `../audio/`, registers at
+  0xE8002000, DT compatible `"gowin,ae350-pt8211"`, optional `clock-frequency`.
+  One playback PCM (S16_LE, stereo, 8–96 kHz).  No DMA: the interrupt handler copies
+  frames from the vmalloc ALSA buffer into the core's FIFO (level-type interrupt,
+  threshold), so the SoC's missing cache coherence does not matter.  See
+  `../audio/README.md`.
+- **Not in the patch** (Kconfig): `CONFIG_SND=y`, `CONFIG_SND_PCM=y`,
+  `CONFIG_SND_GOWIN_PT8211=y`, and the `audio@e8002000` node (PLIC source 5 =
+  EXT_INT[1]) in `linux/ae350-linux.dts`.
 
 ## Note on correctness
 The soft atomics are correct **only because the system is single-hart** (the only

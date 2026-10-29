@@ -113,6 +113,16 @@
 			vback-porch = <8>;
 		};
 
+		/* audio out: FIFO + serialiser for the Dock's PT8211 16-bit stereo DAC
+		 * (BCK E22, WS F24, DIN G24 -> headphone jack / speaker); EXTS window
+		 * 0xE8002000, EXT_INT[1] = GP1 = PLIC src 11 (FIFO below threshold; GP0 = 4, GP1..15 = 11..25) */
+		audio0: audio@e8002000 {
+			compatible = "gowin,ae350-pt8211";
+			reg = <0xe8002000 0x100>;
+			interrupts = <11 4>;
+			interrupt-parent = <&plic0>;
+		};
+
 		gmac0: ethernet@e8000000 {
 			compatible = "gowin,ae350-tse";
 			reg = <0xe8000000 0x800>;
