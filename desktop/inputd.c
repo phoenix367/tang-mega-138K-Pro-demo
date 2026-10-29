@@ -109,7 +109,7 @@ static int write_all(int fd, const void *buf, size_t n)
     const char *p = buf;
     while (n) {
         ssize_t r = write(fd, p, n);
-        if (r < 0) { if (errno == EINTR) continue; return -1; }
+        if (r < 0) { if (errno == EINTR) continue; return -1; }   /* EAGAIN = send timeout */
         p += r; n -= r;
     }
     return 0;
@@ -313,6 +313,17 @@ int main(int argc, char **argv)
         int s = accept(ls, (struct sockaddr *)&ca, &cl);
         if (s < 0) { if (errno == EINTR) continue; perror("accept"); break; }
         setsockopt(s, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+        /* one client at a time: never let a dead or stalled peer wedge the
+         * daemon -- frames time out after 5 s, idle peers are probed by keepalive */
+        {
+            struct timeval tv = { .tv_sec = 5, .tv_usec = 0 };
+            int ka_idle = 10, ka_intvl = 5, ka_cnt = 3;
+            setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+            setsockopt(s, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof(one));
+            setsockopt(s, IPPROTO_TCP, TCP_KEEPIDLE, &ka_idle, sizeof(ka_idle));
+            setsockopt(s, IPPROTO_TCP, TCP_KEEPINTVL, &ka_intvl, sizeof(ka_intvl));
+            setsockopt(s, IPPROTO_TCP, TCP_KEEPCNT, &ka_cnt, sizeof(ka_cnt));
+        }
         if (verbose) fprintf(stderr, "inputd: client %s\n", inet_ntoa(ca.sin_addr));
         serve(s, kfd, mfd);
         close(s);

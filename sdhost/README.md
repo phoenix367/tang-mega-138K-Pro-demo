@@ -59,7 +59,9 @@ its data moved by the core's DMA to/from a 64 KB bounce buffer (streaming DMA
 mapping, so the cache maintenance comes from the A25 CCTL patches); completion
 by interrupt; CMD12 issued by the driver after multi-block data. Card detect is
 read from the core and polled by the MMC core. The card appears as
-`/dev/mmcblk0`, mounted at `/mnt/sd` by `S45sdcard`.
+`/dev/mmcblk0`, mounted at `/mnt/sd` by `S45sdcard`. The desktop's Files panel shows
+the card as a mountable resource (size, free space, Mount/Unmount button, "safe to
+remove" when unmounted) and browses it under "SD card".
 
 ## Results (Build 61, kernel #66, 4 GB class-10 card)
 

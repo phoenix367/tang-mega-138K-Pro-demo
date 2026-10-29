@@ -14,6 +14,7 @@
 #include <string.h>
 #include <sys/reboot.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -352,19 +353,124 @@ static void restyle_tree(lv_obj_t *obj, lv_color_t bg, lv_color_t fg)
     for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) restyle_tree(lv_obj_get_child(obj, i), bg, fg);
 }
 
-/* rename a quick-access entry (the explorer's labels are fixed) */
-static void relabel_tree(lv_obj_t *obj, const char *from, const char *to)
+/* ---- microSD as a mountable resource: status row + Mount/Unmount button ---- */
+typedef struct {
+    lv_obj_t *fe, *lbl, *btn, *btn_lbl;
+    bool mounted, present, busy;
+} sdres_t;
+
+static bool sd_present(void) { return access("/dev/mmcblk0", F_OK) == 0; }
+static bool sd_mounted(void)
+{
+    char buf[4096];
+    if (sysinfo_read_file("/proc/mounts", buf, sizeof(buf)) <= 0) return false;
+    return strstr(buf, " /mnt/sd ") != NULL;
+}
+
+static void sd_status_update(sdres_t *r)
+{
+    r->present = sd_present();
+    r->mounted = r->present && sd_mounted();
+    if (r->busy) return;
+    if (!r->present) {
+        lv_label_set_text(r->lbl, LV_SYMBOL_SD_CARD " microSD: no card");
+        lv_obj_add_state(r->btn, LV_STATE_DISABLED);
+    } else if (r->mounted) {
+        struct statvfs st;
+        if (statvfs("/mnt/sd", &st) == 0) {
+            unsigned long long tot = (unsigned long long)st.f_blocks * st.f_frsize;
+            unsigned long long fre = (unsigned long long)st.f_bavail * st.f_frsize;
+            lv_label_set_text_fmt(r->lbl, LV_SYMBOL_SD_CARD " microSD: mounted at /mnt/sd, %llu MB, %llu MB free",
+                                  tot >> 20, fre >> 20);
+        } else
+            lv_label_set_text(r->lbl, LV_SYMBOL_SD_CARD " microSD: mounted at /mnt/sd");
+        lv_obj_remove_state(r->btn, LV_STATE_DISABLED);
+        lv_label_set_text(r->btn_lbl, LV_SYMBOL_EJECT " Unmount");
+    } else {
+        char sz[32] = "";
+        if (sysinfo_read_file("/sys/class/block/mmcblk0/size", sz, sizeof(sz)) > 0)
+            lv_label_set_text_fmt(r->lbl, LV_SYMBOL_SD_CARD " microSD: %llu MB card present, not mounted (safe to remove)",
+                                  (strtoull(sz, NULL, 10) * 512ULL) >> 20);
+        else
+            lv_label_set_text(r->lbl, LV_SYMBOL_SD_CARD " microSD: card present, not mounted");
+        lv_obj_remove_state(r->btn, LV_STATE_DISABLED);
+        lv_label_set_text(r->btn_lbl, LV_SYMBOL_DOWNLOAD " Mount");
+    }
+}
+
+static void sd_timer(lv_timer_t *t) { sd_status_update(lv_timer_get_user_data(t)); }
+
+static void sd_mount_click(lv_event_t *e)
+{
+    sdres_t *r = lv_event_get_user_data(e);
+    char out[256];
+    r->busy = true;
+    lv_label_set_text(r->lbl, r->mounted ? "unmounting..." : "mounting...");
+    lv_refr_now(NULL);
+    if (r->mounted) {
+        /* leave the card's directory first: the explorer's cwd would keep it busy */
+        const char *cur = lv_file_explorer_get_current_path(r->fe);
+        if (cur && strstr(cur, "/mnt/sd")) lv_file_explorer_open_dir(r->fe, "A:/home/ae350");
+        sysinfo_run("sync; /etc/init.d/S45sdcard stop 2>&1; umount /mnt/sd 2>&1", out, sizeof(out));
+    } else
+        sysinfo_run("/etc/init.d/S45sdcard start 2>&1", out, sizeof(out));
+    r->busy = false;
+    sd_status_update(r);
+    if (!r->mounted && strstr(out, "busy")) desk_msgbox("microSD", "Unmount failed: the card is busy.");
+    else if (r->mounted && !r->busy && strstr(out, "not mountable")) desk_msgbox("microSD", out);
+    if (r->mounted) lv_file_explorer_open_dir(r->fe, "A:/mnt/sd");
+}
+
+static void sd_free(lv_event_t *e) { free(lv_event_get_user_data(e)); }
+
+/* the "SD card" quick-access entry: the explorer maps its buttons by label
+ * text, so a relabeled button needs its own handler */
+static void sd_quick_click(lv_event_t *e)
+{
+    lv_obj_t *fe = lv_event_get_user_data(e);
+    if (sd_mounted()) lv_file_explorer_open_dir(fe, "A:/mnt/sd");
+    else desk_msgbox("microSD", sd_present() ? "The card is not mounted: press Mount first." : "No card inserted.");
+}
+
+/* rename a quick-access entry (the explorer's labels are fixed) and hook it */
+static void relabel_tree(lv_obj_t *obj, const char *from, const char *to, lv_obj_t *fe)
 {
     if (!obj) return;
-    if (lv_obj_check_type(obj, &lv_label_class) && strstr(lv_label_get_text(obj), from))
+    if (lv_obj_check_type(obj, &lv_label_class) && strstr(lv_label_get_text(obj), from)) {
         lv_label_set_text(obj, to);
-    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) relabel_tree(lv_obj_get_child(obj, i), from, to);
+        lv_obj_add_event_cb(lv_obj_get_parent(obj), sd_quick_click, LV_EVENT_CLICKED, fe);
+    }
+    for (uint32_t i = 0; i < lv_obj_get_child_count(obj); i++) relabel_tree(lv_obj_get_child(obj, i), from, to, fe);
 }
 
 void panel_files(lv_obj_t *parent)
 {
+    lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(parent, 6, 0);
+
+    sdres_t *r = calloc(1, sizeof(*r));
+    lv_obj_t *row = lv_obj_create(parent);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    r->lbl = lv_label_create(row);
+    lv_label_set_long_mode(r->lbl, LV_LABEL_LONG_DOT);
+    lv_obj_set_flex_grow(r->lbl, 1);
+    r->btn = lv_button_create(row);
+    lv_obj_set_style_pad_ver(r->btn, 6, 0);
+    r->btn_lbl = lv_label_create(r->btn);
+    lv_label_set_text(r->btn_lbl, "Mount");
+    lv_obj_add_event_cb(r->btn, sd_mount_click, LV_EVENT_CLICKED, r);
+
     lv_obj_t *fe = lv_file_explorer_create(parent);
-    lv_obj_set_size(fe, LV_PCT(100), LV_PCT(100));
+    r->fe = fe;
+    lv_obj_set_width(fe, LV_PCT(100));
+    lv_obj_set_flex_grow(fe, 1);
+    lv_timer_t *t = lv_timer_create(sd_timer, 2000, r);
+    lv_obj_add_event_cb(parent, timer_del_on_delete, LV_EVENT_DELETE, t);
+    lv_obj_add_event_cb(parent, sd_free, LV_EVENT_DELETE, r);
+    sd_status_update(r);
     lv_file_explorer_set_sort(fe, LV_EXPLORER_SORT_KIND);
     lv_file_explorer_set_quick_access_path(fe, LV_EXPLORER_HOME_DIR, "A:/home/ae350");
     lv_file_explorer_set_quick_access_path(fe, LV_EXPLORER_MUSIC_DIR, "A:/tmp");
@@ -390,7 +496,7 @@ void panel_files(lv_obj_t *parent)
     lv_obj_set_style_bg_color(lv_file_explorer_get_file_table(fe), bg2, LV_PART_ITEMS);
     lv_obj_set_style_text_color(lv_file_explorer_get_path_label(fe), fg, 0);
     restyle_tree(lv_file_explorer_get_quick_access_area(fe), bg, fg);
-    relabel_tree(lv_file_explorer_get_quick_access_area(fe), "Video", LV_SYMBOL_SD_CARD " SD card");
+    relabel_tree(lv_file_explorer_get_quick_access_area(fe), "Video", LV_SYMBOL_SD_CARD " SD card", fe);
 }
 
 /* ====================================================================== */

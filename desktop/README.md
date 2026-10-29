@@ -53,8 +53,10 @@ PC: host/netinput.py  --tcp 5555-->  board: inputd  --/dev/uinput-->  /dev/input
     re-scanned every second if missing. Ctrl+Alt+H = home, Ctrl+Alt+Q = restart.
   - `sysinfo.c` — `/proc/stat`, `/proc/meminfo`, loadavg, uptime, hwmon
     `gowin-adc` (temperature + 8 rails), eth0 state/counters/IP.
-  - `panels.c` — **System** (CPU chart, memory, sensors), **Files** (LVGL file
-    explorer over `lv_fs_posix`; click = text preview or, for `.wav`, play),
+  - `panels.c` — **System** (CPU chart, memory, sensors, fan), **Files** (LVGL file
+    explorer over `lv_fs_posix`; click = text preview or, for `.wav`, play; a
+    status row shows the microSD card as a mountable resource with a
+    Mount/Unmount button and an "SD card" quick-access entry),
     **Audio** (WAV list from `/home/ae350`, `/tmp`; plays via a `wavplay` child
     process; "Test tone" writes and plays a 440/880 Hz stereo file), **Network**
     (RX/TX kbit/s chart, IP/MAC/link), **Console** (runs a shell command as root,
