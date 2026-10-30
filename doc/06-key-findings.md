@@ -166,3 +166,51 @@ baked into `linux/rootfs/` and the kernel reflashed. Notable consequences:
   boot (it drops privileges from `ifconfig`/`getty`).
 - Extra tools (htop, tcpdump, nstat) are **static** cross-builds; htop's ncurses is
   built with compiled-in terminfo fallbacks so it needs no `/usr/share/terminfo`.
+
+## Atomics on the A25: what the bus sees (2026-10-30)
+
+`tests/amotrace.c` arms the `ddr_perf` transaction trace around a cold-line `lr.w/sc.w`
+and `amoswap.w` (the latter with the ATCWDT200 watchdog armed, since the AMO hangs the
+hart; the trace RAM survives the SoC reset and is dumped after the reboot):
+
+- An `lr.w` on a line that is not in the L1 D-cache is **not a line fill**: the core
+  issues one **SINGLE 32-bit read** of the target word on the data-memory AHB. The
+  following `sc.w` puts **nothing** on the bus and fails (3 of 3 attempts).
+- An `amoswap.w` on a cold line issues the same single-word read and then **retries it
+  every 13 bus clocks (130 ns), forever** — 307 identical reads of the target address
+  filled the trace until the watchdog reset the SoC. No write is ever attempted.
+
+This is the signature of AHB5-style exclusive accesses: the core waits for an
+"exclusive OK" (HEXOKAY) that only an exclusive-access monitor in the interconnect can
+give. The Gowin AE350 wrapper exposes a plain AHB-lite data-memory port (no HEXCL /
+HEXOKAY / HMASTLOCK), so the signal the core waits for does not exist outside the IP and
+the DDR bridge cannot supply it. Atomics therefore work only on lines the cache already
+owns (handled inside the L1), and the single-hart soft-atomic builds remain the fix.
+
+## The SoC's DMAC (ATCDMAC300) reaches only DDR (2026-10-30)
+
+Probed with `tests/dmactest.c` (programs the DMAC at 0xF0C00000 from Linux through
+`/dev/mem`, watchdog armed; a hang needs a JTAG reload). Memory-to-memory copies through
+the data-memory port work (4 KB verified). Every other target wedged the whole SoC bus so
+hard that not even the watchdog reset recovered it:
+
+| DMAC target | bus interface 0 | bus interface 1 |
+|---|---|---|
+| DDR → DDR | works | — |
+| audio FIFO register on EXTS (write) | hang | hang |
+| audio / SD host registers on EXTS (read) | hang | hang |
+| external APB (ddr_perf, 0xF8000000) | hang | hang |
+| SoC UART2 (internal APB, 0xF0300000) | hang | hang |
+| boot flash XIP (0x80000000, AHB) | hang | hang |
+
+The BSP's own peripheral DMA (UART/SPI/I2C) uses handshake mode with both
+bus-interface bits set to 1; that was reproduced without handshake only, so a
+handshake-only path cannot be fully excluded, but the XIP result (a plain AHB slave
+hanging) shows the Gowin AE350 build routes the DMAC master to the data-memory port
+only. The `DMA_REQ`/`DMA_ACK` pins are therefore unusable for fabric peripherals here;
+DMA for fabric cores must come from fabric masters on the EXTM port (Ethernet, SD host,
+LCD) as the design already does. The audio core got one the same day: a 64-bit read
+engine on a fourth arbiter port (`audio/rtl/ahb_arbiter4.v`) that fetches the ALSA
+buffer as a ring up to a driver-committed byte limit, with the driver cleaning the
+cache per committed range (`audio/README.md`).
+

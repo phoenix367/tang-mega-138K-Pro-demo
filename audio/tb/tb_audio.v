@@ -24,16 +24,65 @@ module tb_audio;
     reg         hwrite = 0, hsel = 0;
     wire [31:0] hrdata;
     wire        hready, hresp, irq, bck, ws, din, pa_en;
+    // DMA master port -> 64-bit memory model (ring buffer at 0x0010_0000)
+    wire        m_busy, m_hwrite, m_hready, m_hresp;
+    wire [31:0] m_haddr;
+    wire [1:0]  m_htrans;
+    wire [2:0]  m_hsize, m_hburst;
+    wire [63:0] m_hwdata, m_hrdata;
 
     audio_core dut (
         .hclk(clk), .hresetn(rstn),
         .s_haddr(haddr), .s_htrans(htrans), .s_hwrite(hwrite), .s_hsel(hsel),
         .s_hready_in(hready), .s_hwdata(hwdata),
         .s_hrdata(hrdata), .s_hready(hready), .s_hresp(hresp),
-        .irq(irq), .i2s_bck(bck), .i2s_ws(ws), .i2s_din(din), .pa_en(pa_en)
+        .irq(irq), .i2s_bck(bck), .i2s_ws(ws), .i2s_din(din), .pa_en(pa_en),
+        .m_busy(m_busy), .m_haddr(m_haddr), .m_htrans(m_htrans), .m_hwrite(m_hwrite), .m_hsize(m_hsize),
+        .m_hburst(m_hburst), .m_hwdata(m_hwdata), .m_hrdata(m_hrdata), .m_hready(m_hready), .m_hresp(m_hresp)
     );
+    localparam RING = 32'h0010_0000;
+    localparam DMA_ADDR = 8'h30, DMA_SIZE = 8'h34, DMA_PERIOD = 8'h38, DMA_LIMIT = 8'h3C, DMA_FETCH = 8'h40,
+               DMA_IRQ = 8'h44, DMA_FILL = 8'h48;
+    reg [63:0] mem [0:8191];                   // 64 KB
+    reg        mdph = 0; reg [63:0] mrd_q; reg mwait = 0; integer mws = 0; integer m_reads = 0;
+    assign m_hready = !mwait;
+    assign m_hresp  = 1'b0;
+    assign m_hrdata = mrd_q;
+    always @(posedge clk) begin
+        if (m_hready) begin
+            mdph <= m_htrans[1];
+            if (m_htrans[1] && !m_hwrite) begin mrd_q <= mem[(m_haddr - RING) >> 3]; m_reads = m_reads + 1; end
+        end
+        if (m_htrans[1] || mdph) begin
+            if (!mwait && ($random % 5 == 0)) begin mwait <= 1; mws <= 1 + ($random & 3); end
+            else if (mwait) begin if (mws == 0) mwait <= 0; else mws <= mws - 1; end
+        end else mwait <= 0;
+    end
+    // put n random frames into the ring (frame i at byte 4*i) and model them
+    task ring_fill(input integer n, input integer model_n);
+        integer i;
+        begin
+            for (i = 0; i < n; i = i + 1) wbuf[i] = rnd_frame(0);
+            for (i = 0; i < n; i = i + 2) mem[i >> 1] = {wbuf[i+1], wbuf[i]};
+            for (i = 0; i < model_n; i = i + 1) begin exp[exp_n] = wbuf[i % n]; exp_n = exp_n + 1; model_frame(wbuf[i % n]); end
+        end
+    endtask
 
     integer errors = 0;
+    integer irqs = 0;
+
+    // period interrupts: count and clear (as the driver would)
+    always @(posedge irq) begin
+        irqs = irqs + 1;
+        @(posedge clk); #1;
+        haddr = BASE | DMA_IRQ; htrans = 2'b10; hwrite = 1; hsel = 1;
+        @(posedge clk); #1; htrans = 0; hsel = 0; hwdata = 32'h3;
+        @(posedge clk); #1;
+    end
+    // underruns expected after the limit: whatever the serialiser output as zeros is counted
+    function integer f_after_limit(input dummy);
+        begin f_after_limit = dut.underruns; end
+    endfunction
     task check(input cond, input [8*64-1:0] what, input [31:0] got, input [31:0] exp);
         if (!cond) begin
             errors = errors + 1;
@@ -296,6 +345,104 @@ module tb_audio;
         ahb_write(CTRL, 32'h21); repeat (2) @(posedge clk); check(pa_en == 1, "PA_EN on with enable", pa_en, 1);
         ahb_read(CTRL, v);       check(v == 32'h21, "CTRL readback", v, 32'h21);
         ahb_write(CTRL, 32'h20);
+
+        // ---- DMA mode --------------------------------------------------------
+        // (a) 1024-frame ring, all committed, 64-frame period: bit-exact output,
+        //     one period IRQ per 64 frames fetched, no underrun
+        $display("DMA: full ring");
+        ahb_write(THRESH, 0);                                 // level irq off for the period-count checks
+        ahb_write(CTRL, 32'h4); model_reset; exp_n = 0; rx_clear;
+        ring_fill(1024, 1024);
+        ahb_write(DMA_ADDR, RING); ahb_write(DMA_SIZE, 1024 * 4); ahb_write(DMA_PERIOD, 64 * 4);
+        ahb_write(DMA_LIMIT, 1024 * 4); ahb_write(DMA_FILL, 32'h0020_0200);   // fill to 512, 32 beats
+        ahb_write(RATE, RATE_FAST);
+        irqs = 0;
+        wait_mid_frame; ahb_write(CTRL, 32'h43);           // enable + irq_en + dma
+        wait_frames(1024);
+        ahb_read(DMA_FETCH, v); check(v == 4096, "DMA_FETCH all", v, 4096);
+        ahb_read(STATUS, v);    check(v[15:0] == 0, "FIFO empty at limit", v[15:0], 0);
+        repeat (2000) @(posedge clk);
+        ahb_write(CTRL, 32'h0);
+        check_sequence(0); check_stats(f_after_limit(0), 0);
+        $display("  period irqs seen: %0d (expect 16), bus reads %0d", irqs, m_reads);
+        check(irqs == 16, "period irqs", irqs, 16);
+        // (b) limit semantics: commit 300 frames, play, commit 200 more later
+        $display("DMA: limit");
+        ahb_write(CTRL, 32'h4); model_reset; exp_n = 0; rx_clear; irqs = 0;
+        ring_fill(1024, 300);
+        ahb_write(DMA_LIMIT, 300 * 4);
+        wait_mid_frame; ahb_write(CTRL, 32'h43);
+        wait_frames(300);
+        ahb_read(DMA_FETCH, v); check(v == 1200, "fetched exactly the limit", v, 1200);
+        repeat (400) @(posedge ws);                           // zeros while nothing is committed
+        exp_n = 0; model_reset; rx_clear;                    // restart the recorder's expectation
+        ring_fill(1024, 0);                                   // new ring contents
+        for (i = 300; i < 500; i = i + 1) begin exp[exp_n] = wbuf[i]; exp_n = exp_n + 1; end
+        ahb_write(DMA_LIMIT, 500 * 4);
+        wait_frames(500);
+        repeat (300) @(posedge clk);
+        ahb_write(CTRL, 32'h0);
+        check_sequence(0);
+        ahb_read(UNDERRUN, v); $display("  underruns while starved: %0d (expected > 0)", v);
+        check(v > 0, "underruns counted while starved", v, 1);
+        // (c) ring wrap: 256-frame ring, 1000 frames committed
+        $display("DMA: wrap");
+        ahb_write(CTRL, 32'h4); model_reset; exp_n = 0; rx_clear; irqs = 0;
+        ring_fill(256, 1000);
+        ahb_write(DMA_SIZE, 256 * 4); ahb_write(DMA_LIMIT, 1000 * 4); ahb_write(DMA_PERIOD, 256 * 4);
+        wait_mid_frame; ahb_write(CTRL, 32'h43);
+        wait_frames(1000);
+        repeat (300) @(posedge clk);
+        ahb_write(CTRL, 32'h0);
+        check_sequence(0); check_stats(f_after_limit(0), 0);
+        check(irqs == 3, "wrap period irqs", irqs, 3);
+        // (d) end of stream: THRESH=1 raises the level irq once the FIFO runs dry after the limit
+        $display("DMA: end-of-stream level irq");
+        ahb_write(CTRL, 32'h4); model_reset; exp_n = 0; rx_clear; irqs = 0;
+        ring_fill(256, 64);
+        ahb_write(DMA_SIZE, 256 * 4); ahb_write(DMA_LIMIT, 64 * 4); ahb_write(DMA_PERIOD, 1024 * 4);
+        ahb_write(THRESH, 1);
+        wait_mid_frame; ahb_write(CTRL, 32'h43 | 32'h10);     // + stop_empty
+        wait_frames(64);
+        repeat (3) @(posedge ws);
+        check(irq == 1, "level irq at end of stream", irq, 1);
+        ahb_read(CTRL, v); check(v[0] == 0, "stopped by stop_empty", v, 0);
+        ahb_read(UNDERRUN, v); check(v == 0, "no underrun for the tail", v, 0);
+        ahb_write(CTRL, 32'h0);
+        check_sequence(0);
+        // (e) odd frame counts: limits ending mid-beat (65, then 130, then 131 frames)
+        $display("DMA: odd limits");
+        ahb_write(THRESH, 0);
+        ahb_write(CTRL, 32'h4); model_reset; exp_n = 0; rx_clear; irqs = 0;
+        ring_fill(256, 131);
+        ahb_write(DMA_SIZE, 256 * 4); ahb_write(DMA_PERIOD, 0);
+        ahb_write(DMA_LIMIT, 65 * 4);
+        wait_mid_frame; ahb_write(CTRL, 32'h43);
+        wait_frames(65);
+        ahb_read(DMA_FETCH, v); check(v == 65 * 4, "fetched 65 frames", v, 260);
+        ahb_write(DMA_LIMIT, 130 * 4);
+        wait_frames(130);
+        ahb_read(DMA_FETCH, v); check(v == 130 * 4, "fetched 130 frames", v, 520);
+        ahb_write(DMA_LIMIT, 131 * 4);
+        wait_frames(131);
+        repeat (300) @(posedge clk);
+        ahb_write(CTRL, 32'h0);
+        check_sequence(0);
+        // also across the ring end: 255 frames in a 256-frame ring, then 257
+        ahb_write(CTRL, 32'h4); model_reset; exp_n = 0; rx_clear;
+        ring_fill(256, 257);
+        ahb_write(DMA_LIMIT, 255 * 4);
+        wait_mid_frame; ahb_write(CTRL, 32'h43);
+        wait_frames(255);
+        ahb_write(DMA_LIMIT, 257 * 4);
+        wait_frames(257);
+        repeat (300) @(posedge clk);
+        ahb_write(CTRL, 32'h0);
+        check_sequence(0);
+        // (f) FIFO reset clears the fetch counters
+        ahb_write(CTRL, 32'h4);
+        ahb_read(DMA_FETCH, v); check(v == 0, "DMA_FETCH after reset", v, 0);
+        ahb_read(DMA_IRQ, v);   check(v == 0, "DMA_IRQ after reset", v, 0);
 
         if (errors == 0) $display("RESULT: PASS (0 errors)");
         else             $display("RESULT: FAIL (%0d errors)", errors);

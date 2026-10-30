@@ -224,6 +224,11 @@ wire [31:0] sd_m_haddr;
 wire [1:0]  sd_m_htrans;
 wire [2:0]  sd_m_hsize, sd_m_hburst;
 wire [63:0] sd_m_hwdata, sd_m_hrdata;
+wire        au_m_busy, au_m_hwrite, au_m_hready, au_m_hresp;   // audio DMA (arbiter master 3)
+wire [31:0] au_m_haddr;
+wire [1:0]  au_m_htrans;
+wire [2:0]  au_m_hsize, au_m_hburst;
+wire [63:0] au_m_hwdata, au_m_hrdata;
 wire        sd_cmd_o, sd_cmd_oe, sd_dat_oe, sd_dat_oe_hi, intr_sd;
 wire [3:0]  sd_dat_o;
 always @(posedge EXTS_HCLK or negedge EXTS_HRSTN)
@@ -548,7 +553,7 @@ gw_eth_dma_core u_gw_eth_dma_core
 // Custom 2-master AHB arbiter: full 32-bit address space, fixed priority RX>TX.
 // (The Gowin AHBBusArbiter only forwards a 0x80000000 register window -- not a
 //  DMA fabric; see eth_dma/rtl/eth_ahb_arbiter.v.)
-ahb_arbiter3 u_eth_ahb_arbiter
+ahb_arbiter4 u_eth_ahb_arbiter
 (
     .clk(EXTS_HCLK), .rstn(EXTS_HRSTN),
     .m0_busy(m0_busy), .m0_haddr(m0_haddr), .m0_htrans(m0_htrans), .m0_hwrite(m0_hwrite),
@@ -560,6 +565,9 @@ ahb_arbiter3 u_eth_ahb_arbiter
     .m2_busy(sd_m_busy), .m2_haddr(sd_m_haddr), .m2_htrans(sd_m_htrans), .m2_hwrite(sd_m_hwrite),
     .m2_hsize(sd_m_hsize), .m2_hburst(sd_m_hburst), .m2_hwdata(sd_m_hwdata),
     .m2_hrdata(sd_m_hrdata), .m2_hready(sd_m_hready), .m2_hresp(sd_m_hresp),
+    .m3_busy(au_m_busy), .m3_haddr(au_m_haddr), .m3_htrans(au_m_htrans), .m3_hwrite(au_m_hwrite),
+    .m3_hsize(au_m_hsize), .m3_hburst(au_m_hburst), .m3_hwdata(au_m_hwdata),
+    .m3_hrdata(au_m_hrdata), .m3_hready(au_m_hready), .m3_hresp(au_m_hresp),
     .active(arb_active), .haddr(arb_haddr), .htrans(arb_htrans), .hwrite(arb_hwrite),
     .hsize(arb_hsize), .hburst(arb_hburst), .hwdata(arb_hwdata),
     .hrdata(arb_hrdata), .hready(arb_hready), .hresp(arb_hresp)
@@ -593,7 +601,10 @@ audio_core u_audio_core
     .s_hsel(EXTS_HSEL & exts_aud), .s_hready_in(EXTS_HREADY), .s_hwdata(EXTS_HWDATA),
     .s_hrdata(aud_s_hrdata), .s_hready(aud_s_hready), .s_hresp(aud_s_hresp),
     .irq(intr_audio), .i2s_bck(I2S_BCK), .i2s_ws(I2S_LRCK), .i2s_din(I2S_DIN),
-    .pa_en(PA_EN)
+    .pa_en(PA_EN),
+    .m_busy(au_m_busy), .m_haddr(au_m_haddr), .m_htrans(au_m_htrans), .m_hwrite(au_m_hwrite),
+    .m_hsize(au_m_hsize), .m_hburst(au_m_hburst), .m_hwdata(au_m_hwdata), .m_hrdata(au_m_hrdata),
+    .m_hready(au_m_hready), .m_hresp(au_m_hresp)
 );
 
 // On-die temperature / supply-voltage monitor: registers on EXTS @ 0xE8004000,

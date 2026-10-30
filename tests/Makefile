@@ -18,7 +18,7 @@ ARCH := -march=rv32imafdc -mabi=ilp32d
 BOARD ?= 192.168.200.2
 RUSER ?= ae350
 
-BINS := atomic_test memthroughput compute_bench dsp_probe ext_probe amo_probe cctl_probe ddr_memtest fbtest wavplay
+BINS := atomic_test memthroughput compute_bench dsp_probe ext_probe amo_probe cctl_probe ddr_memtest fbtest wavplay amotrace dmactest
 
 all: $(BINS)
 
@@ -37,6 +37,16 @@ ddr_memtest: ddr_memtest.c
 # LCD: CPU CRC of /dev/fb0 vs the video core's CRC of the pixels it sent
 fbtest: fbtest.c
 	$(CC) -static -O2 $(ARCH) -Wall -o $@ $<
+
+# bus trace of a cold-line LR/SC or AMO through ddr_perf (amo = hangs the CPU,
+# the ATCWDT200 is armed first so the SoC resets; then `amotrace dump`)
+amotrace: amotrace.c
+	$(CC) -static -O1 $(ARCH) -Wall -o $@ $<
+
+# SoC DMAC (ATCDMAC300) probe: m2m copy works; any peripheral/XIP target hangs
+# the bus (see doc/06-key-findings.md); arms the watchdog, reload via JTAG if stuck
+dmactest: dmactest.c
+	$(CC) -static -O1 $(ARCH) -Wall -o $@ $<
 
 # audio: play a WAV through the raw ALSA ioctl API, check the core's FRAMES/CRC
 wavplay: wavplay.c

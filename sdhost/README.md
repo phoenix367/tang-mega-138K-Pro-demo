@@ -37,7 +37,8 @@ All lines have 10 kΩ pull-ups on the Dock; the FPGA I/Os add `PULL_MODE=UP`.
   - Sticky STATUS bits (done / timeout / CRC / end-bit / CRC-status / DMA / FIFO)
     with an INT_EN mask → `EXT_INT[2]` = PLIC source 12.
 - `rtl/ahb_arbiter3.v` — the EXTM arbiter with a third master (priority: Ethernet
-  RX > SD > Ethernet TX).
+  RX > SD > Ethernet TX); superseded by `audio/rtl/ahb_arbiter4.v` (audio DMA as
+  the fourth master, below SD) and kept disabled in the project.
 - `tb/` — `run_tb.sh`: the core + DMA on a 64-bit AHB memory with random wait
   states against `sd_card_model.v` (a behavioural card: identification, CID/CSD/
   SCR, CMD17/18/24/25/12, ACMD6, CRC checking, injectable CRC error). The bench

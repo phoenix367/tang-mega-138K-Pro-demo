@@ -6,7 +6,7 @@
 set -u
 cd "$(dirname "$0")/../.."
 OUT="${OUT:-$(mktemp -d)}"; mkdir -p "$OUT"
-SRC="audio/tb/tb_audio.v audio/rtl/audio_core.v audio/rtl/audio_csr.v audio/rtl/audio_out.v"
+SRC="audio/tb/tb_audio.v eth_dma/rtl/ahb_master.v audio/rtl/audio_core.v audio/rtl/audio_csr.v audio/rtl/audio_out.v"
 iverilog -g2012 -Wall -Wno-timescale -o "$OUT/tb_audio" $SRC || exit 1
 timeout 600 vvp -n "$OUT/tb_audio" | tee "$OUT/tb_audio.log" | grep -vE "^\s*$"
 grep -q "^RESULT: PASS" "$OUT/tb_audio.log" && { echo "AUDIO TB PASSED"; exit 0; }

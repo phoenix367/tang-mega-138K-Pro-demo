@@ -104,10 +104,12 @@ git apply 0011-linux-gowin-sdhost.patch                       # in linux/ (indep
 - `sound/drivers/gowin-pt8211.c` (new) + Kconfig `SND_GOWIN_PT8211` + Makefile: ALSA
   platform driver for the sample-FIFO audio core in `../audio/`, registers at
   0xE8002000, DT compatible `"gowin,ae350-pt8211"`, optional `clock-frequency`.
-  One playback PCM (S16_LE, stereo, 8–96 kHz).  No DMA: the interrupt handler copies
-  frames from the vmalloc ALSA buffer into the core's FIFO (level-type interrupt,
-  threshold), so the SoC's missing cache coherence does not matter.  See
-  `../audio/README.md`.
+  One playback PCM (S16_LE, stereo, 8–96 kHz).  DMA mode (cores with CAP[0], Build 62+):
+  the ALSA buffer is physically contiguous, streaming-mapped memory that the core's own
+  AHB master reads as a ring; `.ack` cleans the cache over the newly committed range and
+  advances DMA_LIMIT, the core interrupts per DMA_PERIOD fetched and on "FIFO empty"
+  (end of stream).  PIO fallback (`pio=1`, or older cores): the interrupt handler copies
+  frames from a vmalloc buffer into the FIFO.  See `../audio/README.md`.
 - **Not in the patch** (Kconfig): `CONFIG_SND=y`, `CONFIG_SND_PCM=y`,
   `CONFIG_SND_GOWIN_PT8211=y`, and the `audio@e8002000` node (PLIC source 11 =
   EXT_INT[1]) in `linux/ae350-linux.dts`.

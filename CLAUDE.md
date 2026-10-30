@@ -36,8 +36,11 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    hardware check `tests/fbtest.c`. See video/README.md.
    **Audio:** `audio/` = PT8211 (I2S-like DAC, E22/F24/G24, PA_EN H17) output core on
    EXTS @ `0xE8002000`, 2048-frame FIFO + threshold IRQ (EXT_INT[1] = PLIC source 11),
-   NCO sample rate, frame counter + CRC for bit-exact checks; no DMA. Linux ALSA driver
-   `PATCHES/0007` (`gowin-pt8211`, card 0). Sim `audio/tb/run_tb.sh`, hardware check
+   NCO sample rate, frame counter + CRC for bit-exact checks, and a 64-bit DMA fetch
+   engine (arbiter master 3 on EXTM) that reads the ALSA buffer as a ring up to a
+   driver-committed byte limit (the SoC's own DMAC hangs on any fabric access, see
+   doc/06-key-findings.md). Linux ALSA driver `PATCHES/0007` (`gowin-pt8211`, card 0;
+   DMA mode by default, `pio=1` for the old interrupt-fill scheme). Sim `audio/tb/run_tb.sh`, hardware check
    `tests/wavplay.c` (raw ALSA ioctl player, 16-bit mono/stereo WAV). See audio/README.md.
    **Sensors:** `sensor/` = the FPGA's two hard ADC cores (ADCLRC die temperature,
    ADCULC supply rails; primitives instantiated directly, no pins, internal OSC) behind
