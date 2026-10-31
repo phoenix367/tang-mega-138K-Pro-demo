@@ -245,3 +245,18 @@ showed this: fixing the audio cone moved the placement and three previously-pass
 domains failed on their own marginal paths (perf counters, EXTS read return, BIST).
 The SDC now carries `report_timing` lines for `ae350_ahb_clk` and `ddr3_sysclk` as well as
 `ae350_ddr_clk`, so every build lists its worst paths per domain.
+
+## One clock for the DDR path (2026-11-01, Build 64)
+
+The SoC's data-memory clock `DDR_CLK` and the DDR3 IP's user clock were both 100 MHz but
+unrelated: one from the AE350 PLL, the other from a divider inside the DDR3 PHY, so the
+bridge crossed them with gray-coded FIFOs and 2-FF synchronizers in each direction. Gowin's
+MUG1031 only requires `DDR_CLK` to be below 200 MHz and asynchronous to the core clock,
+so Build 64 feeds the IP's `clk_out` straight into the macro's `DDR_CLK` input. The tool
+propagates the clock through the macro and reports `DDR_HCLK` within ±0.06 ns of the
+fabric copy, so the FIFO pointer handoffs became ordinary timed paths (`SYNC_CLK=1`, two
+cycles saved per crossing) and the whole DDR path is one SDC clock. The SoC leaves reset
+only after DDR3 calibration, so the clock is long stable by then. Average HREADY wait per
+data-memory read transfer during `ddr_memtest`: 19.6–20.0 → 17.9–18.5 HCLK. The
+userspace miss-latency number is too noisy (time-seeded chase, ±10 % run to run) to
+show a 5 % change on its own; the bus counters are the right instrument.

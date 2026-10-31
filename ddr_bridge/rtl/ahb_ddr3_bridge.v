@@ -55,7 +55,11 @@
 //    pixel can lag a posted CPU write by a frame, which scan-out tolerates.
 //
 // Clocks: hclk = SoC DDR_HCLK (AHB side), uclk = DDR3 IP clk_out (memory
-// clock / 4).  The two are asynchronous; ddr_async_fifo crosses both ways.
+// clock / 4).  ddr_async_fifo crosses both ways.  SYNC_CLK=1 (the default,
+// Build 64+): the SoC's DDR_CLK input is uclk itself, so hclk is the same
+// clock buffered through the macro and the FIFOs hand their pointers across
+// without synchronizers (two cycles less per crossing).  SYNC_CLK=0: hclk
+// and uclk asynchronous (separate PLLs), gray-coded 2-FF synchronizers.
 //
 // DDR address: byte address [ADDR_BITS-1:0] -> IP word address (x32) = byte>>2
 // in the IP's {bank,row,column} order; the IP's addr port is one bit wider
@@ -67,7 +71,8 @@ module ahb_ddr3_bridge #(
     parameter NBUF      = 8,         // read line buffers (2, 4 or 8)
     parameter PREFETCH  = 1,         // stream prefetch on/off
     parameter PF_DIST   = 2,         // lines kept in flight ahead of a stream (1..3)
-    parameter NS        = 4          // stream table slots
+    parameter NS        = 4,         // stream table slots
+    parameter SYNC_CLK  = 1          // 1: hclk is uclk (buffered through the SoC), no synchronizers
 ) (
     // ---------------- AHB-lite slave (hclk) ----------------
     input  wire         hclk,
@@ -812,7 +817,7 @@ module ahb_ddr3_bridge #(
         end
     end
 
-    ddr_async_fifo #(.W(CW), .AW(4)) u_cmd_fifo (
+    ddr_async_fifo #(.W(CW), .AW(4), .SYNC(SYNC_CLK)) u_cmd_fifo (
         .wclk(hclk), .wrst_n(hrst_n), .wr(cfq_push), .wdata(cfq_data),
         .full(cf_full), .wlevel(cf_wlevel),
         .rclk(uclk), .rrst_n(urst_n), .rd(hq_load), .rdata(cf_rdata), .empty(cf_empty)
@@ -1048,7 +1053,7 @@ module ahb_ddr3_bridge #(
 
     // return FIFO: data + the tag of the read it answers (MC returns in order)
     wire rf_full;
-    ddr_async_fifo #(.W(RW), .AW(4), .WREG(1)) u_ret_fifo (
+    ddr_async_fifo #(.W(RW), .AW(4), .WREG(1), .SYNC(SYNC_CLK)) u_ret_fifo (
         .wclk(uclk), .wrst_n(urst_n), .wr(br_valid),
         .wdata({tq_head[TW-1 -: LB+EB+GB], rd_data}), .full(rf_full), .wlevel(),
         .rclk(hclk), .rrst_n(hrst_n), .rd(rf_pop), .rdata(rf_rdata), .empty(rf_empty)

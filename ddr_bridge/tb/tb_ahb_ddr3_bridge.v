@@ -26,6 +26,8 @@ module tb_ahb_ddr3_bridge;
                                                // does not -- read BIST on hardware: 0 errors)
     parameter LAT_MIN  = 6;                    // DDR model read latency (uclk); HW measures ~28
     parameter LAT_MAX  = 24;
+    parameter SYNC_CLK = 1;                    // 1: hclk = uclk (same period; the tb skews uclk by
+                                               // 3.3 ns), 0: async FIFOs for the other clock ratios
 
     integer seed = 1, ops = 20000, hclk_ns = 20, uclk_ns = 10;
     integer busy_pct = 20;                      // +busy=N: % chance of BUSY before a SEQ beat
@@ -76,7 +78,7 @@ module tb_ahb_ddr3_bridge;
     wire         v_rstn, v_ack, v_rvalid;
     wire [255:0] v_rdata;
 
-    ahb_ddr3_bridge #(.NBUF(NBUF), .PREFETCH(PREFETCH), .ADDR_BITS(ADDR_BITS)) dut (
+    ahb_ddr3_bridge #(.NBUF(NBUF), .PREFETCH(PREFETCH), .ADDR_BITS(ADDR_BITS), .SYNC_CLK(SYNC_CLK)) dut (
         .hclk(hclk), .hresetn(hresetn), .haddr(haddr), .htrans(htrans), .hwrite(hwrite),
         .hsize(hsize), .hburst(hburst), .hprot(hprot), .hwdata(hwdata), .hready(hready),
         .hresp(hresp), .hrdata(hrdata), .mode(tb_mode), .perf_en(1'b1), .perf_clr(1'b0), .perf_cnt(perf_cnt),

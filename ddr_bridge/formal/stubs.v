@@ -2,9 +2,11 @@
 // (formal/bridge_ahb.sby): every output the bridge reads is free, except
 // that the FIFO tracks its occupancy (f_cnt) so the write side can be
 // checked for overflow; wlevel reports exactly that occupancy, the most
-// optimistic value the real gray-pointer level could show.
+// optimistic value the real gray-pointer level could show.  SYNC (one clock,
+// no synchronizers) only changes the latency of the real FIFO, which the free
+// values already cover, so the stub accepts it and ignores it.
 module ddr_async_fifo #(
-    parameter W = 8, parameter AW = 4, parameter WREG = 0
+    parameter W = 8, parameter AW = 4, parameter WREG = 0, parameter SYNC = 0
 ) (
     input  wire          wclk, wrst_n, wr,
     input  wire [W-1:0]  wdata,

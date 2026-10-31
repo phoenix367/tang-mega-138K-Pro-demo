@@ -75,7 +75,10 @@ module ae350_demo_top
 
 
 wire CORE_CLK;
-wire DDR_CLK;
+// DDR_CLK (the SoC's data-memory bus clock) is the DDR3 IP's user clock
+// (ddr_vclk, memory clock / 4 = 100 MHz) since Build 64, so the bridge's two
+// sides are one clock and its FIFOs need no synchronizers.  The SoC comes out
+// of reset only after DDR3 calibration, long after that clock is running.
 wire AHB_CLK;
 wire APB_CLK;
 wire RTC_CLK;
@@ -89,7 +92,7 @@ wire DDR3_STOP;
 // Gowin_PLL_AE350 instantiation
 Gowin_PLL_AE350 u_Gowin_PLL_AE350
 (
-    .clkout0(DDR_CLK),          // 100MHz (800/8) data-memory AHB (DDR_HCLK)
+    .clkout0(),                 // 100MHz (800/8), unused since Build 64: DDR_CLK is the DDR3 IP user clock
     .clkout1(CORE_CLK),         // 800MHz
     .clkout2(AHB_CLK),          // 50MHz    - for test
     .clkout3(APB_CLK),          // 50MHz    - for test
@@ -416,7 +419,7 @@ RiscV_AE350_SOC_Top u_RiscV_AE350_SOC_Top
     .UART2_OUT2N(),
     .GPIO({KEY, LED}),
     .CORE_CLK(CORE_CLK),
-    .DDR_CLK(DDR_CLK),
+    .DDR_CLK(ddr_vclk),                 // DDR3 IP user clock (see above)
     .AHB_CLK(AHB_CLK),
     .APB_CLK(APB_CLK),
     .RTC_CLK(RTC_CLK),

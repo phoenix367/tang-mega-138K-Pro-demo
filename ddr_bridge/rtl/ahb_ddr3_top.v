@@ -13,7 +13,8 @@ module ahb_ddr3_top #(
     parameter ADDR_BITS = 30,          // DDR bytes = 2**ADDR_BITS: 1 GB (2 x16 chips, 15 row bits)
     parameter NBUF     = 8,
     parameter PREFETCH = 1,
-    parameter PF_DIST  = 2
+    parameter PF_DIST  = 2,
+    parameter SYNC_CLK = 1             // HCLK is the IP user clock (VCLK) buffered through the SoC
 ) (
     // DDR3 memory interface
     input  wire         DDR3_MEMORY_CLK,    // memory clock (4x user clock)
@@ -127,7 +128,8 @@ module ahb_ddr3_top #(
         .ADDR_BITS (ADDR_BITS),
         .NBUF      (NBUF),
         .PREFETCH  (PREFETCH),
-        .PF_DIST   (PF_DIST)
+        .PF_DIST   (PF_DIST),
+        .SYNC_CLK  (SYNC_CLK)
     ) u_bridge (
         .hclk          (HCLK),
         .hresetn       (HRESETN),

@@ -12,8 +12,10 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
 1. **`ae350_demo_top` — the active design.** Andes RISC-V **AE350 SoC** reference,
    imported from `~/Downloads/RiscV_AE350_SOC_V1.3/.../Tang_MEGA_138K_Pro_Dock`. Boots
    from SPI flash, runs DDR3 data memory, UART2, GPIO (3 LEDs + 3 keys), PIT/WDT/RTC,
-   JTAG debug. Two PLLs (`gowin_pll_ae350` → 800 MHz core + 100 MHz data-memory `DDR_CLK` + 50 MHz AHB/APB + 10 MHz
-   RTC; `gowin_pll_ddr3` → 400 MHz DDR3, netlist `src/ddr3_memory_interface_1g/`). `src/riscv_ae350_soc/` is encrypted Andes IP
+   JTAG debug. Two PLLs (`gowin_pll_ae350` → 800 MHz core + 50 MHz AHB/APB + 10 MHz
+   RTC; `gowin_pll_ddr3` → 400 MHz DDR3, netlist `src/ddr3_memory_interface_1g/`). The SoC's
+   100 MHz data-memory clock `DDR_CLK` is the DDR3 IP's user clock (`clk_out`, Build 64+), so
+   the DDR bridge is single-clock (`SYNC_CLK=1`); the AE350 PLL's 100 MHz CLKOUT0 is unused. `src/riscv_ae350_soc/` is encrypted Andes IP
    (`.v` synth source + `.vo` sim netlist) — regenerate via the IDE IP wizard, don't
    hand-edit. `src/key_debounce.v` debounces the DDR3/AE350 resets.
    DDR3 is **1 GB** (both x16 chips on the 32-bit bus, 15 row bits,

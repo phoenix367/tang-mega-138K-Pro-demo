@@ -20,7 +20,8 @@ bits. The x16 configuration is gone from the RTL (git history before the 1 GB ch
 ```
 rtl/ahb_ddr3_top.v      drop-in for gw_ahb_ddr3_top: bridge + DDR3 IP (+HPROT, perf hookup)
 rtl/ahb_ddr3_bridge.v   the bridge (AHB slave, line buffers, prefetch, posted writes, CDC)
-rtl/ddr_async_fifo.v    gray-code dual-clock FIFO (FWFT, optional registered write port)
+rtl/ddr_async_fifo.v    gray-code dual-clock FIFO (FWFT, optional registered write port;
+                        SYNC=1 = same clock both sides, no synchronizers -- Build 64+)
 rtl/ddr_rd_bist.v       non-destructive read-ordering self-test of the DDR3 MC
 tb/tb_ahb_ddr3_bridge.v randomized self-checking testbench (A25-like AHB master: WRAP4
                         critical-word-first, SINGLE of all sizes, INCR, BUSY, RMW)
@@ -198,9 +199,23 @@ Per Gowin MUG1031-1.3.1E (Table 4-1), the AE350 hard macro takes the core clock 
 mutually asynchronous, except that AHB:APB must be 1:1. `DDR_HCLK` is `DDR_CLK` buffered
 out of the macro, and it is the only clock on the CPU↔DDR path; AHB/APB serve only
 peripherals, flash XIP and the Ethernet DMA/CSR port, and stay at 50 MHz.
-`DDR_CLK` is **100 MHz** (PLL CLKOUT0 = 800/8). Going from 50 to 100 MHz bought +34%
-sequential read, +43% memset, +39% memcpy and −16% miss latency: much of each line
+`DDR_CLK` is **100 MHz**. Going from 50 to 100 MHz (Build 51, PLL CLKOUT0 = 800/8) bought
++34% sequential read, +43% memset, +39% memcpy and −16% miss latency: much of each line
 transfer is fixed time on the core side of the macro.
+
+**Since Build 64 `DDR_CLK` is the DDR3 IP's own user clock** (`clk_out`, memory clock / 4,
+the `VCLK` output of `ahb_ddr3_top`) instead of a second PLL's 100 MHz, so the bridge's
+two sides are one clock: `DDR_HCLK` is that clock buffered through the macro, which the
+timing tool models with ±0.06 ns of skew against the fabric copy. The command and return
+FIFOs keep their structure but hand the pointers across directly (`SYNC_CLK=1`, two
+cycles less per crossing; `SYNC_CLK=0` restores the gray-coded 2-FF synchronizers for
+asynchronous clocks, and the regression runs both). The SoC leaves reset only after DDR3
+calibration, so its data-memory clock has been running for milliseconds by then. Measured
+with the perf counters over `ddr_memtest 32 1` (three runs each): average HREADY wait per
+read transfer **19.6–20.0 → 17.9–18.5 HCLK**, per write 0.78 → 0.72–0.75; the random
+dependent-miss figure from userspace moves 1.41–1.69 µs → 1.33–1.47 µs but is dominated
+by run-to-run noise (it is time-seeded). The SDC now has a single 100 MHz clock
+(`ddr3_sysclk`); the PLL's CLKOUT0 is unconnected.
 
 ## Verification
 

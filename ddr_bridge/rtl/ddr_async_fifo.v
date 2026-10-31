@@ -14,11 +14,18 @@
 // pointer to the read side one wclk later, together with the RAM write: the
 // full-flag -> write-enable decode no longer reaches every RAM bit in one
 // cycle (needed at 100 MHz with wide words).  Costs one wclk of latency.
+//
+// SYNC=1: wclk and rclk are the same clock (possibly skewed, e.g. the DDR3 IP
+// user clock and its copy buffered through the AE350 macro as DDR_HCLK).  The
+// pointers cross without the 2-FF synchronizers -- plain registered paths that
+// static timing checks -- which takes two cycles off each crossing.  The
+// structure is otherwise unchanged, so SYNC=0 still gives the async FIFO.
 //============================================================================
 module ddr_async_fifo #(
     parameter W  = 32,          // data width
     parameter AW = 4,           // log2(depth)
-    parameter WREG = 0          // 1: registered write port (see above)
+    parameter WREG = 0,         // 1: registered write port (see above)
+    parameter SYNC = 0          // 1: same clock on both sides (see above)
 ) (
     input  wire         wclk,
     input  wire         wrst_n,
@@ -75,8 +82,11 @@ module ddr_async_fifo #(
         end
     endgenerate
 
+    // read pointer as seen by the write side: synchronized, or direct (SYNC)
+    wire [AW:0] rgray_ws = SYNC ? rgray : rgray_w2;
+
     // full: the gray read pointer equals the write pointer with the two MSBs inverted
-    assign full = (wgray == {~rgray_w2[AW:AW-1], rgray_w2[AW-2:0]});
+    assign full = (wgray == {~rgray_ws[AW:AW-1], rgray_ws[AW-2:0]});
 
     // write-side occupancy (conservative: read progress is seen late)
     function [AW:0] g2b(input [AW:0] g);
@@ -86,7 +96,7 @@ module ddr_async_fifo #(
             for (k = AW-1; k >= 0; k = k - 1) g2b[k] = g2b[k+1] ^ g[k];
         end
     endfunction
-    assign wlevel = wbin - g2b(rgray_w2);
+    assign wlevel = wbin - g2b(rgray_ws);
 
     // ---------------- read side ----------------
     reg  [AW:0] rbin, rgray;
@@ -108,7 +118,9 @@ module ddr_async_fifo #(
         end
     end
 
-    assign empty = (rgray == wgray_r2);
+    // write pointer as seen by the read side: synchronized, or direct (SYNC)
+    wire [AW:0] wgray_rs = SYNC ? wgray_pub : wgray_r2;
+    assign empty = (rgray == wgray_rs);
     assign rdata = mem[rbin[AW-1:0]];
 endmodule
 `default_nettype wire
