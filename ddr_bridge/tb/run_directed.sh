@@ -11,7 +11,7 @@ OPS="${1:-4000}"
 OUT="${OUT:-$(mktemp -d)}"
 mkdir -p "$OUT"
 cd "$(dirname "$0")/.."
-SRC="tb/ddr3_ui_model.v rtl/ahb_ddr3_bridge.v rtl/ddr_async_fifo.v rtl/ddr_rd_bist.v"
+SRC="tb/ddr3_ui_model.v rtl/ahb_ddr3_bridge.v rtl/ddr_async_fifo.v rtl/ddr_rd_bist.v ../src/pipe_counter.v"
 iverilog -g2012 -o "$OUT/tb" tb/tb_ahb_ddr3_bridge.v $SRC || exit 1
 iverilog -g2012 -P tb_ahb_ddr3_bridge.XROW_REORDER=1 -o "$OUT/tb_xrow" tb/tb_ahb_ddr3_bridge.v $SRC || exit 1
 iverilog -g2012 -P tb_ahb_ddr3_bridge.ADDR_BITS=29 -o "$OUT/tb_a29" tb/tb_ahb_ddr3_bridge.v $SRC || exit 1

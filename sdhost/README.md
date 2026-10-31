@@ -17,7 +17,12 @@ All lines have 10 kΩ pull-ups on the Dock; the FPGA I/Os add `PULL_MODE=UP`.
 
 - `rtl/sdhost_core.v` — AHB-lite slave on EXTS @ `0xE8020000` (`HADDR[17]`) and a
   64-bit AHB master (`eth_dma/rtl/ahb_master.v`, INCR16 bursts) that moves blocks
-  between a 128×64-bit FIFO and DDR. Everything runs on the 50 MHz bus clock; the
+  between a 128×64-bit FIFO and DDR. The FIFO is a synchronous-read BSRAM whose read
+  address is the pointer after the current pop, so the head word is always present
+  (as it was with the original flop array), plus a bypass register for a write into
+  the location being read; the flop array (8k flip-flops behind a 128:1 mux on a
+  4099-fanout pointer) had been the second-longest path of the 50 MHz domain, into
+  the CRC engine and the arbiter's write-data mux. Everything runs on the 50 MHz bus clock; the
   SD clock is a divided register output (25 MHz at DIV 0, 397 kHz at DIV 62).
   Outputs change on the SD falling edge. Inputs are sampled one bus clock
   (20 ns) **after** the SD rising edge by default (`CTRL[16]` = 1 samples on the

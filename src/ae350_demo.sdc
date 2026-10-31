@@ -62,3 +62,6 @@ set_clock_groups -asynchronous -group [get_clocks {ae350_ahb_clk}] -group [get_c
 
 # DDR bridge AHB side (100 MHz) -- the tightest clock; keep its worst paths in the report
 report_timing -setup -to_clock [get_clocks {ae350_ddr_clk}] -max_paths 12
+# EXTS/EXTM fabric domain (50 MHz): arbiter, DMA masters, sdhost/audio FIFOs -- 23 logic levels in Build 62
+report_timing -setup -to_clock [get_clocks {ae350_ahb_clk}] -max_paths 30 -max_common_paths 2
+report_timing -setup -to_clock [get_clocks {ddr3_sysclk}] -max_paths 8

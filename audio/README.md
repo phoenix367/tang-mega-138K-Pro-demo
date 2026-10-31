@@ -193,11 +193,26 @@ writes per 5 s and three quarters of the interrupts; the driver's remaining work
 period is one cache clean of 16 KiB and three register accesses.  The old "~3 %" PIO
 figure in earlier notes was mostly wavplay itself.
 
-Build notes: the 4-master arbiter did not change the critical paths (DDR bridge
-domain, AHB domain both marginal by design), but Gowin's router aborted with
-"PR0004: 0 unrouted nets" on this netlist with Place_Option 2 / Route_Option 2, and
-Place_Option 0 or 1 miss the 100 MHz bridge domain by 1 ns; Place_Option 2 with
-Route_Option 0 meets every clock (`impl/mega_138K_test_process_config.json`).
+Build notes: Gowin's router aborted with "PR0004: 0 unrouted nets" on the Build 62
+netlist with Place_Option 2 / Route_Option 2, and Place_Option 0 or 1 missed the
+100 MHz bridge domain by 1 ns; Place_Option 2 with Route_Option 0 met every clock
+(`impl/mega_138K_test_process_config.json`), the 50 MHz domain by 0.098 ns.
+
+### Build 63: the DMA issue logic was the 50 MHz domain's longest path
+
+A per-path report for `ae350_ahb_clk` (now in the SDC) showed that the arbiter was
+not the problem -- none of the 30 worst paths touched it.  All but two were the DMA
+command sizing in `audio_core.v`: FIFO write pointer -> `level` -> `occ` -> the
+`room` subtraction -> three chained 32-bit compares -> `dm_valid` and the `dm_addr`
+enables, 23 logic levels and 19.8 ns of the 20 ns period.  The size is now computed in
+two registered stages with 9-bit saturated terms (stage 1: the three differences;
+stage 2: the minimum), and a 3-cycle `stale` hold after a completed command, a FIFO
+reset or DMA disable keeps a half-updated size from being issued (in between, the
+inputs only move the safe way: LIMIT grows, the FIFO drains).  Costs 3 idle cycles
+per command (~70 cycles each).  The other two paths were the sdhost FIFO's 128:1 read
+mux (see sdhost/README.md).  With those gone the domain's deepest path has 9 levels and
+2.8 ns of slack (58 MHz); the bench and the hardware results are unchanged (all files
+bit-exact, 0 underruns, DMA and PIO).
 
 ## Results (PIO mode: audio gateware + kernel #51 with the module, `hwirq=11`)
 

@@ -237,8 +237,26 @@ always @(posedge EXTS_HCLK or negedge EXTS_HRSTN)
     end else if (EXTS_HSEL && EXTS_HTRANS[1] && EXTS_HREADY) begin
         exts_vid_d <= exts_vid; exts_aud_d <= exts_aud; exts_sen_d <= exts_sen; exts_fan_d <= exts_fan; exts_sd_d <= exts_sd;
     end
-assign EXTS_HRDATA  = exts_sd_d ? sd_s_hrdata : exts_fan_d ? fan_s_hrdata : exts_sen_d ? sen_s_hrdata : exts_aud_d ? aud_s_hrdata : exts_vid_d ? vid_s_hrdata : eth_s_hrdata;
-assign EXTS_HREADY  = exts_sd_d ? sd_s_hready : exts_fan_d ? fan_s_hready : exts_sen_d ? sen_s_hready : exts_aud_d ? aud_s_hready : exts_vid_d ? vid_s_hready : eth_s_hready;
+// Read data goes to the SoC through a register, with one wait state per read:
+// the slaves' read muxes sit all over the die and the combinational route to
+// the EXTS_HRDATA pins of the hard SoC was the 50 MHz domain's longest path
+// (20.6 ns, mostly wire).  Writes keep their zero wait states.  The slaves
+// hold their read data while HREADY is low (their address registers advance
+// only on an accepted address phase), so the register captures it in the
+// first data-phase cycle and presents it in the second.
+wire [31:0] exts_hrdata_mux = exts_sd_d ? sd_s_hrdata : exts_fan_d ? fan_s_hrdata : exts_sen_d ? sen_s_hrdata : exts_aud_d ? aud_s_hrdata : exts_vid_d ? vid_s_hrdata : eth_s_hrdata;
+wire        exts_slv_hready = exts_sd_d ? sd_s_hready : exts_fan_d ? fan_s_hready : exts_sen_d ? sen_s_hready : exts_aud_d ? aud_s_hready : exts_vid_d ? vid_s_hready : eth_s_hready;
+reg  [31:0] exts_hrdata_q;
+reg         exts_rd_wait;                       // first data-phase cycle of a read
+always @(posedge EXTS_HCLK or negedge EXTS_HRSTN)
+    if (!EXTS_HRSTN) begin
+        exts_hrdata_q <= 32'd0; exts_rd_wait <= 1'b0;
+    end else begin
+        exts_hrdata_q <= exts_hrdata_mux;
+        exts_rd_wait  <= EXTS_HSEL && EXTS_HTRANS[1] && EXTS_HREADY && !EXTS_HWRITE;
+    end
+assign EXTS_HRDATA  = exts_hrdata_q;
+assign EXTS_HREADY  = exts_slv_hready & ~exts_rd_wait;
 assign eth_hresp[0] = exts_sd_d ? sd_s_hresp  : exts_fan_d ? fan_s_hresp  : exts_sen_d ? sen_s_hresp  : exts_aud_d ? aud_s_hresp  : exts_vid_d ? vid_s_hresp  : eth_s_hresp;
 
 assign eth_rstn = EXTS_HRSTN;

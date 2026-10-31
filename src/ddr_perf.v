@@ -173,7 +173,7 @@ module ddr_perf #(
 
     reg       dp_valid, dp_write, dp_first;        // data phase in flight
     reg [7:0] dp_wait;                             // saturating wait count
-    reg [31:0] dp_wait_full;
+    reg [15:0] dp_wait_full;                       // saturating; 16 bits keep its +1 short
     reg       burst_open;
 
     always @(posedge hclk or negedge hresetn) begin
@@ -182,7 +182,7 @@ module ddr_perf #(
             dp_write     <= 1'b0;
             dp_first     <= 1'b0;
             dp_wait      <= 8'd0;
-            dp_wait_full <= 32'd0;
+            dp_wait_full <= 16'd0;
             burst_open   <= 1'b0;
         end else begin
             if (hready) begin
@@ -190,48 +190,70 @@ module ddr_perf #(
                 dp_write     <= hwrite;
                 dp_first     <= ~htrans[0];
                 dp_wait      <= 8'd0;
-                dp_wait_full <= 32'd0;
+                dp_wait_full <= 16'd0;
                 // a burst stays "open" across BUSY/SEQ until an IDLE or NONSEQ
                 burst_open   <= (htrans != 2'b00);
             end else if (dp_valid) begin
                 dp_wait      <= (dp_wait == 8'hFF) ? dp_wait : dp_wait + 8'd1;
-                dp_wait_full <= dp_wait_full + 32'd1;
+                dp_wait_full <= (&dp_wait_full)   ? dp_wait_full : dp_wait_full + 16'd1;
             end
         end
     end
 
     // ---------------- counters ----------------
-    reg [31:0] cnt [0:35];                         // 0..35 internal; 36..51 = ext
-    integer i;
+    // The event counters are byte-sliced pipelined counters (pipe_counter):
+    // synthesized as plain 32-bit `+ 1` they were 12-level LUT chains and the
+    // longest paths of the 100 MHz bus clock.  A high byte follows a wrap of
+    // the byte below one cycle late, which a frozen read never sees.  7..9
+    // (sum and maxima of the first-beat wait) stay ordinary registers with
+    // 16-bit arithmetic.
+    wire [31:0] cnt [0:35];                        // 0..35 internal; 36..51 = ext
+    wire [35:0] cinc;
+    assign cinc[0]  = 1'b1;
+    assign cinc[1]  = acc_ns & ~hwrite;
+    assign cinc[2]  = acc_ns &  hwrite;
+    assign cinc[3]  = acc    & ~hwrite;
+    assign cinc[4]  = acc    &  hwrite;
+    assign cinc[5]  = !hready & dp_valid & ~dp_write;
+    assign cinc[6]  = !hready & dp_valid &  dp_write;
+    assign cinc[9:7] = 3'b000;
+    assign cinc[10] = is_busy;
+    assign cinc[11] = dp_valid | burst_open;
+    genvar g;
+    generate
+        for (g = 0; g < 8; g = g + 1) begin : by_burst     // per HBURST
+            assign cinc[12 + g] = acc_ns & ~hwrite & (hburst == g);
+            assign cinc[20 + g] = acc_ns &  hwrite & (hburst == g);
+        end
+        for (g = 0; g < 4; g = g + 1) begin : by_size      // per HSIZE[1:0]
+            assign cinc[28 + g] = acc_ns & ~hwrite & (hsize[1:0] == g);
+            assign cinc[32 + g] = acc_ns &  hwrite & (hsize[1:0] == g);
+        end
+        for (g = 0; g < 36; g = g + 1) begin : ctr
+            if (g < 7 || g > 9) begin : pc
+                pipe_counter #(.W(32), .SLICE(8)) u (
+                    .clk(hclk), .rstn(hresetn), .clr(clr), .inc(en & cinc[g]), .q(cnt[g]));
+            end
+        end
+    endgenerate
+
+    reg [31:0] cnt7;                               // sum of first-beat read waits
+    reg [15:0] cnt8, cnt9;                         // max read / write wait
+    assign cnt[7] = cnt7;
+    assign cnt[8] = {16'd0, cnt8};
+    assign cnt[9] = {16'd0, cnt9};
     always @(posedge hclk or negedge hresetn) begin
         if (!hresetn) begin
-            for (i = 0; i < 36; i = i + 1) cnt[i] <= 32'd0;
+            cnt7 <= 32'd0; cnt8 <= 16'd0; cnt9 <= 16'd0;
         end else if (clr) begin
-            for (i = 0; i < 36; i = i + 1) cnt[i] <= 32'd0;
+            cnt7 <= 32'd0; cnt8 <= 16'd0; cnt9 <= 16'd0;
         end else if (en) begin
-            cnt[0] <= cnt[0] + 32'd1;
-            if (acc_ns & ~hwrite) cnt[1] <= cnt[1] + 32'd1;
-            if (acc_ns &  hwrite) cnt[2] <= cnt[2] + 32'd1;
-            if (acc    & ~hwrite) cnt[3] <= cnt[3] + 32'd1;
-            if (acc    &  hwrite) cnt[4] <= cnt[4] + 32'd1;
-            if (!hready & dp_valid & ~dp_write) cnt[5] <= cnt[5] + 32'd1;
-            if (!hready & dp_valid &  dp_write) cnt[6] <= cnt[6] + 32'd1;
             if (hready & dp_valid & dp_first & ~dp_write)
-                cnt[7] <= cnt[7] + dp_wait_full;
-            if (hready & dp_valid & ~dp_write & (dp_wait_full > cnt[8]))
-                cnt[8] <= dp_wait_full;
-            if (hready & dp_valid &  dp_write & (dp_wait_full > cnt[9]))
-                cnt[9] <= dp_wait_full;
-            if (is_busy) cnt[10] <= cnt[10] + 32'd1;
-            if (dp_valid | burst_open) cnt[11] <= cnt[11] + 32'd1;
-            for (i = 0; i < 8; i = i + 1) begin    // per HBURST (constant index)
-                if (acc_ns & ~hwrite & (hburst == i)) cnt[12 + i] <= cnt[12 + i] + 32'd1;
-                if (acc_ns &  hwrite & (hburst == i)) cnt[20 + i] <= cnt[20 + i] + 32'd1;
-            end
-            for (i = 0; i < 4; i = i + 1) begin    // per HSIZE[1:0]
-                if (acc_ns & ~hwrite & (hsize[1:0] == i)) cnt[28 + i] <= cnt[28 + i] + 32'd1;
-                if (acc_ns &  hwrite & (hsize[1:0] == i)) cnt[32 + i] <= cnt[32 + i] + 32'd1;
-            end
+                cnt7 <= cnt7 + {16'd0, dp_wait_full};
+            if (hready & dp_valid & ~dp_write & (dp_wait_full > cnt8))
+                cnt8 <= dp_wait_full;
+            if (hready & dp_valid &  dp_write & (dp_wait_full > cnt9))
+                cnt9 <= dp_wait_full;
         end
     end
 

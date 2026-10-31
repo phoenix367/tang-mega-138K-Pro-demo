@@ -328,13 +328,27 @@ module sdhost_core #(
     // ------------------------------------------------------------------
     // FIFO (128 x 64) between the data engine and the DMA master
     // ------------------------------------------------------------------
+    // Synchronous-read RAM (BSRAM) with the head always presented: the read
+    // address is the pointer after this cycle's pop, so the next word is on
+    // f_q in the cycle after the pop, exactly as the earlier flop array was.
+    // (That array -- 8k flops behind a 128:1 mux on a 4099-fanout pointer --
+    // was the second-longest path of the 50 MHz domain.)  A word written to
+    // the location being read is taken from the bypass register instead.
     reg [63:0] fifo [0:127];
     reg        f_push, eng_pop;
     wire       f_pop;                   // combinational: the DMA pops as it consumes
     reg [63:0] f_wdata;
-    wire [63:0] f_rdata = fifo[fifo_rp[6:0]];
+    wire [6:0] f_ra = f_pop ? fifo_rp[6:0] + 7'd1 : fifo_rp[6:0];
+    reg [63:0] f_q, f_byp;
+    reg        f_byp_v;
+    always @(posedge hclk) begin
+        if (f_push) fifo[fifo_wp[6:0]] <= f_wdata;
+        f_q     <= fifo[f_ra];
+        f_byp_v <= f_push && (fifo_wp[6:0] == f_ra);
+        f_byp   <= f_wdata;
+    end
+    wire [63:0] f_rdata = f_byp_v ? f_byp : f_q;
     reg        f_err;
-    always @(posedge hclk) if (f_push) fifo[fifo_wp[6:0]] <= f_wdata;
     always @(posedge hclk or negedge hresetn) begin
         if (!hresetn) begin fifo_wp <= 8'd0; fifo_rp <= 8'd0; f_err <= 1'b0; end
         else if (soft_rst || (cmd_start && c_data)) begin fifo_wp <= 8'd0; fifo_rp <= 8'd0; f_err <= 1'b0; end

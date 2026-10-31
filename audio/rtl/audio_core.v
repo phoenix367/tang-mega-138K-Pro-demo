@@ -131,19 +131,39 @@ module audio_core (
     // 2 second frame only.
     reg  [1:0]  cmd_mode;
     reg         half_pend;
-    wire        one_frame = (avail == 32'd4);
-    wire        half_more = !avail[31] && (avail != 32'd0);
-    wire [31:0] avail  = dma_limit - dma_fetch;             // committed, not yet fetched
-    wire [31:0] to_end = dma_size - dma_off;
+    // The command size is computed in two registered stages (the single-cycle
+    // version was the design's longest path: FIFO pointers -> level -> room ->
+    // three 32-bit compares -> dm_valid, 23 logic levels at 50 MHz).  The
+    // staged values lag their inputs by two cycles, so `stale` blocks the
+    // issue for three cycles after anything that moves them abruptly (a
+    // completed command, a FIFO reset, DMA disabled); in between, the inputs
+    // only drift the safe way (LIMIT grows, the FIFO drains).
+    // stage 1: differences
+    reg  [31:0] avail_r;            // dma_limit - dma_fetch: committed, not yet fetched (signed)
+    reg  [31:0] to_end_r;           // dma_size - dma_off: bytes to the ring end
+    reg  [15:0] room_r;             // dma_fill - (level + inflight), floored at 0
     wire [15:0] occ    = level + {3'b0, inflight};          // frames present or arriving
-    wire [15:0] room   = (occ < dma_fill) ? (dma_fill - occ) : 16'd0;
-    // beats = min(maxbeats, avail/8, to_end/8, room/2)
-    wire [31:0] b_avail = (avail[31] || half_pend) ? 32'd0 : avail >> 3;
-    wire [31:0] b_end   = to_end >> 3;
-    wire [31:0] b_room  = {16'd0, room >> 1};
-    wire [31:0] b_min1  = (b_avail < b_end)  ? b_avail : b_end;
-    wire [31:0] b_min2  = (b_min1 < b_room)  ? b_min1  : b_room;
-    wire [31:0] b_beats = (b_min2 < {24'd0, dma_maxbeats}) ? b_min2 : {24'd0, dma_maxbeats};
+    // stage 2: beats = min(maxbeats, avail/8, to_end/8, room/2), each term saturated at 256
+    wire [8:0]  b_avail = (avail_r[31] || half_pend) ? 9'd0 : (|avail_r[30:11]) ? 9'd256 : {1'b0, avail_r[10:3]};
+    wire [8:0]  b_end   = (|to_end_r[31:11]) ? 9'd256 : {1'b0, to_end_r[10:3]};
+    wire [8:0]  b_room  = (|room_r[15:9])    ? 9'd256 : {1'b0, room_r[8:1]};
+    wire [8:0]  b_min1  = (b_avail < b_end)  ? b_avail : b_end;
+    wire [8:0]  b_min2  = (b_min1 < b_room)  ? b_min1  : b_room;
+    wire [8:0]  b_min3  = (b_min2 < {1'b0, dma_maxbeats}) ? b_min2 : {1'b0, dma_maxbeats};
+    reg  [7:0]  b_beats;            // registered stage-2 result
+    reg         one_frame;          // exactly one frame committed
+    reg         half_more;          // something committed (second half of a split beat)
+    reg         room_nz;
+    reg  [1:0]  stale;
+    always @(posedge hclk) begin
+        avail_r   <= dma_limit - dma_fetch;
+        to_end_r  <= dma_size - dma_off;
+        room_r    <= (occ < dma_fill) ? (dma_fill - occ) : 16'd0;
+        b_beats   <= b_min3[7:0];
+        one_frame <= (avail_r == 32'd4);
+        half_more <= !avail_r[31] && (avail_r != 32'd0);
+        room_nz   <= (room_r != 16'd0);
+    end
     wire [31:0] cons = (cmd_mode == 2'd0) ? {dm_len, 3'b000} : 32'd4;   // bytes consumed by the command
     wire [31:0] adv  = (cmd_mode == 2'd0) ? {dm_len, 3'b000} : 32'd8;   // ring advance when the beat is finished
 
@@ -161,8 +181,11 @@ module audio_core (
             dm_valid <= 1'b0; dm_addr <= 32'd0; dm_len <= 16'd0; dma_off <= 32'd0; dma_fetch <= 32'd0;
             period_acc <= 32'd0; inflight <= 13'd0; hold_v <= 1'b0; hold_frame <= 32'd0;
             dma_push <= 1'b0; dma_frame <= 32'd0; dma_irq_st <= 2'b00; cmd_mode <= 2'd0; half_pend <= 1'b0;
+            stale <= 2'd3;
         end else begin
             dma_push <= 1'b0;
+            if (dm_done || fifo_rst || !dma_en) stale <= 2'd3;
+            else if (stale != 2'd0)             stale <= stale - 2'd1;
             dma_irq_st <= dma_irq_st & ~dma_irq_clr;        // W1C
             // data: two frames per beat
             if (hold_v) begin hold_v <= 1'b0; dma_push <= dma_en; dma_frame <= hold_frame; end
@@ -189,18 +212,18 @@ module audio_core (
                     end else
                         period_acc <= period_acc + cons;
                 end
-            end else if (dma_en && !dm_valid && dm_ready && !m_busy && dma_size != 32'd0) begin
-                if (half_pend ? (half_more && room != 16'd0) : (b_beats != 32'd0 || (one_frame && room != 16'd0))) begin
+            end else if (dma_en && !dm_valid && dm_ready && !m_busy && dma_size != 32'd0 && stale == 2'd0) begin
+                if (half_pend ? (half_more && room_nz) : (b_beats != 8'd0 || (one_frame && room_nz))) begin
                     dm_valid <= 1'b1;
                     dm_addr  <= dma_addr + dma_off;
-                    if (half_pend || b_beats == 32'd0) begin      // single-frame command
+                    if (half_pend || b_beats == 8'd0) begin       // single-frame command
                         cmd_mode <= half_pend ? 2'd2 : 2'd1;
                         dm_len   <= 16'd1;
                         inflight <= 13'd1;
                     end else begin
                         cmd_mode <= 2'd0;
-                        dm_len   <= b_beats[15:0];
-                        inflight <= {b_beats[11:0], 1'b0};
+                        dm_len   <= {8'd0, b_beats};
+                        inflight <= {4'd0, b_beats, 1'b0};
                     end
                 end
             end

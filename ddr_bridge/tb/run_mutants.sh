@@ -92,7 +92,7 @@ missed=0
 while IFS='|' read -r name margs; do
     if ! iverilog -g2012 -P tb_ahb_ddr3_bridge.XROW_REORDER=1 -o "$OUT/tb_$name" \
             tb/tb_ahb_ddr3_bridge.v tb/ddr3_ui_model.v "$OUT/mut_$name.v" \
-            rtl/ddr_async_fifo.v rtl/ddr_rd_bist.v > "$OUT/$name.build" 2>&1; then
+            rtl/ddr_async_fifo.v rtl/ddr_rd_bist.v ../src/pipe_counter.v > "$OUT/$name.build" 2>&1; then
         echo "$name: BUILD FAILED"; missed=1; continue
     fi
     verdict="SURVIVED"

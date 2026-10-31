@@ -120,6 +120,17 @@ AHB side from 12 to 8 synthesis logic levels; Build 51 closes every clock, ae350
 100.19 MHz against the padded constraint and ddr3_sysclk at 104.9 MHz, with the same
 hardware results (memtest, display CRCs, network, zero underruns).
 
+Build 63 (2026-10-31) took the measurement logic out of the critical paths. GowinSyn
+builds a 32-bit `cnt <= cnt + 1` as a LUT chain, 10–12 levels deep, and after the
+audio-DMA netlist change the `ddr_perf` event counters (and `dp_wait_full`) missed
+100 MHz by 1 ns, the BIST's `r_reorder` by 0.3 ns. They are now `src/pipe_counter.v`:
+8-bit slices with registered carries, so the depth is that of an 8-bit incrementer
+whatever the width. A high byte follows a wrap of the byte below one cycle late, which
+only matters while counting -- the counters are read stopped (`EN=0`) or after the
+BIST is done. `dp_wait_full` and the two wait maxima are 16-bit (saturating). The
+100 MHz domains are now limited by the bridge itself (entry/line-buffer enables,
+`lk_oh` -> `hrdata_q`; BIST `iter` compare on the DDR side) at 100.01 / 101.0 MHz.
+
 ## Debug MODE register (`0xF8000020`, ddr_perf, reset `MODE_RESET`)
 
 | bit | effect |

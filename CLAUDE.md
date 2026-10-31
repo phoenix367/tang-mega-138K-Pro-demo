@@ -25,7 +25,10 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    DDR3 IP. `src/ddr_perf.v` = bus perf counters/trace + bridge MODE register on the
    SoC external APB @ `0xF8000000` (reset MODE 0x10000 = overlapped reads; needs the
    Linux page-table writeback patch `PATCHES/0005`, else use 0x100 — see
-   ddr_bridge/README.md). Bridge RTL is validated with
+   ddr_bridge/README.md). Wide event counters use `src/pipe_counter.v` (byte slices
+   with registered carries: GowinSyn builds a 32-bit `+1` as a 12-level LUT chain).
+   EXTS register reads take one wait state (read data registered at the top level
+   before the SoC's pins; writes zero-wait) — see doc/06-key-findings.md, timing section. Bridge RTL is validated with
    `ddr_bridge/tb/run_all.sh` (iverilog random regression, directed tests, mutation
    check, and a formal proof of the AHB side with yosys + ABC).
    **LCD:** `video/` = scan-out core for the Sipeed 5" 800×480 RGB panel (regs on EXTS

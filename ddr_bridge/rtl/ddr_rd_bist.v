@@ -39,8 +39,8 @@ module ddr_rd_bist #(
     input  wire         rd_data_valid,
     // results (static once done)
     output reg  [31:0]  r_status,       // {running, done, 2'b0, iterations[27:0]}
-    output reg  [31:0]  r_err,          // mismatching reads
-    output reg  [31:0]  r_reorder,      // mismatches explained by another read's data
+    output wire [31:0]  r_err,          // mismatching reads
+    output wire [31:0]  r_reorder,      // mismatches explained by another read's data
     output reg  [31:0]  r_first,        // first mismatch: {pattern, j, 0, k (7 = none), iter[23:0]}
     output reg  [31:0]  r_first_addr,   // its word address
     output reg  [31:0]  r_first_got,    // got[31:0]
@@ -69,6 +69,24 @@ module ddr_rd_bist #(
     reg  [15:0]  n_extra;               // 16 bits: any count is a fault (timing: short +1)
     assign r_extra = {16'd0, n_extra};
 
+    // mismatch counters: byte-sliced pipelined counters (a 32-bit `+ 1` was a
+    // 10-level LUT chain at 100 MHz); exact a few cycles after the run ends,
+    // long before software reads them
+    wire      verdict  = (st == S_CMP) && (cph == 2'd2);
+    wire      cmp_fail = verdict && !(&eqp[i*8 +: 8]);
+    reg [2:0] km_c;                                 // truth k that arrival i holds, 7 = none
+    integer   k2;
+    always @(*) begin
+        km_c = 3'd7;
+        for (k2 = 3; k2 >= 0; k2 = k2 - 1)
+            if (k2 != i && (&eqp[k2*8 +: 8])) km_c = k2[2:0];
+    end
+    wire      bist_clr = (st == S_IDLE) && start;
+    pipe_counter #(.W(32), .SLICE(8)) u_err (
+        .clk(clk), .rstn(rst_n), .clr(bist_clr), .inc(cmp_fail), .q(r_err));
+    pipe_counter #(.W(32), .SLICE(8)) u_reorder (
+        .clk(clk), .rstn(rst_n), .clr(bist_clr), .inc(cmp_fail && km_c != 3'd7), .q(r_reorder));
+
     assign hold   = (st != S_IDLE);
     assign own    = (st != S_IDLE) && (st != S_WAIT);
     assign cmd_en = own && cmd_ok && ((st == S_SER) || (st == S_OVL && n_iss < 3'd4));
@@ -91,7 +109,7 @@ module ddr_rd_bist #(
             iter <= 28'd0; iters <= 28'd0; pat <= 2'd0; base <= {(AW-10){1'b0}}; first_n <= 1'b0;
             cph <= 2'd0; eqp <= 32'd0; g_lo <= 32'd0; t_lo <= 32'd0; extra_q <= 1'b0;
             g_sel <= 256'd0;
-            r_status <= 32'd0; r_err <= 32'd0; r_reorder <= 32'd0; r_first <= 32'd0;
+            r_status <= 32'd0; r_first <= 32'd0;
             r_first_addr <= 32'd0; r_first_got <= 32'd0; r_first_exp <= 32'd0; n_extra <= 16'd0;
         end else begin
             extra_q <= rd_data_valid && !(st == S_SERW || st == S_OVL || st == S_OVLW) && own;
@@ -99,7 +117,7 @@ module ddr_rd_bist #(
             case (st)
                 S_IDLE: if (start) begin
                     st <= S_WAIT; pat <= pattern; iters <= 28'd1 << (iter_log2 + 4'd8);
-                    iter <= 28'd0; r_err <= 32'd0; r_reorder <= 32'd0; r_first <= 32'd0;
+                    iter <= 28'd0; r_first <= 32'd0;
                     n_extra <= 16'd0; r_status <= 32'h8000_0000; first_n <= 1'b0;
                 end
                 S_WAIT: if (port_idle) begin st <= S_GEN; i <= 2'd0; end
@@ -152,8 +170,6 @@ module ddr_rd_bist #(
                         km = 3'd7;
                         for (k = 3; k >= 0; k = k - 1)
                             if (k != i && (&eqp[k*8 +: 8])) km = k[2:0];
-                        r_err <= r_err + 32'd1;
-                        if (km != 3'd7) r_reorder <= r_reorder + 32'd1;
                         if (!first_n) begin
                             first_n      <= 1'b1;
                             r_first      <= {pat, i, 1'b0, km, iter[23:0]};

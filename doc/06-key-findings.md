@@ -214,3 +214,34 @@ engine on a fourth arbiter port (`audio/rtl/ahb_arbiter4.v`) that fetches the AL
 buffer as a ring up to a driver-committed byte limit, with the driver cleaning the
 cache per committed range (`audio/README.md`).
 
+
+## Timing closure of the fabric domains (2026-10-31, Build 63)
+
+Three lessons from taking the 50 MHz EXTS/EXTM domain from 0.098 ns to 2.8 ns of
+slack and making the 100 MHz domains stop depending on placement luck:
+
+1. **GowinSyn maps `x <= x + 1` as a LUT chain, not an ALU carry chain.** A 32-bit
+   incrementer came out as 10–12 LUT levels (10.5 ns with routing); subtractions and
+   additions of two variables do get the ALU chain (`COUT -> CIN`, 45 ps per bit).
+   Wide statistics counters are therefore `src/pipe_counter.v`: 8-bit slices with a
+   registered carry between them. Used by `ddr_perf` (33 counters) and the DDR read BIST.
+2. **Long combinational cones that are consumed once per transaction should be
+   staged.** The audio DMA's command size (FIFO level -> room -> three 32-bit compares
+   -> `dm_valid`) was 23 logic levels; two register stages plus a short "stale" hold
+   after each command made it 9 levels at no bandwidth cost.
+3. **Routing to the hard SoC's pins dominates on this die.** The EXTS read-data return
+   (a slave's register mux -> the top-level 6:1 mux -> `EXTS_HRDATA` pins) was 20.6 ns,
+   14 ns of it wire. Register reads now take one wait state (`exts_rd_wait` in
+   `src/ae350_demo.v`): the mux lands in a register, the register drives the pins. All
+   EXTS slaves are zero-wait and hold their read data through the extra cycle. Writes
+   are unchanged. The same applies to anything feeding the SoC's data inputs: the sdhost
+   FIFO's 128:1 flop-array read mux into `EXTM_HWDATA` was the domain's second-longest
+   path; it is a BSRAM now (and 8k flops smaller).
+
+What "meets timing" means here: Gowin's placer stops improving a path once its slack is
+positive, so 4 ps of slack is "met", not "nearly failed" -- but a domain with every path
+at 0 ps has no room for the next netlist change. Build 62 -> 63 (first iteration)
+showed this: fixing the audio cone moved the placement and three previously-passing
+domains failed on their own marginal paths (perf counters, EXTS read return, BIST).
+The SDC now carries `report_timing` lines for `ae350_ahb_clk` and `ddr3_sysclk` as well as
+`ae350_ddr_clk`, so every build lists its worst paths per domain.
