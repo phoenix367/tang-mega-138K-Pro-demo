@@ -8,10 +8,12 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>
+#include <pty.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/reboot.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
@@ -582,22 +584,131 @@ void panel_network(lv_obj_t *parent)
 }
 
 /* ====================================================================== */
-/* Console: run a shell command, show its output; dmesg tail by default    */
+/* Console: run a shell command on a pty, stream its output; dmesg by default */
 /* ====================================================================== */
-static lv_obj_t *s_con_out, *s_con_in;
+/* The command runs as a child on a pseudo-terminal (so its stdio is line
+ * buffered and it behaves as on a console), its output is read without
+ * blocking from an LVGL timer and the last CON_MAX bytes are shown. The UI
+ * never waits for the command: ping, top -d1, tail -f... just stream, and
+ * Stop (or leaving the panel, or the next command) ends them. */
+#define CON_MAX 12288
+static lv_obj_t *s_con_out, *s_con_in, *s_con_stop;
+static lv_timer_t *s_con_timer;
+static pid_t s_con_pid;                 /* 0 = nothing running */
+static int s_con_fd = -1;               /* pty master */
+static char s_con_buf[CON_MAX + 1];
+static int s_con_len;
+
+static void console_append(const char *d, int n)
+{
+    if (n > CON_MAX) { d += n - CON_MAX; n = CON_MAX; }
+    while (s_con_len + n > CON_MAX) {   /* drop whole lines from the top */
+        char *nl = memchr(s_con_buf, '\n', s_con_len);
+        int cut = nl ? (int)(nl - s_con_buf) + 1 : s_con_len;
+        memmove(s_con_buf, s_con_buf + cut, s_con_len - cut);
+        s_con_len -= cut;
+    }
+    for (int i = 0; i < n; i++)
+        if (d[i] != '\r') s_con_buf[s_con_len++] = d[i];
+    s_con_buf[s_con_len] = 0;
+}
+
+static void console_show(void)
+{
+    if (!s_con_out) return;
+    lv_textarea_set_text(s_con_out, s_con_buf);
+    lv_textarea_set_cursor_pos(s_con_out, LV_TEXTAREA_CURSOR_LAST);
+}
+
+/* read whatever the pty has; returns false at EOF/error (child side closed) */
+static bool console_drain(void)
+{
+    char tmp[2048];
+    for (;;) {
+        int n = read(s_con_fd, tmp, sizeof(tmp));
+        if (n > 0) { console_append(tmp, n); continue; }
+        if (n < 0 && errno == EINTR) continue;
+        return n < 0 && errno == EAGAIN;
+    }
+}
+
+static void console_finish(int status)
+{
+    char m[48];
+    if (WIFEXITED(status) && WEXITSTATUS(status) == 0) snprintf(m, sizeof(m), "[done]\n");
+    else if (WIFEXITED(status)) snprintf(m, sizeof(m), "[exit %d]\n", WEXITSTATUS(status));
+    else if (WIFSIGNALED(status)) snprintf(m, sizeof(m), "[stopped]\n");
+    else m[0] = 0;
+    if (s_con_len && s_con_buf[s_con_len - 1] != '\n') console_append("\n", 1);
+    console_append(m, strlen(m));
+    s_con_pid = 0;
+    if (s_con_fd >= 0) { close(s_con_fd); s_con_fd = -1; }
+    if (s_con_timer) { lv_timer_delete(s_con_timer); s_con_timer = NULL; }
+    if (s_con_stop) lv_obj_add_state(s_con_stop, LV_STATE_DISABLED);
+    console_show();
+}
+
+static void console_poll(lv_timer_t *t)
+{
+    (void)t;
+    int before = s_con_len;
+    bool open = console_drain();
+    int st = 0;
+    if (!open || waitpid(s_con_pid, &st, WNOHANG) == s_con_pid) {
+        if (open) {             /* exited, reaped: pick up what is left */
+            console_drain();
+        } else {
+            waitpid(s_con_pid, &st, 0);
+        }
+        console_finish(st);
+        return;
+    }
+    if (s_con_len != before) console_show();
+}
+
+static void console_stop(void)
+{
+    if (!s_con_pid) return;
+    int st = 0;
+    kill(-s_con_pid, SIGTERM);              /* forkpty child = session leader: pgid == pid */
+    for (int i = 0; i < 30 && waitpid(s_con_pid, &st, WNOHANG) == 0; i++) usleep(10000);
+    if (kill(s_con_pid, 0) == 0 && waitpid(s_con_pid, &st, WNOHANG) == 0) {
+        kill(-s_con_pid, SIGKILL);
+        waitpid(s_con_pid, &st, 0);
+    }
+    console_drain();
+    console_finish(st);
+}
 
 static void console_run(const char *cmd)
 {
-    char *out = malloc(16384);
-    char full[600];
-    snprintf(full, sizeof(full), "%s 2>&1 | tail -n 60", cmd);
-    sysinfo_run(full, out, 16384);
-    char *txt = malloc(16384 + 600);
-    snprintf(txt, 16384 + 600, "# %s\n%s", cmd, out);
-    lv_textarea_set_text(s_con_out, txt);
-    lv_textarea_set_cursor_pos(s_con_out, LV_TEXTAREA_CURSOR_LAST);
-    free(out);
-    free(txt);
+    console_stop();
+    s_con_len = 0;
+    s_con_buf[0] = 0;
+    char hdr[600];
+    snprintf(hdr, sizeof(hdr), "# %s\n", cmd);
+    console_append(hdr, strlen(hdr));
+
+    struct winsize ws = { .ws_row = 40, .ws_col = 96 };
+    int fd;
+    pid_t pid = forkpty(&fd, NULL, NULL, &ws);
+    if (pid < 0) {
+        console_append("forkpty failed\n", 15);
+        console_show();
+        return;
+    }
+    if (pid == 0) {
+        setenv("TERM", "dumb", 1);
+        execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
+        _exit(127);
+    }
+    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK);
+    fcntl(fd, F_SETFD, FD_CLOEXEC);
+    s_con_pid = pid;
+    s_con_fd = fd;
+    s_con_timer = lv_timer_create(console_poll, 100, NULL);
+    if (s_con_stop) lv_obj_remove_state(s_con_stop, LV_STATE_DISABLED);
+    console_show();
 }
 
 static void console_enter(lv_event_t *e)
@@ -616,7 +727,14 @@ static void console_btn(lv_event_t *e)
     console_run(cmd);
 }
 
-static void console_gone(lv_event_t *e) { (void)e; s_con_out = s_con_in = NULL; }
+static void console_stop_btn(lv_event_t *e) { (void)e; console_stop(); }
+
+static void console_gone(lv_event_t *e)
+{
+    (void)e;
+    s_con_out = s_con_in = s_con_stop = NULL;   /* widgets are going away */
+    console_stop();                              /* the command does not outlive the panel */
+}
 
 void panel_console(lv_obj_t *parent)
 {
@@ -628,14 +746,20 @@ void panel_console(lv_obj_t *parent)
     lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_style_pad_column(row, 6, 0);
-    static const char *quick[] = { "dmesg | tail -n 30", "ps", "free", "df -h", "ifconfig eth0", "cat /proc/interrupts", "cat /proc/cpuinfo" };
-    static const char *names[] = { "dmesg", "ps", "free", "df", "ifconfig", "irqs", "cpuinfo" };
+    static const char *quick[] = { "dmesg | tail -n 30", "ps", "free", "df -h", "ifconfig eth0", "cat /proc/interrupts", "ping 192.168.200.1" };
+    static const char *names[] = { "dmesg", "ps", "free", "df", "ifconfig", "irqs", "ping" };
     for (unsigned i = 0; i < sizeof(quick) / sizeof(quick[0]); i++) {
         lv_obj_t *b = lv_button_create(row);
         lv_obj_set_style_pad_ver(b, 6, 0);
         lv_obj_add_event_cb(b, console_btn, LV_EVENT_CLICKED, (void *)quick[i]);
         lv_label_set_text(lv_label_create(b), names[i]);
     }
+    s_con_stop = lv_button_create(row);
+    lv_obj_set_style_pad_ver(s_con_stop, 6, 0);
+    lv_obj_set_style_bg_color(s_con_stop, lv_palette_main(LV_PALETTE_RED), 0);
+    lv_obj_add_state(s_con_stop, LV_STATE_DISABLED);
+    lv_obj_add_event_cb(s_con_stop, console_stop_btn, LV_EVENT_CLICKED, NULL);
+    lv_label_set_text(lv_label_create(s_con_stop), LV_SYMBOL_STOP " stop");
 
     s_con_out = lv_textarea_create(parent);
     lv_obj_set_width(s_con_out, LV_PCT(100));
@@ -648,7 +772,7 @@ void panel_console(lv_obj_t *parent)
     s_con_in = lv_textarea_create(parent);
     lv_obj_set_width(s_con_in, LV_PCT(100));
     lv_textarea_set_one_line(s_con_in, true);
-    lv_textarea_set_placeholder_text(s_con_in, "shell command (as root), Enter to run");
+    lv_textarea_set_placeholder_text(s_con_in, "shell command (as root), Enter to run; long-running ones stream, Stop ends them");
     lv_obj_add_event_cb(s_con_in, console_enter, LV_EVENT_READY, NULL);
     lv_group_focus_obj(s_con_in);
     lv_obj_add_event_cb(parent, console_gone, LV_EVENT_DELETE, NULL);
