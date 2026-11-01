@@ -154,3 +154,14 @@ with a coherence manager (or AXI exclusive-access support).
   CMD12. On the first fast read the driver tunes the clock/sampling phase (fastest of 25 MHz late, 25 MHz on-edge, 12.5 MHz, ... that passes four clean reads of block 0). Gateware: `src/rtl/sdhost/` (Build 61+). Kernel #66. The SPI route
   (0010) stays available but its core is no longer in the gateware.
 
+
+## 0012 — musl 1.2.5 soft atomics (the rootfs toolchain's `libc.a`)
+- `arch/riscv32/atomic_arch.h`: `a_cas` becomes a plain compare-and-store (no `lr.w`/`sc.w`).
+  musl derives every other atomic from `a_cas`, so the whole static libc ends up with
+  **0 lr/sc/amo** (246 in the stock build). Not signal-safe or SMP-safe; valid only on this
+  single-hart, coherency-manager-less SoC.
+- Applied to the Bootlin `riscv32-ilp32d--musl--stable-2025.08-1` toolchain: only its
+  `sysroot/lib/libc.a` is replaced (stock copy kept as `libc.a.orig`; `libc.so` untouched,
+  every rootfs binary is static). `scripts/build_musl_toolchain.sh` downloads the stock
+  toolchain and musl, verifies checksums, applies this patch and installs a deterministic
+  `libc.a` byte-identical to the one the rootfs was built with. See doc/02-build.md.

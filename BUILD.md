@@ -24,7 +24,7 @@ the no-coherence-manager constraints behind the soft-atomics in **CACHE_ISSUES.m
 | Bare-metal firmware | `/mnt/data/xilinx/2025.2/Vitis/gnu/riscv/lin/bin/riscv64-unknown-elf-gcc` | actually `riscv32-xilinx-elf`, GCC 13.4, rv32 multilib. `-march=rv32imac_zicsr_zifencei -mabi=ilp32`. |
 | Kernel / OpenSBI / U-Boot | `LGNU=/mnt/data/xilinx/2025.2/gnu/riscv/linux_toolchain/lin32/bin/riscv32-amd-linux-gnu-` | GCC 13.4, **PIE-capable** (the bare-metal `-elf` linkers are not). |
 | Hard-float libgcc (U-Boot) | `/usr/lib/gcc/riscv64-unknown-elf/13.2.0/rv32imafdc/ilp32d` | the AMD linux-gnu toolchain ships no ilp32d libgcc. |
-| busybox initramfs | `riscv32-buildroot-linux-musl-` (Bootlin) | prebuilt rootfs already in `linux/rootfs/`; the Vitis glibc/musl userspace toolchains are broken. |
+| Userspace / rootfs | `~/projects/riscv32-ilp32d--musl--stable-2025.08-1/bin/riscv32-buildroot-linux-musl-` (Bootlin) | GCC 14.3, musl 1.2.5 with the soft-atomic `libc.a` (PATCHES/0012); rebuild it with `scripts/build_musl_toolchain.sh`. The Vitis glibc/musl userspace toolchains are broken. |
 | Device tree | `dtc` (`/mnt/data/xilinx/2025.2/Vitis/bin/dtc` or kernel `scripts/dtc`) | |
 | RTL simulation | `iverilog` / `vvp` | |
 

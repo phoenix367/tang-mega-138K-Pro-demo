@@ -1,0 +1,39 @@
+--- a/arch/riscv32/atomic_arch.h
++++ b/arch/riscv32/atomic_arch.h
+@@ -1,3 +1,17 @@
++/*
++ * Gowin AE350 (Andes A25, Tang Mega 138K Pro) soft atomics.
++ *
++ * This SoC has no coherency manager: LR/SC reservations on DRAM never
++ * converge on a cold cache line and AMOs hang the bus, so a stock musl
++ * (lr.w/sc.w in a_cas) locks up userspace on the first contended lock.
++ * The system is a single hart, so a_cas is reduced to a plain
++ * compare-and-store. musl derives every other atomic (a_swap, a_fetch_add,
++ * a_and, a_or, a_inc, a_dec, a_store, ...) from a_cas, so the whole libc
++ * becomes free of lr/sc/amo. This is NOT atomic against a signal handler
++ * running between the load and the store, nor against a second hart; it is
++ * only correct because this board has neither.
++ */
++
+ #define a_barrier a_barrier
+ static inline void a_barrier()
+ {
+@@ -7,15 +21,8 @@
+ #define a_cas a_cas
+ static inline int a_cas(volatile int *p, int t, int s)
+ {
+-	int old, tmp;
+-	__asm__ __volatile__ (
+-		"\n1:	lr.w.aqrl %0, (%2)\n"
+-		"	bne %0, %3, 1f\n"
+-		"	sc.w.aqrl %1, %4, (%2)\n"
+-		"	bnez %1, 1b\n"
+-		"1:"
+-		: "=&r"(old), "=&r"(tmp)
+-		: "r"(p), "r"((long)t), "r"((long)s)
+-		: "memory");
++	int old = *p;
++	if (old == t)
++		*p = s;
+ 	return old;
+ }

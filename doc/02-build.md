@@ -33,10 +33,13 @@ flowchart TD
 | U-Boot / OpenSBI / kernel | `/mnt/data/xilinx/2025.2/gnu/riscv/linux_toolchain/lin32/bin/riscv32-amd-linux-gnu-` (`LGNU`) |
 | Userspace / rootfs (musl) | `~/projects/riscv32-ilp32d--musl--stable-2025.08-1/bin/riscv32-buildroot-linux-musl-…` |
 
-> **Soft-atomic caveat:** the musl `libc.a` in the buildroot toolchain's sysroot
-> has been patched (its `a_cas` rewritten as a non-atomic single-hart RMW) so that
-> userspace binaries contain **no `lr`/`sc`/`amo`**. A stock glibc/atomic binary
-> SIGILLs/hangs on this SoC. All userspace must be linked against this libc.
+> **Soft-atomic caveat:** the musl `libc.a` in the Bootlin toolchain's sysroot is
+> rebuilt with `PATCHES/0012-musl-riscv32-soft-atomics.patch` (`a_cas` rewritten as a
+> non-atomic single-hart RMW) so that userspace binaries contain **no `lr`/`sc`/`amo`**.
+> A stock glibc/atomic binary SIGILLs/hangs on this SoC. All userspace must be linked
+> statically against this libc. `scripts/build_musl_toolchain.sh [DEST]` reproduces the
+> toolchain from the stock Bootlin tarball + musl 1.2.5 (checksummed downloads, ~1 min
+> build); check a binary with `objdump -d x | grep -cE "amo|lr\.w|sc\.w"` (must be 0).
 > See [06-key-findings.md](06-key-findings.md).
 
 ## 1. Gateware (bitstream)
