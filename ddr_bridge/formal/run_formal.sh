@@ -22,6 +22,7 @@ PARAM=""
 
 yosys -q -l "$OUT/yosys.log" -p "
 read_verilog -formal -DFORMAL ../rtl/ahb_ddr3_bridge.v
+read_verilog -formal ../../src/pipe_counter.v
 read_verilog -formal stubs.v
 $PARAM
 prep -top ahb_ddr3_bridge

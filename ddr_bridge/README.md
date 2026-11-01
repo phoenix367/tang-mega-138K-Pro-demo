@@ -217,6 +217,16 @@ dependent-miss figure from userspace moves 1.41–1.69 µs → 1.33–1.47 µs b
 by run-to-run noise (it is time-seeded). The SDC now has a single 100 MHz clock
 (`ddr3_sysclk`); the PLL's CLKOUT0 is unconnected.
 
+**Build 65:** the DDR3 IP's 50 MHz reference input (`DDR3_CLK_IN`, its reset synchroniser
+and calibration clock) is the board oscillator `CLK` instead of the DDR3 PLL's CLKOUT0, as
+IPUG281 recommends; `clk50m` is declared asynchronous to `ddr3_sysclk` in the SDC. The
+bridge's five 32-bit statistics counters (`pc_hit0/dem/pf/wr/tagmis`, read through
+`ddr_perf`'s external slots) are `pipe_counter` instances: as plain `+ 1` they were 13-level
+LUT chains, the longest paths of the 100 MHz domain once the clock changes moved the
+placement. The attempt to drive the SoC's `APB_CLK` from the `AHB_CLK` net in the same
+build broke PLIC interrupt completion for the audio core (doc/06-key-findings.md), so the
+two bus clocks stay separate PLL outputs.
+
 ## Verification
 
 `tb/run_all.sh` runs everything:

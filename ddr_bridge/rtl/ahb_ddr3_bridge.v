@@ -550,9 +550,19 @@ module ahb_ddr3_bridge #(
     end
 
     // perf counters (hclk); pc_tagmis: returns whose line address disagrees
-    // with the entry they land in (end-to-end check of the tag/CDC path)
-    reg [31:0] pc_hit0, pc_dem, pc_pf, pc_wr, pc_tagmis;
+    // with the entry they land in (end-to-end check of the tag/CDC path).
+    // Byte-sliced pipelined counters (pipe_counter): GowinSyn builds a 32-bit
+    // `+ 1` as a 13-level LUT chain, the longest paths of the 100 MHz domain
+    // (Build 65). A high byte follows a wrap of the byte below one cycle
+    // late, which ddr_perf's frozen reads never see; pc_tagmis is read live
+    // and only ever compared with zero.
+    wire [31:0] pc_hit0, pc_dem, pc_pf, pc_wr, pc_tagmis;
     reg        pred_q, tagmis_q;
+    pipe_counter #(.W(32), .SLICE(8)) u_pc_hit0 (.clk(hclk), .rstn(hrst_n), .clr(perf_clr), .inc(perf_en & pred_q),   .q(pc_hit0));
+    pipe_counter #(.W(32), .SLICE(8)) u_pc_dem  (.clk(hclk), .rstn(hrst_n), .clr(perf_clr), .inc(perf_en & push_dem), .q(pc_dem));
+    pipe_counter #(.W(32), .SLICE(8)) u_pc_pf   (.clk(hclk), .rstn(hrst_n), .clr(perf_clr), .inc(perf_en & push_pf),  .q(pc_pf));
+    pipe_counter #(.W(32), .SLICE(8)) u_pc_wr   (.clk(hclk), .rstn(hrst_n), .clr(perf_clr), .inc(perf_en & push_wr),  .q(pc_wr));
+    pipe_counter #(.W(32), .SLICE(8)) u_pc_tagmis (.clk(hclk), .rstn(hrst_n), .clr(1'b0),   .inc(tagmis_q),           .q(pc_tagmis));   // never cleared: sticky evidence
 
     // next values of nb_arm_q's terms: the same precedence as their update
     // sites in the always block below (a later assignment wins there)
@@ -605,13 +615,11 @@ module ahb_ddr3_bridge #(
                 ent_data[k] <= 256'd0;
             end
             lru_v <= 1'b0; lru_idx <= {EB{1'b0}};
-            pc_hit0 <= 32'd0; pc_dem <= 32'd0; pc_pf <= 32'd0; pc_wr <= 32'd0;
-            pc_tagmis <= 32'd0; pred_q <= 1'b0; tagmis_q <= 1'b0; cf_afull <= 1'b0;
+            pred_q <= 1'b0; tagmis_q <= 1'b0; cf_afull <= 1'b0;
         end else begin
             tagmis_q <= 1'b0;
             for (k = 0; k < NBUF; k = k + 1)
                 if (rf_hit[k] && ent_tag[k] != rf_line) tagmis_q <= 1'b1;
-            if (tagmis_q) pc_tagmis <= pc_tagmis + 32'd1;   // never cleared: sticky evidence
             cf_afull <= (cf_wlevel >= 5'd13);
 
             // ---- AHB handshake ----
@@ -804,16 +812,9 @@ module ahb_ddr3_bridge #(
                 wb_valid <= 1'b0;                               // idle flush
             end
 
-            // ---- perf ----
+            // ---- perf (the counters themselves are the pipe_counter
+            // instances next to their declaration) ----
             pred_q <= pred_take;
-            if (perf_clr) begin
-                pc_hit0 <= 32'd0; pc_dem <= 32'd0; pc_pf <= 32'd0; pc_wr <= 32'd0;
-            end else if (perf_en) begin
-                if (pred_q)          pc_hit0 <= pc_hit0 + 32'd1;
-                if (push_dem)        pc_dem  <= pc_dem  + 32'd1;
-                if (push_pf)         pc_pf   <= pc_pf   + 32'd1;
-                if (push_wr)         pc_wr   <= pc_wr   + 32'd1;
-            end
         end
     end
 

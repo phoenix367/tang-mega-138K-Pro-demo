@@ -260,3 +260,43 @@ only after DDR3 calibration, so the clock is long stable by then. Average HREADY
 data-memory read transfer during `ddr_memtest`: 19.6–20.0 → 17.9–18.5 HCLK. The
 userspace miss-latency number is too noisy (time-seeded chase, ±10 % run to run) to
 show a 5 % change on its own; the bus counters are the right instrument.
+
+## Fewer 50 MHz clocks, and two traps on the way (2026-11-01, Build 65)
+
+Three generated 50 MHz clocks remained after Build 64: the AE350 PLL's AHB and APB
+outputs and the DDR3 PLL's reference output. Build 65 removes one. The DDR3 IP's 50 MHz
+reference input (`clk`) now comes straight from the board oscillator, which is what
+IPUG281 recommends ("generally PCB crystal input"); it only clocks the IP's reset
+synchroniser and calibration logic, and the DDR3 calibrates and runs as before.
+
+**The APB clock cannot share the AHB clock's net.** Driving both SoC clock pins from
+`AHB_CLK` (allowed by the 1:1 rule, and what Gowin's own `ae350_ahb_master` example does)
+built, met timing and booted, but audio playback stalled after a handful of interrupts in
+both DMA and PIO mode. The audio core kept asserting its level interrupt, the PLIC's
+pending bit for source 11 stayed clear, and a write of `11` to the hart's claim/complete
+register revived the source every time. With a completion written every 100 ms during a
+stream the WAV played bit-exact (240000 frames, CRC match). So the kernel's completion
+writes stop taking effect on that source after a few interrupts: an interaction inside the
+hard macro between its AHB-to-APB bridge (the PLIC sits behind it) and two clock pins fed
+from one net. The SD host and Ethernet sources, whose lines are low again by the time the
+handler completes, never showed it. Moving `APB_CLK` back to its own PLL output, with
+everything else unchanged, restored audio (324 interrupts for the test set, all bit-exact).
+`APB_CLK` therefore keeps `CLKOUT3`; the SDC comment and `src/ae350_demo.v` say why.
+
+**Global clock allocation is a lottery, and the RGMII RX clock lost it.** The GW5AST has
+8 PRIMARY and 8 LW global clock wires and this design uses all 16. Removing a PLL output
+freed a PRIMARY wire, and PnR gave it to `RGMII_RXC_d`, which had always been on an LW. A
+PRIMARY wire adds 1.8 ns of insertion delay on this path: the RXD capture window moved
+(setup slack 1.65 → 3.45 ns, hold slack 1.24 → 0.22 ns; both "met"), the MAC's
+`RGMII_Input_Delay` no longer centred the sample, and gigabit receive went from 0 bad
+frames in 35 000 to half of all frames bad and 16 MB downloads timing out. `CLOCK_LOC
+"RGMII_RXC_d" LOCAL_CLOCK` is worse again (plain routing, and ddr3_sysclk broke with it).
+The fix in `src/ae350_demo.cst`: the eight nets that belong on PRIMARY wires are pinned
+with `CLOCK_LOC ... BUFG = CLK`, and the RX clock is pinned to the first LW wire with
+`BUFG[8]` (BUFG[0-7] are PRIMARY, BUFG[8-15] LW -- found by trying; a reset nominated for
+a PRIMARY wire is silently ignored). With that the RGMII capture slacks are back to Build
+64's and twelve 16 MB downloads gave 1 bad frame in 141 701, the MAC's known residual rate.
+
+Also in Build 65: the bridge's five 32-bit statistics counters (`pc_hit0/dem/pf/wr/
+tagmis`) are `pipe_counter` instances. As plain `+ 1` they were 13-level LUT chains and the
+only paths in the 100 MHz domain below zero after the clock changes moved the placement.

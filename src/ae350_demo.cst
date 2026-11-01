@@ -194,6 +194,25 @@ IO_LOC "RGMII_TXD[2]"  L19;
 IO_LOC "RGMII_TXD[3]"  K18;
 IO_LOC "RGMII_RXC"     C23;
 IO_LOC "RGMII_RX_CTL"  C22;
+// Global clock allocation (8 PRIMARY wires, all used), pinned since Build 65.
+// PnR's own pick is a lottery: when two PLL outputs were dropped it promoted
+// the RGMII RX clock to a PRIMARY wire (1.8 ns more insertion delay than the
+// LW it had, RXD hold slack 1.24 -> 0.22 ns, half the received frames bad) and
+// evicted the bus clock; LOCAL_CLOCK for RGMII_RXC_d is worse still (plain
+// routing, ddr3_sysclk broken). RGMII_RXC_d must stay on an LW: the MAC's
+// RGMII_Input_Delay is tuned for that path. Net names are post-synthesis
+// (EXTS_HCLK / apb_pclk are the SoC's bus clock outputs). BUFG[0-7] are the
+// PRIMARY wires, BUFG[8-15] the LW ones (a reset nominated for a PRIMARY wire
+// is silently ignored, so the RX clock is pinned to an LW instead).
+CLOCK_LOC "EXTS_HCLK"  BUFG = CLK;
+CLOCK_LOC "apb_pclk"   BUFG = CLK;
+CLOCK_LOC "DDR_HCLK"   BUFG = CLK;
+CLOCK_LOC "RTC_CLK"    BUFG = CLK|LOGIC;
+CLOCK_LOC "tx_mac_clk" BUFG = CLK;
+CLOCK_LOC "VID_CLK"    BUFG = CLK;
+CLOCK_LOC "PHY_CLK_d"  BUFG = CLK;
+CLOCK_LOC "CLK_d"      BUFG = CLK;
+CLOCK_LOC "RGMII_RXC_d" BUFG[8] = CLK;
 IO_LOC "RGMII_RXD[0]"  B26;
 IO_LOC "RGMII_RXD[1]"  C26;
 IO_LOC "RGMII_RXD[2]"  D26;

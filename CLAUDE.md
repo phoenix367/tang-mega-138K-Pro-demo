@@ -15,7 +15,13 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    JTAG debug. Two PLLs (`gowin_pll_ae350` → 800 MHz core + 50 MHz AHB/APB + 10 MHz
    RTC; `gowin_pll_ddr3` → 400 MHz DDR3, netlist `src/ddr3_memory_interface_1g/`). The SoC's
    100 MHz data-memory clock `DDR_CLK` is the DDR3 IP's user clock (`clk_out`, Build 64+), so
-   the DDR bridge is single-clock (`SYNC_CLK=1`); the AE350 PLL's 100 MHz CLKOUT0 is unused. `src/riscv_ae350_soc/` is encrypted Andes IP
+   the DDR bridge is single-clock (`SYNC_CLK=1`); the AE350 PLL's 100 MHz CLKOUT0 is unused.
+   The DDR3 IP's 50 MHz reference input is the board clock `CLK` (Build 65+, DDR3 PLL
+   CLKOUT0 unused). `APB_CLK` must stay on its own PLL output even though it is 1:1 with
+   `AHB_CLK`: fed from the AHB_CLK net the SoC's PLIC drops interrupt completions (audio
+   stalls) — see doc/06-key-findings.md. The 16 global clock wires are all used and pinned
+   in `src/ae350_demo.cst` (`CLOCK_LOC`): the RGMII RX clock must stay on an LW wire
+   (`BUFG[8]`), on a PRIMARY wire its capture window shifts and gigabit RX breaks. `src/riscv_ae350_soc/` is encrypted Andes IP
    (`.v` synth source + `.vo` sim netlist) — regenerate via the IDE IP wizard, don't
    hand-edit. `src/key_debounce.v` debounces the DDR3/AE350 resets.
    DDR3 is **1 GB** (both x16 chips on the 32-bit bus, 15 row bits,

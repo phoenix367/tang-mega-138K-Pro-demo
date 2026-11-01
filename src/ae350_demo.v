@@ -79,12 +79,20 @@ wire CORE_CLK;
 // (ddr_vclk, memory clock / 4 = 100 MHz) since Build 64, so the bridge's two
 // sides are one clock and its FIFOs need no synchronizers.  The SoC comes out
 // of reset only after DDR3 calibration, long after that clock is running.
+// Since Build 65 the DDR3 IP's 50 MHz reference input is the board oscillator
+// CLK itself (IPUG281: "generally PCB crystal input"), so PLL_DDR3 CLKOUT0 is
+// unused. APB_CLK must keep its own PLL output (CLKOUT3), even though it is
+// 1:1 with AHB_CLK: driving both SoC clock pins from the AHB_CLK net (tried
+// first for Build 65, as Gowin's ae350_ahb_master example does) makes the
+// PLIC drop interrupt completions for the audio core's level interrupt --
+// the source stays claimed after a few interrupts until an explicit
+// completion write, which a manual completion every 100 ms proved (then the
+// stream plays bit-exact). See doc/06-key-findings.md.
 wire AHB_CLK;
 wire APB_CLK;
 wire RTC_CLK;
 
 wire DDR3_MEMORY_CLK;
-wire DDR3_CLK_IN;
 wire DDR3_LOCK;
 wire DDR3_STOP;
 
@@ -94,8 +102,8 @@ Gowin_PLL_AE350 u_Gowin_PLL_AE350
 (
     .clkout0(),                 // 100MHz (800/8), unused since Build 64: DDR_CLK is the DDR3 IP user clock
     .clkout1(CORE_CLK),         // 800MHz
-    .clkout2(AHB_CLK),          // 50MHz    - for test
-    .clkout3(APB_CLK),          // 50MHz    - for test
+    .clkout2(AHB_CLK),          // 50MHz AHB bus clock
+    .clkout3(APB_CLK),          // 50MHz APB bus clock (its own output: see above)
     .clkout4(RTC_CLK),          // 10MHz
     .clkin(CLK),
     .enclk0(1'b1),
@@ -110,8 +118,8 @@ Gowin_PLL_AE350 u_Gowin_PLL_AE350
 Gowin_PLL_DDR3 u_Gowin_PLL_DDR3
 (
     .lock(DDR3_LOCK),
-    .clkout0(DDR3_CLK_IN),          // 50MHz
-    .clkout2(DDR3_MEMORY_CLK),      // 200MHz   - for test
+    .clkout0(),                     // 50MHz, unused since Build 65: the DDR3 IP reference is CLK
+    .clkout2(DDR3_MEMORY_CLK),      // 400MHz memory clock
     .clkin(CLK),
     .reset(1'b0),                   // Enforce
     .enclk0(1'b1),
@@ -421,7 +429,7 @@ RiscV_AE350_SOC_Top u_RiscV_AE350_SOC_Top
     .CORE_CLK(CORE_CLK),
     .DDR_CLK(ddr_vclk),                 // DDR3 IP user clock (see above)
     .AHB_CLK(AHB_CLK),
-    .APB_CLK(APB_CLK),
+    .APB_CLK(APB_CLK),                  // 1:1 with AHB_CLK but its own PLL output (see above)
     .RTC_CLK(RTC_CLK),
     .POR_RSTN(ae350_rstn),              // AE350 CPU core power on reset, 0 is reset state
     .HW_RSTN(ae350_rstn)                // AE350 hardware reset, 0 is reset state
@@ -439,7 +447,7 @@ wire [511:0] ddr_perf_cnt;
 ahb_ddr3_top u_ahb_ddr3_top
 (
     .DDR3_MEMORY_CLK(DDR3_MEMORY_CLK),
-    .DDR3_CLK_IN(DDR3_CLK_IN),
+    .DDR3_CLK_IN(CLK),                  // IP reference clock = board 50 MHz (Build 65)
     .DDR3_RSTN(ddr3_rstn),              // 0 = reset
     .DDR3_LOCK(DDR3_LOCK),
     .DDR3_STOP(DDR3_STOP),
