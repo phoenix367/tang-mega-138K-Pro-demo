@@ -47,7 +47,7 @@ fi
 fetch() {	# fetch URL SHA256 -> file in WORK (skipped if already present and valid)
 	local url=$1 sha=$2 f="$WORK/$(basename "$1")"
 	if [ ! -f "$f" ] || ! echo "$sha  $f" | sha256sum -c --quiet - 2>/dev/null; then
-		echo ">> downloading $(basename "$url")"
+		echo ">> downloading $(basename "$url")" >&2	# stdout is the function's return value
 		curl -fsSL --retry 3 -o "$f" "$url"
 	fi
 	echo "$sha  $f" | sha256sum -c --quiet - || { echo "checksum mismatch: $f" >&2; exit 1; }
