@@ -47,6 +47,8 @@ __pycache__/
 /src/apps/tests/ddr_memtest
 /src/apps/tests/fbtest
 /src/apps/tests/wavplay
+/src/apps/tests/amotrace
+/src/apps/tests/dmactest
 /src/apps/desktop/build/
 /src/apps/desktop/inputd
 /src/apps/desktop/build_lvgl.log
