@@ -209,35 +209,15 @@ void desk_wired_icon_set(lv_obj_t *icon, int state)
 }
 
 /* ---- fan icon --------------------------------------------------------- */
-/* Three blade arcs around a hub (children 0..2 arcs, 3 hub). While the fan
- * turns the blades rotate 20 degrees every 80 ms (one turn in ~1.4 s). */
+/* Three blade arcs around a hub (children 0..2 arcs, 3 hub). Static: white
+ * while the fan turns, red when it should but does not. */
 #define FAN_BLADES 3
-typedef struct { lv_obj_t *icon; lv_timer_t *timer; int angle; } fan_icon_t;
-
-static void fan_spin(lv_timer_t *t)
-{
-    fan_icon_t *f = lv_timer_get_user_data(t);
-    f->angle = (f->angle + 20) % 360;
-    for (int i = 0; i < FAN_BLADES; i++) lv_arc_set_rotation(lv_obj_get_child(f->icon, i), f->angle);
-}
-
-static void fan_free(lv_event_t *e)
-{
-    fan_icon_t *f = lv_event_get_user_data(e);
-    if (f->timer) lv_timer_delete(f->timer);
-    lv_free(f);
-}
 
 lv_obj_t *desk_fan_icon(lv_obj_t *parent, int size)
 {
-    fan_icon_t *f = lv_malloc(sizeof(*f));
-    memset(f, 0, sizeof(*f));
     lv_obj_t *ic = lv_obj_create(parent);
     lv_obj_remove_style_all(ic);
     lv_obj_set_size(ic, size, size);
-    lv_obj_set_user_data(ic, f);
-    lv_obj_add_event_cb(ic, fan_free, LV_EVENT_DELETE, f);
-    f->icon = ic;
     for (int i = 0; i < FAN_BLADES; i++) {
         lv_obj_t *a = lv_arc_create(ic);
         lv_obj_remove_style_all(a);
@@ -264,12 +244,9 @@ lv_obj_t *desk_fan_icon(lv_obj_t *parent, int size)
 
 void desk_fan_icon_set(lv_obj_t *icon, int rpm)
 {
-    fan_icon_t *f = lv_obj_get_user_data(icon);
     lv_color_t c = rpm > 0 ? lv_color_white() : lv_palette_main(LV_PALETTE_RED);
     for (int i = 0; i < FAN_BLADES; i++) lv_obj_set_style_arc_color(lv_obj_get_child(icon, i), c, LV_PART_MAIN);
     lv_obj_set_style_bg_color(lv_obj_get_child(icon, FAN_BLADES), c, 0);
-    if (rpm > 0 && !f->timer) f->timer = lv_timer_create(fan_spin, 80, f);
-    else if (rpm <= 0 && f->timer) { lv_timer_delete(f->timer); f->timer = NULL; }
 }
 
 /* ---- status bar ------------------------------------------------------- */
@@ -352,7 +329,7 @@ static void bar_create(lv_obj_t *scr)
     lv_obj_set_style_text_font(s_bar_ip, &lv_font_montserrat_16, 0);
     s_bar_cpu = bar_label("");
     s_bar_temp = bar_label("");
-    /* fan: spinning icon + rpm (hidden when there is no fan hwmon device) */
+    /* fan: icon + rpm (hidden when there is no fan hwmon device) */
     s_bar_fan_box = lv_obj_create(s_bar);
     lv_obj_remove_style_all(s_bar_fan_box);
     lv_obj_set_size(s_bar_fan_box, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
