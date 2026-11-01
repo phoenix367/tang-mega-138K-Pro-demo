@@ -1,0 +1,431 @@
+diff --git a/firmware/fw_base.S b/firmware/fw_base.S
+index 5d6540d..c86249a 100644
+--- a/firmware/fw_base.S
++++ b/firmware/fw_base.S
+@@ -32,13 +32,9 @@
+ .endm
+ 
+ .macro CLEAR_MDT tmp
+-#if __riscv_xlen == 32
+-	li 	\tmp, MSTATUSH_MDT
+-	csrc	CSR_MSTATUSH, \tmp
+-#else
+-	li 	\tmp, MSTATUS_MDT
+-	csrc	CSR_MSTATUS, \tmp
+-#endif
++	/* Smdbltrp (MDT bit) does not exist on the priv-1.10 Andes A25:
++	   csrc mstatush would be an illegal instruction -> silent _start_hang.
++	   This core has no MDT to clear, so make it a no-op. */
+ .endm
+ 
+ 	.section .entry, "ax", %progbits
+@@ -46,6 +42,10 @@
+ 	.globl _start
+ 	.globl _start_warm
+ _start:
++	/* Single-hart Gowin AE350: skip the .bss-dependent boot lottery
++	   (stale _boot_lottery in unzeroed .bss makes the lone hart spin in
++	   _wait_for_boot_hart). Go straight to relocation. */
++	j	_ae350_skip_lottery
+ 	/* Find preferred boot HART id */
+ 	MOV_3R	s0, a0, s1, a1, s2, a2
+ 	call	fw_boot_hart
+@@ -72,6 +72,7 @@ _sc_fail:
+ #error "need a or zalrsc"
+ #endif
+ 
++_ae350_skip_lottery:
+ 	/* relocate the global table content */
+ 	li	t0, FW_TEXT_START	/* link start */
+ 	lla	t1, _fw_start		/* load start */
+@@ -762,29 +763,20 @@ _trap_handler:
+ _trap_handler_hyp:
+ 	TRAP_SAVE_AND_SETUP_SP_T0
+ 
+-#if __riscv_xlen == 32
+-	TRAP_SAVE_MEPC_MSTATUS 1
+-#else
++	/* Andes A25 is priv-1.10 (no mstatush) and has no H ext (no mtval2/
++	   mtinst): force the no-mstatush/no-H trap path even on RV32, else the
++	   trap handler itself traps on those CSRs -> silent double fault. */
+ 	TRAP_SAVE_MEPC_MSTATUS 0
+-#endif
+ 
+ 	TRAP_SAVE_GENERAL_REGS_EXCEPT_SP_T0
+ 
+-#if __riscv_xlen == 32
+-	TRAP_SAVE_INFO 1 1
+-#else
+-	TRAP_SAVE_INFO 0 1
+-#endif
++	TRAP_SAVE_INFO 0 0
+ 
+ 	TRAP_CALL_C_ROUTINE
+ 
+ 	TRAP_RESTORE_GENERAL_REGS_EXCEPT_A0_T0
+ 
+-#if __riscv_xlen == 32
+-	TRAP_RESTORE_MEPC_MSTATUS 1
+-#else
+ 	TRAP_RESTORE_MEPC_MSTATUS 0
+-#endif
+ 
+ 	TRAP_RESTORE_A0_T0
+ 
+diff --git a/lib/sbi/riscv_atomic.c b/lib/sbi/riscv_atomic.c
+index d9abe34..b929fbc 100644
+--- a/lib/sbi/riscv_atomic.c
++++ b/lib/sbi/riscv_atomic.c
+@@ -12,9 +12,30 @@
+ #include <sbi/riscv_atomic.h>
+ #include <sbi/riscv_barrier.h>
+ 
+-#if !defined(__riscv_atomic) && !defined(__riscv_zaamo) && !defined(__riscv_zalrsc)
+-#error "opensbi strongly relies on the Zaamo or Zalrsc extensions of RISC-V"
+-#endif
++/*
++ * Gowin AE350 (Andes A25) workaround: this SoC has no coherency agent
++ * (mcache_ctl.DC_COHEN is hardwired 0), so AMO / LR-SC exclusive accesses to
++ * DRAM never get a bus grant -- amoswap hangs and sc never succeeds. The system
++ * is single-hart, so the only concurrency is with traps/interrupts. We therefore
++ * implement every read-modify-write as an interrupt-disabled (mstatus.MIE=0)
++ * plain load/store, which is atomic w.r.t. this hart's traps. No hardware
++ * atomics are emitted from this file. See CACHE_ISSUES.md.
++ */
++
++static inline unsigned long __amo_irq_save(void)
++{
++	unsigned long s;
++	__asm__ __volatile__("csrrc %0, mstatus, %1"
++			     : "=r"(s)
++			     : "r"((unsigned long)MSTATUS_MIE)
++			     : "memory");
++	return s & MSTATUS_MIE;
++}
++
++static inline void __amo_irq_restore(unsigned long s)
++{
++	__asm__ __volatile__("csrrs x0, mstatus, %0" :: "r"(s) : "memory");
++}
+ 
+ long atomic_read(atomic_t *atom)
+ {
+@@ -31,43 +52,14 @@ void atomic_write(atomic_t *atom, long value)
+ 
+ long atomic_add_return(atomic_t *atom, long value)
+ {
+-#if defined(__riscv_atomic) || defined(__riscv_zaamo)
+ 	long ret;
+-#if __SIZEOF_LONG__ == 4
+-	__asm__ __volatile__("	amoadd.w.aqrl  %1, %2, %0"
+-			     : "+A"(atom->counter), "=r"(ret)
+-			     : "r"(value)
+-			     : "memory");
+-#elif __SIZEOF_LONG__ == 8
+-	__asm__ __volatile__("	amoadd.d.aqrl  %1, %2, %0"
+-			     : "+A"(atom->counter), "=r"(ret)
+-			     : "r"(value)
+-			     : "memory");
+-#endif
+-#elif defined(__riscv_zalrsc)
+-	long ret, temp;
+-#if __SIZEOF_LONG__ == 4
+-	__asm__ __volatile__("1:lr.w.aqrl	%1,%0\n"
+-			     "  add	%2,%1,%3\n"
+-			     "  sc.w.aqrl	%2,%2,%0\n"
+-			     "  bnez	%2,1b"
+-			     : "+A"(atom->counter), "=&r"(ret), "=&r"(temp)
+-			     : "r"(value)
+-			     : "memory");
+-#elif __SIZEOF_LONG__ == 8
+-	__asm__ __volatile__("1:lr.d.aqrl	%1,%0\n"
+-			     "  add	%2,%1,%3\n"
+-			     "  sc.d.aqrl	%2,%2,%0\n"
+-			     "  bnez	%2,1b"
+-			     : "+A"(atom->counter), "=&r"(ret), "=&r"(temp)
+-			     : "r"(value)
+-			     : "memory");
+-#endif
+-#else
+-#error "need A or Zaamo or Zalrsc"
+-#endif
++	unsigned long f = __amo_irq_save();
++
++	ret = atom->counter + value;
++	atom->counter = ret;
++	__amo_irq_restore(f);
+ 
+-	return ret + value;
++	return ret;
+ }
+ 
+ long atomic_sub_return(atomic_t *atom, long value)
+@@ -75,108 +67,78 @@ long atomic_sub_return(atomic_t *atom, long value)
+ 	return atomic_add_return(atom, -value);
+ }
+ 
+-#if defined(__riscv_atomic) || defined(__riscv_zaamo)
+-#define __axchg(ptr, new, size)							\
+-	({									\
+-		__typeof__(ptr) __ptr = (ptr);					\
+-		__typeof__(new) __new = (new);					\
+-		__typeof__(*(ptr)) __ret;					\
+-		switch (size) {							\
+-		case 4:								\
+-			__asm__ __volatile__ (					\
+-				"	amoswap.w.aqrl %0, %2, %1\n"		\
+-				: "=r" (__ret), "+A" (*__ptr)			\
+-				: "r" (__new)					\
+-				: "memory");					\
+-			break;							\
+-		case 8:								\
+-			__asm__ __volatile__ (					\
+-				"	amoswap.d.aqrl %0, %2, %1\n"		\
+-				: "=r" (__ret), "+A" (*__ptr)			\
+-				: "r" (__new)					\
+-				: "memory");					\
+-			break;							\
+-		default:							\
+-			break;							\
+-		}								\
+-		__ret;								\
+-	})
+-#elif defined(__riscv_zalrsc)
+-#define __axchg(ptr, new, size)							\
+-	({									\
+-		__typeof__(ptr) __ptr = (ptr);					\
+-		__typeof__(new) __new = (new);					\
+-		__typeof__(*(ptr)) __ret, __temp;					\
+-		switch (size) {							\
+-		case 4:								\
+-			__asm__ __volatile__ (					\
+-				"1:	lr.w.aqrl %0, %1\n"			\
+-				"	sc.w.aqrl %2, %3, %1\n"			\
+-				"	bnez	  %2, 1b\n"			\
+-				: "=&r" (__ret), "+A" (*__ptr), "=&r" (__temp)	\
+-				: "r" (__new)					\
+-				: "memory");					\
+-			break;							\
+-		case 8:								\
+-			__asm__ __volatile__ (					\
+-				"1:	lr.d.aqrl %0, %1\n"			\
+-				"	sc.d.aqrl %2, %3, %1\n"			\
+-				"	bnez	  %2, 1b\n"			\
+-				: "=&r" (__ret), "+A" (*__ptr), "=&r" (__temp)	\
+-				: "r" (__new)					\
+-				: "memory");					\
+-			break;							\
+-		default:							\
+-			break;							\
+-		}								\
+-		__ret;								\
+-	})
+-#else
+-#error "need A or Zaamo or Zalrsc"
+-#endif
+-
+-#define axchg(ptr, x)								\
+-	({									\
+-		__typeof__(*(ptr)) _x_ = (x);					\
+-		(__typeof__(*(ptr))) __axchg((ptr), _x_, sizeof(*(ptr)));	\
+-	})
+-
+ long atomic_cmpxchg(atomic_t *atom, long oldval, long newval)
+ {
+-	return __sync_val_compare_and_swap(&atom->counter, oldval, newval);
++	long prev;
++	unsigned long f = __amo_irq_save();
++
++	prev = atom->counter;
++	if (prev == oldval)
++		atom->counter = newval;
++	__amo_irq_restore(f);
++
++	return prev;
+ }
+ 
+ long atomic_xchg(atomic_t *atom, long newval)
+ {
+-	/* Atomically set new value and return old value. */
+-	return axchg(&atom->counter, newval);
++	long prev;
++	unsigned long f = __amo_irq_save();
++
++	prev = atom->counter;
++	atom->counter = newval;
++	__amo_irq_restore(f);
++
++	return prev;
+ }
+ 
+ unsigned int atomic_raw_xchg_uint(volatile unsigned int *ptr,
+ 				  unsigned int newval)
+ {
+-	/* Atomically set new value and return old value. */
+-	return axchg(ptr, newval);
++	unsigned int prev;
++	unsigned long f = __amo_irq_save();
++
++	prev = *ptr;
++	*ptr = newval;
++	__amo_irq_restore(f);
++
++	return prev;
+ }
+ 
+ unsigned long atomic_raw_xchg_ulong(volatile unsigned long *ptr,
+ 				    unsigned long newval)
+ {
+-	/* Atomically set new value and return old value. */
+-	return axchg(ptr, newval);
++	unsigned long prev;
++	unsigned long f = __amo_irq_save();
++
++	prev = *ptr;
++	*ptr = newval;
++	__amo_irq_restore(f);
++
++	return prev;
+ }
+ 
+ int atomic_raw_set_bit(int nr, volatile unsigned long *addr)
+ {
+ 	unsigned long res, mask = BIT_MASK(nr);
+-	res = __atomic_fetch_or(&addr[BIT_WORD(nr)], mask, __ATOMIC_RELAXED);
++	unsigned long f = __amo_irq_save();
++
++	res = addr[BIT_WORD(nr)];
++	addr[BIT_WORD(nr)] = res | mask;
++	__amo_irq_restore(f);
++
+ 	return res & mask ? 1 : 0;
+ }
+ 
+ int atomic_raw_clear_bit(int nr, volatile unsigned long *addr)
+ {
+ 	unsigned long res, mask = BIT_MASK(nr);
+-	res = __atomic_fetch_and(&addr[BIT_WORD(nr)], ~mask, __ATOMIC_RELAXED);
++	unsigned long f = __amo_irq_save();
++
++	res = addr[BIT_WORD(nr)];
++	addr[BIT_WORD(nr)] = res & ~mask;
++	__amo_irq_restore(f);
++
+ 	return res & mask ? 1 : 0;
+ }
+ 
+diff --git a/lib/sbi/riscv_locks.c b/lib/sbi/riscv_locks.c
+index e253b1b..3f80ba3 100644
+--- a/lib/sbi/riscv_locks.c
++++ b/lib/sbi/riscv_locks.c
+@@ -19,69 +19,21 @@ bool spin_lock_check(spinlock_t *lock)
+ 	return !spin_lock_unlocked(*lock);
+ }
+ 
++/*
++ * Gowin AE350 (Andes A25) is single-hart with no working hardware atomics
++ * (no coherency agent -> lr/sc/amo on DRAM hang). Spinlocks are therefore never
++ * contended; reduce them to a compiler/memory barrier. See riscv_atomic.c /
++ * CACHE_ISSUES.md.
++ */
+ bool spin_trylock(spinlock_t *lock)
+ {
+-	unsigned long inc = 1u << TICKET_SHIFT;
+-	unsigned long mask = 0xffffu << TICKET_SHIFT;
+-	u32 l0, tmp1, tmp2;
+-
+-	__asm__ __volatile__(
+-		/* Get the current lock counters. */
+-		"1:	lr.w.aq	%0, %3\n"
+-		"	slli	%2, %0, %6\n"
+-		"	and	%2, %2, %5\n"
+-		"	and	%1, %0, %5\n"
+-		/* Is the lock free right now? */
+-		"	bne	%1, %2, 2f\n"
+-		"	add	%0, %0, %4\n"
+-		/* Acquire the lock. */
+-		"	sc.w.rl	%0, %0, %3\n"
+-		"	bnez	%0, 1b\n"
+-		"2:"
+-		: "=&r"(l0), "=&r"(tmp1), "=&r"(tmp2), "+A"(*lock)
+-		: "r"(inc), "r"(mask), "I"(TICKET_SHIFT)
+-		: "memory");
+-
+-	return l0 == 0;
++	RISCV_FENCE(rw, rw);
++	return true;
+ }
+ 
+ void spin_lock(spinlock_t *lock)
+ {
+-	unsigned long inc = 1u << TICKET_SHIFT;
+-	unsigned long mask = 0xffffu;
+-	u32 l0, tmp1, tmp2;
+-
+-	__asm__ __volatile__(
+-		/* Atomically increment the next ticket. */
+-#if defined(__riscv_atomic) || defined(__riscv_zaamo)
+-		"	amoadd.w.aqrl	%0, %4, %3\n"
+-#elif defined(__riscv_zalrsc)
+-		"3:	lr.w.aqrl	%0, %3\n"
+-#if __riscv_xlen == 64
+-		"	addw	%1, %0, %4\n"
+-#elif __riscv_xlen == 32
+-		"	add	%1, %0, %4\n"
+-#endif
+-		"	sc.w.aqrl	%1, %1, %3\n"
+-		"	bnez	%1, 3b\n"
+-#else
+-#error "need A or Zaamo or Zalrsc"
+-#endif
+-
+-		/* Did we get the lock? */
+-		"	srli	%1, %0, %6\n"
+-		"	and	%1, %1, %5\n"
+-		"1:	and	%2, %0, %5\n"
+-		"	beq	%1, %2, 2f\n"
+-
+-		/* If not, then spin on the lock. */
+-		"	lw	%0, %3\n"
+-		RISCV_ACQUIRE_BARRIER
+-		"	j	1b\n"
+-		"2:"
+-		: "=&r"(l0), "=&r"(tmp1), "=&r"(tmp2), "+A"(*lock)
+-		: "r"(inc), "r"(mask), "I"(TICKET_SHIFT)
+-		: "memory");
++	RISCV_FENCE(rw, rw);
+ }
+ 
+ void spin_unlock(spinlock_t *lock)
+diff --git a/lib/sbi/sbi_ipi.c b/lib/sbi/sbi_ipi.c
+index 5b2d2f7..91c8f7c 100644
+--- a/lib/sbi/sbi_ipi.c
++++ b/lib/sbi/sbi_ipi.c
+@@ -86,9 +86,24 @@ static int sbi_ipi_send(struct sbi_scratch *scratch, u32 remote_hartindex,
+ 	 * remote hart so call sbi_ipi_raw_send() only when
+ 	 * the ipi_type was previously zero.
+ 	 */
+-	if (!__atomic_fetch_or(&ipi_data->ipi_type,
+-				BIT(event), __ATOMIC_RELAXED))
+-		ret = sbi_ipi_raw_send(remote_hartindex, false);
++	/*
++	 * Gowin AE350 (single-hart, no working hardware atomics): soft fetch-or
++	 * via an interrupt-disabled read-modify-write instead of amoor.
++	 * See lib/sbi/riscv_atomic.c / CACHE_ISSUES.md.
++	 */
++	{
++		unsigned long __old, __f;
++		__asm__ __volatile__("csrrc %0, mstatus, %1"
++				     : "=r"(__f)
++				     : "r"((unsigned long)MSTATUS_MIE)
++				     : "memory");
++		__old = ipi_data->ipi_type;
++		ipi_data->ipi_type = __old | BIT(event);
++		__asm__ __volatile__("csrrs x0, mstatus, %0"
++				     :: "r"(__f & MSTATUS_MIE) : "memory");
++		if (!__old)
++			ret = sbi_ipi_raw_send(remote_hartindex, false);
++	}
+ 
+ 	sbi_pmu_ctr_incr_fw(SBI_PMU_FW_IPI_SENT);
+ 

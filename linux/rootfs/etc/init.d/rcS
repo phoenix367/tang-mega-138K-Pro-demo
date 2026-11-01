@@ -1,0 +1,57 @@
+#!/bin/busybox sh
+# /etc/init.d/rcS -- system init (busybox sysinit).
+# Shebang calls busybox directly because the applet symlinks (/bin/sh, mount,
+# ...) don't exist yet on the first boot of the RAM-backed initramfs.
+
+# 1. Populate /bin /sbin /usr/bin /usr/sbin with busybox applet symlinks.
+/bin/busybox --install -s
+
+# 1b. Unprivileged ping. busybox ping needs a raw ICMP socket (CAP_NET_RAW) and
+#     does NOT fall back to unprivileged ICMP datagram sockets, so ping_group_range
+#     can't help it. Give a SEPARATE copy of busybox -- only /bin/ping -- the
+#     setuid bit (replacing the symlink busybox --install just made). The main
+#     /bin/busybox stays unprivileged, so the boot scripts and every other applet
+#     are unaffected; /etc/busybox.conf (FEATURE_SUID_CONFIG) keeps root for ping
+#     only. The config, like doas.conf, must be root-owned and not group-writable.
+rm -f /bin/ping
+cp /bin/busybox /bin/ping
+chmod 4755 /bin/ping
+chown 0:0 /etc/busybox.conf 2>/dev/null
+chmod 0644 /etc/busybox.conf
+
+# 2. Mount the kernel/virtual filesystems from /etc/fstab (proc, sys, dev,
+#    tmp, run).  devtmpfs must be mounted here: DEVTMPFS_MOUNT does not apply
+#    to an initramfs root.
+mount -a
+
+# 2b. Pseudo-terminals (for SSH / interactive sessions). devpts isn't in
+#     fstab because /dev/pts must be created after devtmpfs is mounted on /dev.
+mkdir -p /dev/pts
+mount -t devpts none /dev/pts 2>/dev/null
+
+# 3. Hostname.
+[ -f /etc/hostname ] && hostname -F /etc/hostname
+
+# 3b. Fix privileged-tool ownership/modes (the RAM initramfs may carry the
+#     build host's uid/gid).  doas must be setuid-root, and its config must be
+#     root-owned and not group/other-writable, or doas refuses to run.
+chown 0:0 /usr/bin/doas /etc/doas.conf 2>/dev/null
+chmod 4755 /usr/bin/doas
+chmod 0644 /etc/doas.conf
+chown 0:0 /etc/dropbear/dropbear_*_host_key 2>/dev/null
+chmod 0600 /etc/dropbear/dropbear_*_host_key
+chown -R 1000:1000 /home/ae350 2>/dev/null
+
+# 4. Run the start scripts in lexical order (sysv-style rc.d).
+for s in /etc/init.d/S??* ; do
+	[ -x "$s" ] && "$s" start
+done
+
+# 5. Banner.
+echo
+echo "==================================================="
+echo "  Linux is ALIVE on the Gowin AE350 A25            "
+echo "  single-hart soft-atomics kernel + musl userspace "
+echo "==================================================="
+uname -a
+echo

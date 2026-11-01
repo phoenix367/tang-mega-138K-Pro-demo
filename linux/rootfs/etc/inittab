@@ -1,0 +1,20 @@
+# /etc/inittab -- busybox init configuration (Gowin AE350 A25).
+# Format: <id>:<runlevels>:<action>:<process>   (id = tty for the process)
+
+# System init: mount filesystems, set hostname, bring up services.
+::sysinit:/etc/init.d/rcS
+
+# Login on the serial console: getty prints /etc/issue + prompts for a user,
+# then execs login (password auth via /etc/shadow).  Respawned after logout.
+# -L = local line (ignore modem carrier on the bare UART) so the prompt shows.
+ttyS0::respawn:/sbin/getty -L 115200 ttyS0 vt100
+
+# VT 1 (the LCD) belongs to the LVGL desktop (/etc/init.d/S70desktop ->
+# lvdesk), which switches it to graphics mode; no getty there.  To get a
+# text console on the LCD instead: "S70desktop stop", then
+# getty -L 38400 tty1 linux (keys arrive from inputd's virtual keyboard).
+
+# Reboot on Ctrl-Alt-Del; rcK stops services + syncs + quiet remount-ro.
+::ctrlaltdel:/sbin/reboot
+::shutdown:/etc/init.d/rcK
+::restart:/sbin/init

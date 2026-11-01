@@ -1,0 +1,24 @@
+#!/bin/busybox sh
+# /etc/init.d/S50ssh -- Dropbear SSH server.
+KEYS="-r /etc/dropbear/dropbear_ed25519_host_key -r /etc/dropbear/dropbear_rsa_host_key"
+case "$1" in
+	start)
+		# Regenerate any missing host key (baked keys are normally present;
+		# the rootfs is RAM so this is just a safety net).
+		[ -f /etc/dropbear/dropbear_ed25519_host_key ] || \
+			dropbearkey -t ed25519 -f /etc/dropbear/dropbear_ed25519_host_key >/dev/null 2>&1
+		[ -f /etc/dropbear/dropbear_rsa_host_key ] || \
+			dropbearkey -t rsa -s 2048 -f /etc/dropbear/dropbear_rsa_host_key >/dev/null 2>&1
+		dropbear -p 22 $KEYS
+		echo "sshd: dropbear listening on :22"
+		;;
+	stop)
+		killall dropbear 2>/dev/null
+		;;
+	restart|reload)
+		"$0" stop
+		"$0" start
+		;;
+	*)
+		echo "usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

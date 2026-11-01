@@ -1,0 +1,12 @@
+[General]
+file=apb_sd_host
+ipc_version=4
+module=APB_SD_Host_Top
+target_device=gw5ast138b-007
+type=apb_sd_host
+version=1.0
+
+[Config]
+FIFO_Depth=4
+LANG=0
+Synthesis_tool=GowinSynthesis

@@ -1,0 +1,4 @@
+#!/bin/sh
+# busybox has no ssh; map `ssh` to Dropbear's client (ssh-compatible CLI).
+#   ssh user@host [cmd]   ==  dbclient user@host [cmd]
+exec /usr/bin/dbclient "$@"
