@@ -26,7 +26,7 @@ atomic read-modify-write with interrupt-disabled plain loads and stores. See
 | Keyboard / mouse | — | `inputd` → `/dev/uinput` | sent from the PC over TCP (`src/apps/desktop/host/netinput.py`) |
 | Console | — | UART2, 115200 | header pin B19; `scripts/uart_console.py` |
 
-Current state in flash: gateware **Build 65**, kernel **#71** (2026-11-01).
+Current state in flash: gateware **Build 65**, kernel **#72** (2026-11-02).
 
 ## Repository layout
 
