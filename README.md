@@ -28,6 +28,18 @@ atomic read-modify-write with interrupt-disabled plain loads and stores. See
 
 Current state in flash: gateware **Build 65**, kernel **#72** (2026-11-02).
 
+## The desktop
+
+`lvdesk` (LVGL 9.6, static musl, `src/apps/desktop/`) runs on the 5" panel; keyboard and
+mouse come from a PC over TCP. The status bar shows link state, CPU, die temperature, fan
+rpm, free memory and the clock. Screens captured from the board's framebuffer:
+
+![Home screen: eight tiles for System, Files, Audio, Network, Console, Settings, Date & Time and About](doc/images/desktop-home.png)
+
+| System: CPU load, memory, on-die sensors, fan | Date & Time: clock and tzdata time zone |
+|---|---|
+| ![System panel](doc/images/desktop-system.png) | ![Date & Time panel](doc/images/desktop-datetime.png) |
+
 ## Repository layout
 
 ```
