@@ -16,6 +16,8 @@
 # Gowin programmer (Programmer/bin/50-programmer_usb.rules) must already allow that user.
 set -euo pipefail
 
+case "${1:-}" in -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d' | cut -c3-; exit 0 ;; esac
+
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/.." && pwd)
 [ -f "$HERE/.env" ] && { set -a; . "$HERE/.env"; set +a; }
