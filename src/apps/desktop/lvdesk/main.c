@@ -283,10 +283,24 @@ lv_obj_t *desk_clock_icon(lv_obj_t *parent, int size)
 }
 
 /* ---- status bar ------------------------------------------------------- */
+/* follow /etc/timezone (written by the Date & Time panel, or by hand) so this
+ * process's clock never disagrees with `date` in a shell */
+static void tz_follow(void)
+{
+    static char cur[128] = "";
+    char z[128] = "";
+    if (sysinfo_read_file("/etc/timezone", z, sizeof(z)) > 0) z[strcspn(z, "\n")] = 0;
+    if (strcmp(z, cur) == 0) return;
+    strcpy(cur, z);
+    if (z[0]) setenv("TZ", z, 1); else unsetenv("TZ");
+    tzset();
+}
+
 static void bar_update(lv_timer_t *t)
 {
     (void)t;
     sysinfo_sample(&s_si);
+    tz_follow();
     time_t now = time(NULL);
     struct tm tm;
     localtime_r(&now, &tm);
