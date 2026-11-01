@@ -58,6 +58,11 @@ COPY PATCHES/0012-musl-riscv32-soft-atomics.patch /tmp/PATCHES/
 RUN set -eux; /tmp/scripts/build_musl_toolchain.sh /opt/toolchains/riscv32-ilp32d--musl--stable-2025.08-1; \
     rm -rf /tmp/scripts /tmp/PATCHES
 
+# Debian's mkimage (u-boot-tools) for src/firmware/payload when the submodule's host-built
+# tools/mkimage was linked on another machine. Late layer: keeps the toolchain layers cached.
+RUN apt-get update && apt-get install -y --no-install-recommends u-boot-tools \
+    && rm -rf /var/lib/apt/lists/*
+
 # Unprivileged user matching the host's uid/gid so files written into the mounted repo
 # belong to the host user. dialout for the UART, plugdev for the programmer.
 RUN groupadd -g "${BUILD_GID}" builder 2>/dev/null || true; \

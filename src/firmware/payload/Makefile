@@ -9,8 +9,11 @@
 # Andes bare-metal GCC (nds32le-elf-newlib-v5) under ANDES_ROOT; override CROSS for another.
 ANDES_ROOT ?= /mnt/data/toolchains
 CROSS      ?= $(ANDES_ROOT)/nds32le-elf-newlib-v5/bin/riscv32-elf-
-# U-Boot's mkimage (built in the U-Boot submodule); override if elsewhere.
-MKIMAGE ?= ../../../external/u-boot/tools/mkimage
+# mkimage: the one built in the U-Boot submodule when it runs on this host (a host tool
+# built on another machine / glibc, e.g. on the host vs. in docker/run.sh, may not), else
+# the distro's (Debian: u-boot-tools). Override MKIMAGE= to force one.
+UBOOT_MKIMAGE := ../../../external/u-boot/tools/mkimage
+MKIMAGE ?= $(shell $(UBOOT_MKIMAGE) -V >/dev/null 2>&1 && echo $(UBOOT_MKIMAGE) || echo mkimage)
 
 CC      := $(CROSS)gcc
 OBJCOPY := $(CROSS)objcopy
