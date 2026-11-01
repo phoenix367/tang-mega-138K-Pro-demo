@@ -23,9 +23,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/file.h>
 #include <sys/ioctl.h>
 #include <time.h>
 #include <unistd.h>
+
+#define LOCK_FILE "/run/lvdesk.lock"
+#define EXIT_ALREADY_RUNNING 3   /* S70desktop stops its restart loop on this */
 
 lv_obj_t *g_content;
 lv_display_t *g_disp;
@@ -44,6 +48,38 @@ static uint32_t tick_ms(void)
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint32_t)(ts.tv_sec * 1000ULL + ts.tv_nsec / 1000000ULL);
+}
+
+/* ---- single instance -------------------------------------------------- */
+/* Two desktops would fight over /dev/fb0 and the input devices (it happened:
+ * the supervisor loop in S70desktop restarted lvdesk after a stray killall and
+ * a second "S70desktop start" added another).  An exclusive flock on a file in
+ * /run makes any later copy exit at once.  The lock lives with the open file
+ * description, so it is released whenever this process ends, crash included;
+ * the fd is close-on-exec, so the children we spawn (wavplay, reboot, popen)
+ * do not inherit it.  The pid is written for diagnostics only. */
+static int single_instance(void)
+{
+    int fd = open(LOCK_FILE, O_RDWR | O_CREAT | O_CLOEXEC, 0644);
+    if (fd < 0) {
+        fprintf(stderr, "lvdesk: cannot open %s: %s\n", LOCK_FILE, strerror(errno));
+        return -1;
+    }
+    if (flock(fd, LOCK_EX | LOCK_NB) < 0) {
+        char buf[32] = "";
+        ssize_t n = (errno == EWOULDBLOCK) ? read(fd, buf, sizeof buf - 1) : 0;
+        if (n > 0) buf[n] = '\0';
+        for (char *p = buf; *p; p++) if (*p == '\n') *p = '\0';
+        fprintf(stderr, "lvdesk: already running%s%s\n", *buf ? ", pid " : "", buf);
+        close(fd);
+        return -1;
+    }
+    if (ftruncate(fd, 0) == 0) {
+        char buf[32];
+        int n = snprintf(buf, sizeof buf, "%d\n", (int)getpid());
+        if (write(fd, buf, n) < 0) { /* diagnostics only */ }
+    }
+    return fd;   /* kept open for the lifetime of the process */
 }
 
 /* ---- VT handling ------------------------------------------------------ */
@@ -297,6 +333,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "-T")) use_tty = false;      /* leave the VT alone (debug) */
         else { fprintf(stderr, "usage: lvdesk [-f /dev/fbN] [-p panel] [-T]\n"); return 2; }
     }
+    if (single_instance() < 0) return EXIT_ALREADY_RUNNING;
     signal(SIGINT, on_signal);
     signal(SIGTERM, on_signal);
     signal(SIGHUP, on_signal);

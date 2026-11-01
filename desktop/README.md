@@ -46,7 +46,11 @@ PC: host/netinput.py  --tcp 5555-->  board: inputd  --/dev/uinput-->  /dev/input
     exit), status bar (clock, IP, CPU %, die temperature, fan rpm — red "FAN
     STOPPED" when the tacho gives no pulses, free memory), home tile
     grid, panel container with Back. `-p <panel>` opens a panel at start (for
-    screenshots), `-T` leaves the VT alone.
+    screenshots), `-T` leaves the VT alone. Only one copy runs: `lvdesk` takes
+    an exclusive `flock` on `/run/lvdesk.lock` and a second copy exits with code
+    3 ("already running, pid N"); `S70desktop start` likewise refuses while its
+    supervisor is alive and the loop stops on exit code 3. (Two desktops once
+    shared the framebuffer after a stray `killall lvdesk` + a second `start`.)
   - `input.c` — own evdev drivers (LVGL's built-in one drops printable keys):
     pointer with ABS/REL and wheel-to-scroll, keyboard with US layout, Shift/Caps,
     LVGL navigation keys, autorepeat; devices are grabbed (`EVIOCGRAB`) and
@@ -92,7 +96,7 @@ desktop/host/netinput.py --snapshot lcd.ppm
 On the board: `S70desktop stop` / `start` to get the LCD back as a text console
 (`getty -L 38400 tty1 linux` then works with the network keyboard), `S60inputd`
 likewise for the bridge. `lvdesk -p system` etc. from a root shell opens a panel
-directly.
+directly (after `S70desktop stop`: the running desktop holds the instance lock).
 
 ## Notes
 
