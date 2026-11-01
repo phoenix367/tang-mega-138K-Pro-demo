@@ -43,7 +43,7 @@ Those are unrelated to this atomics issue.)
 ## Evidence (bare-metal firmware probe)
 
 Firmware runs the SDK BSP `__platform_init` (cache enable) then tests atomics directly.
-`firmware/src/main.c` → `amo_at()` (hot-line) and `test_amo_cold()` (`[A]/[C]/[D]`).
+`src/firmware/src/main.c` → `amo_at()` (hot-line) and `test_amo_cold()` (`[A]/[C]/[D]`).
 
 CPU state at test time (identical in firmware **and** U-Boot):
 ```
@@ -129,12 +129,12 @@ Memories, ECC for L1" — **no L2**.
 The project is left on the **Customized-AHB-DDR3** configuration (DDR works; only
 atomics-on-miss are affected):
 
-- `src/gw_ahb_ddr3_top.v`, `src/gw_ahb_ddr3.v`,
-  `src/ddr3_memory_interface/ddr3_memory_interface.v` (from SDK `ae350_customized`),
+- `src/rtl/gw_ahb_ddr3_top.v`, `src/rtl/gw_ahb_ddr3.v`,
+  `src/rtl/ddr3_memory_interface/ddr3_memory_interface.v` (from SDK `ae350_customized`),
   registered in `mega_138K_test.gprj`.
 - SoC regenerated with `ENABLE_CUSTOMIZED_DATA=true`, `ENABLE_DDR3=false`,
   `ENABLE_SPI_FLASH=true`, `ENABLE_EXTENDED_APB_SLAVE=true` (SD controller kept).
-- `src/ae350_demo.v`: SoC `DDR_H*` AHB master ↔ `gw_ahb_ddr3_top` ↔ DDR3 PHY.
+- `src/rtl/ae350_demo.v`: SoC `DDR_H*` AHB master ↔ `gw_ahb_ddr3_top` ↔ DDR3 PHY.
 - `.cst`/`.sdc`: DDR3 DLL/clock paths updated to
   `u_gw_ahb_ddr3_top/u_gw_ahb_ddr3/u_ddr3_memory_ahb_top/u_ddr3/gw3_top/u_ddr_phy_top/...`.
 

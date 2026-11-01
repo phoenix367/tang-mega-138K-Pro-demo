@@ -1,6 +1,6 @@
 # The eth_dma engine
 
-`eth_dma/` is a custom descriptor-ring DMA engine that replaces the stock
+`src/rtl/eth_dma/` is a custom descriptor-ring DMA engine that replaces the stock
 single-frame PIO bridge on the Gowin TSE MAC. It streams frames between the MAC
 (125 MHz byte stream) and rings of fixed-size buffers in DRAM, reached over the
 SoC's EXTM external-AHB-master port. The CPU configures it through a CSR block on
@@ -52,7 +52,7 @@ graph TB
   CSR <-->|"miim_*"| MAC
 ```
 
-RTL files (`eth_dma/rtl/`):
+RTL files (`src/rtl/eth_dma/rtl/`):
 
 | File | Role |
 |---|---|

@@ -248,7 +248,7 @@ therefore lose ~5% of frames (RX_DROP == host retransmits). Next lever: INCR
 bursts / 64-bit writes in `ahb_master` and more RX buffering.
 
 Follow-ups (Oct 2026):
-- **PHY reset on reconfiguration** (`src/ae350_demo.v`): `PHY_RST_N` used to be
+- **PHY reset on reconfiguration** (`src/rtl/ae350_demo.v`): `PHY_RST_N` used to be
   just the S3 button, so an FPGA reload stopped PHY_CLK under a running PHY.
   After that the RTL8211F could no longer train gigabit (downshifted to 100M at
   ~15 s, on every later load, even at the U-Boot prompt) until a power cycle.

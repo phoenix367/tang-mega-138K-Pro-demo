@@ -21,16 +21,16 @@ set(GOWIN_PATH  "/mnt/data/Gowin_V1.9.12.02_SP2_linux" CACHE PATH   "Gowin EDA i
 set(DEVICE      "GW5AST-138B"          CACHE STRING "programmer_cli --device string")
 set(TOP_MODULE  "ae350_demo_top"       CACHE STRING "Top module for synthesis")
 set(FW_SPIADDR  "0x600000"             CACHE STRING "SPI-flash offset for the firmware (maps to CPU 0x80000000)")
-set(FW_GCC_DIR  ""                     CACHE PATH   "Override RISC-V toolchain bin dir for the firmware (else firmware/Makefile default)")
+set(FW_GCC_DIR  ""                     CACHE PATH   "Override RISC-V toolchain bin dir for the firmware (else src/firmware/Makefile default)")
 set(UBOOT_DIR   "$ENV{HOME}/projects/u-boot" CACHE PATH "U-Boot tree (configured for AE350 XIP hard-float)")
 
 set(REPO        "${CMAKE_CURRENT_SOURCE_DIR}")
 set(SCRIPTS     "${REPO}/scripts")
-set(FW_DIR      "${REPO}/firmware")
+set(FW_DIR      "${REPO}/src/firmware")
 set(BITSTREAM   "${REPO}/impl/pnr/mega_138K_test.fs")
 set(FIRMWARE_BIN "${FW_DIR}/build/ae350_fw.bin")
 set(UBOOT_IMAGE "${UBOOT_DIR}/u-boot-ae350-xip.bin")
-set(PAYLOAD_DIR  "${REPO}/payload")
+set(PAYLOAD_DIR  "${REPO}/src/firmware/payload")
 set(PAYLOAD_IMG  "${PAYLOAD_DIR}/payload.img")
 set(PAYLOAD_SPIADDR "0x800000" CACHE STRING "SPI-flash offset for the bootm payload (maps to CPU 0x80200000)")
 set(APP_IMAGE    "${CMAKE_BINARY_DIR}/ae350-app.bin")  # combined u-boot+dtb+payload @ 0x600000
@@ -57,7 +57,7 @@ add_custom_target(hw_all
     COMMENT "Synthesis + PnR + bitstream -> impl/pnr/mega_138K_test.fs")
 
 # ===========================================================================
-# 2. Test firmware  (firmware/Makefile -> ae350_fw.bin)
+# 2. Test firmware  (src/firmware/Makefile -> ae350_fw.bin)
 # ===========================================================================
 if(FW_GCC_DIR)
     set(FW_MAKE_ARGS "GCC_DIR=${FW_GCC_DIR}")
@@ -66,7 +66,7 @@ endif()
 add_custom_target(firmware
     COMMAND make -C ${FW_DIR} ${FW_MAKE_ARGS}
     USES_TERMINAL
-    COMMENT "Build the AE350 test firmware -> firmware/build/ae350_fw.bin")
+    COMMENT "Build the AE350 test firmware -> src/firmware/build/ae350_fw.bin")
 
 add_custom_target(firmware-clean
     COMMAND make -C ${FW_DIR} clean

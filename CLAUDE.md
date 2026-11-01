@@ -13,70 +13,70 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    imported from `~/Downloads/RiscV_AE350_SOC_V1.3/.../Tang_MEGA_138K_Pro_Dock`. Boots
    from SPI flash, runs DDR3 data memory, UART2, GPIO (3 LEDs + 3 keys), PIT/WDT/RTC,
    JTAG debug. Two PLLs (`gowin_pll_ae350` → 800 MHz core + 50 MHz AHB/APB + 10 MHz
-   RTC; `gowin_pll_ddr3` → 400 MHz DDR3, netlist `src/ddr3_memory_interface_1g/`). The SoC's
+   RTC; `gowin_pll_ddr3` → 400 MHz DDR3, netlist `src/rtl/ddr3_memory_interface_1g/`). The SoC's
    100 MHz data-memory clock `DDR_CLK` is the DDR3 IP's user clock (`clk_out`, Build 64+), so
    the DDR bridge is single-clock (`SYNC_CLK=1`); the AE350 PLL's 100 MHz CLKOUT0 is unused.
    The DDR3 IP's 50 MHz reference input is the board clock `CLK` (Build 65+, DDR3 PLL
    CLKOUT0 unused). `APB_CLK` must stay on its own PLL output even though it is 1:1 with
    `AHB_CLK`: fed from the AHB_CLK net the SoC's PLIC drops interrupt completions (audio
    stalls) — see doc/06-key-findings.md. The 16 global clock wires are all used and pinned
-   in `src/ae350_demo.cst` (`CLOCK_LOC`): the RGMII RX clock must stay on an LW wire
-   (`BUFG[8]`), on a PRIMARY wire its capture window shifts and gigabit RX breaks. `src/riscv_ae350_soc/` is encrypted Andes IP
+   in `src/rtl/ae350_demo.cst` (`CLOCK_LOC`): the RGMII RX clock must stay on an LW wire
+   (`BUFG[8]`), on a PRIMARY wire its capture window shifts and gigabit RX breaks. `src/rtl/riscv_ae350_soc/` is encrypted Andes IP
    (`.v` synth source + `.vo` sim netlist) — regenerate via the IDE IP wizard, don't
-   hand-edit. `src/key_debounce.v` debounces the DDR3/AE350 resets.
+   hand-edit. `src/rtl/key_debounce.v` debounces the DDR3/AE350 resets.
    DDR3 is **1 GB** (both x16 chips on the 32-bit bus, 15 row bits,
-   `src/ddr3_memory_interface_1g/`, bridge `ADDR_BITS = 30`, 256-bit datapath: one BL8 =
-   one 32 B line — see ddr_bridge/README.md; the x16 / 512 MB netlist stays disabled in
-   `src/ddr3_memory_interface_512/`).
-   DDR3 path: SoC data-memory AHB (`DDR_H*`) -> **`ddr_bridge/`** (`ahb_ddr3_top`,
-   line-buffered bridge, replaces Gowin's `src/gw_ahb_ddr3*.v`, now `enable="0"`) ->
-   DDR3 IP. `src/ddr_perf.v` = bus perf counters/trace + bridge MODE register on the
+   `src/rtl/ddr3_memory_interface_1g/`, bridge `ADDR_BITS = 30`, 256-bit datapath: one BL8 =
+   one 32 B line — see src/rtl/ddr_bridge/README.md; the x16 / 512 MB netlist stays disabled in
+   `src/rtl/ddr3_memory_interface_512/`).
+   DDR3 path: SoC data-memory AHB (`DDR_H*`) -> **`src/rtl/ddr_bridge/`** (`ahb_ddr3_top`,
+   line-buffered bridge, replaces Gowin's `src/rtl/gw_ahb_ddr3*.v`, now `enable="0"`) ->
+   DDR3 IP. `src/rtl/ddr_perf.v` = bus perf counters/trace + bridge MODE register on the
    SoC external APB @ `0xF8000000` (reset MODE 0x10000 = overlapped reads; needs the
    Linux page-table writeback patch `PATCHES/0005`, else use 0x100 — see
-   ddr_bridge/README.md). Wide event counters use `src/pipe_counter.v` (byte slices
+   src/rtl/ddr_bridge/README.md). Wide event counters use `src/rtl/pipe_counter.v` (byte slices
    with registered carries: GowinSyn builds a 32-bit `+1` as a 12-level LUT chain).
    EXTS register reads take one wait state (read data registered at the top level
    before the SoC's pins; writes zero-wait) — see doc/06-key-findings.md, timing section. Bridge RTL is validated with
-   `ddr_bridge/tb/run_all.sh` (iverilog random regression, directed tests, mutation
+   `src/rtl/ddr_bridge/tb/run_all.sh` (iverilog random regression, directed tests, mutation
    check, and a formal proof of the AHB side with yosys + ABC).
-   **LCD:** `video/` = scan-out core for the Sipeed 5" 800×480 RGB panel (regs on EXTS
+   **LCD:** `src/rtl/video/` = scan-out core for the Sipeed 5" 800×480 RGB panel (regs on EXTS
    @ `0xE8001000`, pixel clock = Ethernet PLL CLKOUT2 33.3 MHz). It reads the RGB565
    framebuffer straight from DDR3 through the bridge's read-only **video port** (not
    EXTM — reading over EXTM cost the CPU ~37% of its memory bandwidth). Linux fbdev
-   driver `PATCHES/0006` (software rendering, fbcon); sim `video/tb/run_tb.sh`,
-   hardware check `tests/fbtest.c`. See video/README.md.
-   **Audio:** `audio/` = PT8211 (I2S-like DAC, E22/F24/G24, PA_EN H17) output core on
+   driver `PATCHES/0006` (software rendering, fbcon); sim `src/rtl/video/tb/run_tb.sh`,
+   hardware check `src/apps/tests/fbtest.c`. See src/rtl/video/README.md.
+   **Audio:** `src/rtl/audio/` = PT8211 (I2S-like DAC, E22/F24/G24, PA_EN H17) output core on
    EXTS @ `0xE8002000`, 2048-frame FIFO + threshold IRQ (EXT_INT[1] = PLIC source 11),
    NCO sample rate, frame counter + CRC for bit-exact checks, and a 64-bit DMA fetch
    engine (arbiter master 3 on EXTM) that reads the ALSA buffer as a ring up to a
    driver-committed byte limit (the SoC's own DMAC hangs on any fabric access, see
    doc/06-key-findings.md). Linux ALSA driver `PATCHES/0007` (`gowin-pt8211`, card 0;
-   DMA mode by default, `pio=1` for the old interrupt-fill scheme). Sim `audio/tb/run_tb.sh`, hardware check
-   `tests/wavplay.c` (raw ALSA ioctl player, 16-bit mono/stereo WAV). See audio/README.md.
-   **Sensors:** `sensor/` = the FPGA's two hard ADC cores (ADCLRC die temperature,
+   DMA mode by default, `pio=1` for the old interrupt-fill scheme). Sim `src/rtl/audio/tb/run_tb.sh`, hardware check
+   `src/apps/tests/wavplay.c` (raw ALSA ioctl player, 16-bit mono/stereo WAV). See src/rtl/audio/README.md.
+   **Sensors:** `src/rtl/sensor/` = the FPGA's two hard ADC cores (ADCLRC die temperature,
    ADCULC supply rails; primitives instantiated directly, no pins, internal OSC) behind
    a free-running scan sequencer on EXTS @ `0xE8004000` (`HADDR[14]`). Linux hwmon
    driver `PATCHES/0008` (`gowin-adc`: temp1_input, in0..7). The AE350 SoC itself has no
    thermal block; the board has no current sense, so no power measurement. See
-   sensor/README.md.
-   **Desktop + input:** `desktop/` = LVGL 9.6 desktop (`lvdesk`, static musl) on
+   src/rtl/sensor/README.md.
+   **Desktop + input:** `src/apps/desktop/` = LVGL 9.6 desktop (`lvdesk`, static musl) on
    `/dev/fb0` with system monitor, file browser, WAV player, network, console and
    settings panels, started on VT 1 by `S70desktop`; keyboard/mouse come from the PC
-   over TCP (`desktop/host/netinput.py` → `inputd` on the board → `/dev/uinput`, kernel
+   over TCP (`src/apps/desktop/host/netinput.py` → `inputd` on the board → `/dev/uinput`, kernel
    #59+ with EVDEV/UINPUT). LVGL sources live in `~/projects/ae350_linux_user_level/lvgl/`.
-   See desktop/README.md.
-   **Fan:** `fan/` = PWM + tacho core on EXTS @ `0xE8008000` (`HADDR[15]`) for the
+   See src/apps/desktop/README.md.
+   **Fan:** `src/rtl/fan/` = PWM + tacho core on EXTS @ `0xE8008000` (`HADDR[15]`) for the
    Dock's 4-pin fan header M1 (PWM T17, tacho T18, bank 2). Dock rev 4071d drives the
    fan's PWM pin, rev 4071f switches its 5 V through a P-MOSFET (inverted: DT
    `gowin,pwm-inverted`). Linux hwmon `PATCHES/0009` (`gowin-fan`: pwm1, fan1_input),
-   fan curve `S80fan`. See fan/README.md.
-   **microSD:** `sdhost/` = native 4-bit SD host with CRC engines and a 64-bit DMA
+   fan curve `S80fan`. See src/rtl/fan/README.md.
+   **microSD:** `src/rtl/sdhost/` = native 4-bit SD host with CRC engines and a 64-bit DMA
    master (arbiter master 2) on EXTS @ `0xE8020000` (`HADDR[17]`), IRQ EXT_INT[2] =
    PLIC 12, for the Dock slot J19 (CLK D23, CMD D24, DAT0..3 H23/J23/A25/B25, detect
    J15). Linux `PATCHES/0011` (`gowin-sdhost` mmc_host, 64 KB bounce buffer) →
-   `/dev/mmcblk0`, mounted at `/mnt/sd` by `S45sdcard`. `sdspi/` (SPI-mode master +
+   `/dev/mmcblk0`, mounted at `/mnt/sd` by `S45sdcard`. `src/rtl/sdspi/` (SPI-mode master +
    `spi-gowin` + mmc_spi, PATCHES/0010) is the earlier, slower route, kept but disabled.
-   Gowin's native SD IPs never answered on this board; see sdhost/README.md.
+   Gowin's native SD IPs never answered on this board; see src/rtl/sdhost/README.md.
 2. **`led_blink` — a disabled sample.** Counter-based LED blinker (`CLK_FREQ_HZ` /
    `BLINK_HZ` params) on the board's `clk`=P16 / `rst_n`=K16 / `led`=J14. Files present
    but `enable="0"` in the `.gprj`. To switch back to it: enable its three files, disable
@@ -87,10 +87,10 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
 - `scripts/gw_run.sh` + `gw_run.tcl` — drive `gw_sh` (synthesis / PnR / bitstream)
   headlessly. `scripts/gw_program.sh` — program the board via `programmer_cli`.
   All adapted from `~/projects/tang_nano_9K_ov7670`.
-- `firmware/` — bare-metal **AE350 test firmware** (RISC-V, rv32imac) that runs on
+- `src/firmware/` — bare-metal **AE350 test firmware** (RISC-V, rv32imac) that runs on
   the SoC: UART2 banner/heartbeat + LED waterfall + key readback. Self-contained
   build (`make`) using the SDK BSP; flashed to SPI flash `0x600000` via
-  `firmware/flash_fw.sh`. See `firmware/README.md`.
+  `src/firmware/flash_fw.sh`. See `src/firmware/README.md`.
 - `impl/mega_138K_test_process_config.json` — synthesis, place-and-route, and bitstream
   settings. `TopModule` selects the active top. Generated build output
   (`impl/gwsynthesis/`, `impl/pnr/`) also lands under `impl/`.
@@ -146,7 +146,7 @@ synthesizes and place-and-routes unchanged on `-007` — verified (≈5% LUT, 8%
 
 ## Working in this repo
 
-- Add HDL to `src/` and register each file in the `<FileList>` of `mega_138K_test.gprj`
+- Add HDL to `src/rtl/` and register each file in the `<FileList>` of `mega_138K_test.gprj`
   (the GUI does this automatically; if editing by hand, mirror Gowin's `<File>` entries
   with the right `type=` — `file.verilog`, `file.cst`, `file.sdc`).
 - Every port needs a valid `IO_LOC` in the `.cst` before place-and-route — given the

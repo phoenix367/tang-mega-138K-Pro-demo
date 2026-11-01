@@ -79,7 +79,7 @@ git apply 0011-linux-gowin-sdhost.patch                       # in linux/ (indep
   For whole pages, the new pgd and freshly zeroed PTE tables, every line is written back.
 - **Why:** the A25 hardware page-table walker reads page tables from the bus, not
   through the L1 D-cache, and nothing makes it coherent with dirty lines. The slow
-  stock DDR bridge hid this. With the line-buffered `ddr_bridge/`, fork/exec
+  stock DDR bridge hid this. With the line-buffered `src/rtl/ddr_bridge/`, fork/exec
   oopsed: a new pgd was walked with stale kernel entries.
 - Runtime switch `/sys/module/kernel/parameters/a25_ptwb` (default 1, boot
   `a25_ptwb=0`). Verified on HW (kernel #46): bridge MODE 0 / 0x10000 at 200 MHz and
@@ -136,20 +136,20 @@ with a coherence manager (or AXI exclusive-access support).
   0..255 over the core's PERIOD) and `fan1_input` (RPM from the one-second edge count,
   `gowin,pulses-per-rev`), `fan1_fault`. DT `gowin,pwm-inverted` for Dock rev 4071f
   (P-MOSFET supply switch), `gowin,pwm-frequency` to change the 25 kHz default.
-  Gateware: `fan/` (Build 57+). Kernel #60.
+  Gateware: `src/rtl/fan/` (Build 57+). Kernel #60.
 
 ## 0010 — Linux SPI master driver for the gateware's microSD SPI core
 - New `drivers/spi/spi-gowin.c` (`SPI_GOWIN`, DT `"gowin,ae350-spi"`, node
   `spi0: spi@e8010000`): buffered, polled `spi_controller` (2 KB TX/RX buffers, CS as a
   register bit, SCK = 50 MHz / (2·(DIV+1))). The card itself is driven by the mainline
   `mmc_spi` host (`CONFIG_MMC_SPI`, DT child `mmc-spi-slot`, 25 MHz, 3.3 V, polled card
-  detect) → `/dev/mmcblk0`. Gateware: `sdspi/` (Build 58+). Kernel #62.
+  detect) → `/dev/mmcblk0`. Gateware: `src/rtl/sdspi/` (Build 58+). Kernel #62.
 
 ## 0011 — Linux MMC host driver for the gateware's native SD host core
 - New `drivers/mmc/host/gowin-sdhost.c` (`MMC_GOWIN_SDHOST`, DT `"gowin,ae350-sdhost"`,
   node `sdhost0: mmc@e8020000`, PLIC source 12): a plain `mmc_host` — commands with
   48/136-bit responses, data via the core's 64-bit DMA through a 64 KB bounce buffer
   (streaming DMA mapping, cache ops from 0004), completion by interrupt, driver-issued
-  CMD12. On the first fast read the driver tunes the clock/sampling phase (fastest of 25 MHz late, 25 MHz on-edge, 12.5 MHz, ... that passes four clean reads of block 0). Gateware: `sdhost/` (Build 61+). Kernel #66. The SPI route
+  CMD12. On the first fast read the driver tunes the clock/sampling phase (fastest of 25 MHz late, 25 MHz on-edge, 12.5 MHz, ... that passes four clean reads of block 0). Gateware: `src/rtl/sdhost/` (Build 61+). Kernel #66. The SPI route
   (0010) stays available but its core is no longer in the gateware.
 

@@ -6,10 +6,10 @@ everything else is RISC-V cross-compilation.
 ```mermaid
 flowchart TD
   subgraph GW["Gateware (Gowin gw_sh)"]
-    SRC["src/*.v + eth_dma/rtl + .cst + .sdc"] --> SYN["GowinSyn"] --> PNR["Place & Route"] --> FS["impl/pnr/*.fs<br/>(bitstream)"]
+    SRC["src/rtl/*.v + src/rtl/eth_dma/rtl + .cst + .sdc"] --> SYN["GowinSyn"] --> PNR["Place & Route"] --> FS["impl/pnr/*.fs<br/>(bitstream)"]
   end
   subgraph FW["Bare-metal firmware (riscv64-unknown-elf, Vitis)"]
-    FWSRC["firmware/src/main.c + bsp"] --> FWBIN["build/*.bin<br/>(XIP @ 0x80000000)"]
+    FWSRC["src/firmware/src/main.c + bsp"] --> FWBIN["build/*.bin<br/>(XIP @ 0x80000000)"]
   end
   subgraph BOOTSTACK["Linux boot stack (riscv32 linux-gnu + musl)"]
     UB["U-Boot (XIP)"] --> UBIMG["u-boot-ae350-xip.bin"]
@@ -51,7 +51,7 @@ GOWIN_PATH=$GP STAGE=all scripts/gw_run.sh      # both → impl/pnr/mega_138K_te
 - `gw_run.sh` drives `gw_sh` (`open_project` → `run syn|pnr|all`).
 - `gw_sh` needs a **server-based floating license**; if it's down it fails with
   *"License verification failed — Server not responding."* Validate RTL changes
-  with **iverilog** in the meantime (the `eth_dma/tb/` suite).
+  with **iverilog** in the meantime (the `src/rtl/eth_dma/tb/` suite).
 - `Promote_Physical_Constraint_Warning_to_Error: true` — every port needs a valid
   `IO_LOC` or PnR fails (`CT1113`).
 
@@ -142,14 +142,14 @@ in and the kernel reflashed — edits on the live device do **not** persist.
 - Extra static tools cross-built into `/usr/bin`: **htop** (ncurses w/ compiled-in
   terminfo fallbacks), **tcpdump** (+libpcap, run via `doas`), **nstat** (iproute2).
 - Desktop: **lvdesk** (LVGL 9.6 on `/dev/fb0`, `S70desktop`) and **inputd** (uinput
-  bridge fed by `desktop/host/netinput.py` over tcp/5555, `S60inputd`), plus
-  **wavplay**; built with `desktop/Makefile` (`make install` copies them here).
+  bridge fed by `src/apps/desktop/host/netinput.py` over tcp/5555, `S60inputd`), plus
+  **wavplay**; built with `src/apps/desktop/Makefile` (`make install` copies them here).
   Needs `CONFIG_INPUT_EVDEV`/`INPUT_MISC`/`INPUT_UINPUT` (kernel #59+). See
-  desktop/README.md.
+  src/apps/desktop/README.md.
 - Fan: `S80fan` temperature curve for the `gowin-fan` hwmon device (kernel #60+,
-  `PATCHES/0009`, gateware Build 57+). See fan/README.md.
+  `PATCHES/0009`, gateware Build 57+). See src/rtl/fan/README.md.
 - microSD: `S45sdcard` mounts `/dev/mmcblk0(p1)` at `/mnt/sd` (kernel #62+,
-  `PATCHES/0010` spi-gowin + `CONFIG_MMC_SPI`, gateware Build 58+). See sdspi/README.md.
+  `PATCHES/0010` spi-gowin + `CONFIG_MMC_SPI`, gateware Build 58+). See src/rtl/sdspi/README.md.
 
 ## 5. Program the board
 
@@ -161,9 +161,9 @@ GOWIN_PATH=$GP MODE=sram  scripts/gw_program.sh      # run 2
 GOWIN_PATH=$GP MODE=flash scripts/gw_program.sh      # run 6 → config flash @0x0
 
 # boot images via the exFlash bridge (programmer_cli)
-GOWIN_PATH=$GP FW=firmware/build/<app>.bin   SPIADDR=0x600000 firmware/flash_fw.sh  # bare-metal
-GOWIN_PATH=$GP FW=~/projects/u-boot/u-boot-ae350-xip.bin SPIADDR=0x600000 firmware/flash_fw.sh  # U-Boot
-GOWIN_PATH=$GP FW=.../fw_payload_gz.bin      SPIADDR=0x800000 firmware/flash_fw.sh  # kernel payload
+GOWIN_PATH=$GP FW=src/firmware/build/<app>.bin   SPIADDR=0x600000 src/firmware/flash_fw.sh  # bare-metal
+GOWIN_PATH=$GP FW=~/projects/u-boot/u-boot-ae350-xip.bin SPIADDR=0x600000 src/firmware/flash_fw.sh  # U-Boot
+GOWIN_PATH=$GP FW=.../fw_payload_gz.bin      SPIADDR=0x800000 src/firmware/flash_fw.sh  # kernel payload
 ```
 
 > **Programmer quirk:** the exFlash bridge reliably writes only images **based at

@@ -1,0 +1,19 @@
+#!/bin/busybox sh
+# /etc/init.d/S60inputd -- network keyboard/mouse bridge (uinput, TCP :5555).
+# Pair it with src/apps/desktop/host/netinput.py on the PC.
+
+case "$1" in
+	start)
+		inputd -s 800x480 >/dev/null 2>&1 &
+		echo "inputd: virtual mouse+keyboard, feed on tcp/5555"
+		;;
+	stop)
+		killall inputd 2>/dev/null
+		;;
+	restart|reload)
+		"$0" stop
+		"$0" start
+		;;
+	*)
+		echo "usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

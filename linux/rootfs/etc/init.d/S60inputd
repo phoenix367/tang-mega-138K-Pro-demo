@@ -1,6 +1,6 @@
 #!/bin/busybox sh
 # /etc/init.d/S60inputd -- network keyboard/mouse bridge (uinput, TCP :5555).
-# Pair it with desktop/host/netinput.py on the PC.
+# Pair it with src/apps/desktop/host/netinput.py on the PC.
 
 case "$1" in
 	start)

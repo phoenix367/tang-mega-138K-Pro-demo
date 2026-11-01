@@ -42,13 +42,13 @@ be a Gowin/Andes AE350 config *with* a coherence manager.
 
 ## 2. DDR speed: the Gowin AHB bridge was the bottleneck
 
-Measured with the `src/ddr_perf.v` bus monitor (APB @ `0xF8000000`): Gowin's
+Measured with the `src/rtl/ddr_perf.v` bus monitor (APB @ `0xF8000000`): Gowin's
 `gw_ahb_ddr3` turned every 64-bit AHB beat into its own DDR3 command with a full
 clock-domain round trip — ~39 HCLK (0.8 µs) per beat, ~160 HCLK per 32 B L1 line fill
 (the A25 fills lines with WRAP4 64-bit bursts), bus 93 % busy. Hence the old ~6 MB/s.
 
-`ddr_bridge/` replaces it (line buffers, stream prefetch, posted/merged writes) — see
-[ddr_bridge/README.md](../ddr_bridge/README.md). The default MODE 0x10000 (overlapped
+`src/rtl/ddr_bridge/` replaces it (line buffers, stream prefetch, posted/merged writes) — see
+[src/rtl/ddr_bridge/README.md](../src/rtl/ddr_bridge/README.md). The default MODE 0x10000 (overlapped
 reads), with DDR3 at 400 MHz and a 100 MHz bus, is ~23x faster than stock: 148 MB/s
 sequential read, ~1.4 µs per random miss, kernel to `/init` in 2.83 s. At 400 MHz the
 bridge's DDR side runs at 100 MHz; closing timing there needed an issue-slot register
@@ -68,17 +68,17 @@ CPU↔DDR bus clock (`DDR_CLK`) is now **100 MHz**. That took a redesign of the 
 AHB side: the hard macro sits at a fixed spot with ~5–7 ns routes each way, so AHB inputs
 are only registered, `HREADY`/`HRDATA` come from flops, and burst beats are predicted.
 Measured vs 50 MHz: +34% sequential read (148 MB/s), +43% memset, +39% memcpy; kernel to
-`/init` in 2.83 s. See ddr_bridge/README.md.
+`/init` in 2.83 s. See src/rtl/ddr_bridge/README.md.
 
 Board DDR: 2x H5TQ4G63EFR-RDC (4 Gbit x16, 1 GB on a 32-bit bus); the design uses 16 bits
 / 256 MB. The stock IP ran at 200 MHz, below the DDR3 DLL-on minimum (300 MHz), with 2 Gbit
-timings. The active netlist is `src/ddr3_memory_interface_400/`: 400 MHz, with the
+timings. The active netlist is `src/rtl/ddr3_memory_interface_400/`: 400 MHz, with the
 correct 4 Gbit timings. **Caveat:** at 400 MHz gigabit RX sees ~2e-5 frames rejected by
 the MAC CRC check (0 at 200 MHz); see §3.
 
 ## 3. RGMII RX clock must be constrained at 125 MHz
 
-`src/ae350_demo.sdc` originally declared `rgmii_rxclk` at the Gowin example's
+`src/rtl/ae350_demo.sdc` originally declared `rgmii_rxclk` at the Gowin example's
 **20 ns (50 MHz)**, but at 1000BASE-T the PHY drives `RGMII_RXC` at **125 MHz**.
 PnR therefore never optimized the RX capture path for 125 MHz, leaving it
 marginal.
@@ -152,7 +152,7 @@ for DMA to arbitrary DRAM. It was replaced by the custom `eth_ahb_arbiter.v`
 - **`%pK` / `(ptrval)`:** no HW RNG → the pointer-hash key never seeds, breaking
   `netstat`/`ss`. Boot with **`no_hash_pointers`**.
 - **License:** `gw_sh` needs a floating license server; when it's down, validate
-  RTL with iverilog (`eth_dma/tb/`).
+  RTL with iverilog (`src/rtl/eth_dma/tb/`).
 
 ## 8. Rootfs is RAM-only
 
@@ -169,7 +169,7 @@ baked into `linux/rootfs/` and the kernel reflashed. Notable consequences:
 
 ## Atomics on the A25: what the bus sees (2026-10-30)
 
-`tests/amotrace.c` arms the `ddr_perf` transaction trace around a cold-line `lr.w/sc.w`
+`src/apps/tests/amotrace.c` arms the `ddr_perf` transaction trace around a cold-line `lr.w/sc.w`
 and `amoswap.w` (the latter with the ATCWDT200 watchdog armed, since the AMO hangs the
 hart; the trace RAM survives the SoC reset and is dumped after the reboot):
 
@@ -189,7 +189,7 @@ owns (handled inside the L1), and the single-hart soft-atomic builds remain the 
 
 ## The SoC's DMAC (ATCDMAC300) reaches only DDR (2026-10-30)
 
-Probed with `tests/dmactest.c` (programs the DMAC at 0xF0C00000 from Linux through
+Probed with `src/apps/tests/dmactest.c` (programs the DMAC at 0xF0C00000 from Linux through
 `/dev/mem`, watchdog armed; a hang needs a JTAG reload). Memory-to-memory copies through
 the data-memory port work (4 KB verified). Every other target wedged the whole SoC bus so
 hard that not even the watchdog reset recovered it:
@@ -210,9 +210,9 @@ hanging) shows the Gowin AE350 build routes the DMAC master to the data-memory p
 only. The `DMA_REQ`/`DMA_ACK` pins are therefore unusable for fabric peripherals here;
 DMA for fabric cores must come from fabric masters on the EXTM port (Ethernet, SD host,
 LCD) as the design already does. The audio core got one the same day: a 64-bit read
-engine on a fourth arbiter port (`audio/rtl/ahb_arbiter4.v`) that fetches the ALSA
+engine on a fourth arbiter port (`src/rtl/audio/rtl/ahb_arbiter4.v`) that fetches the ALSA
 buffer as a ring up to a driver-committed byte limit, with the driver cleaning the
-cache per committed range (`audio/README.md`).
+cache per committed range (`src/rtl/audio/README.md`).
 
 
 ## Timing closure of the fabric domains (2026-10-31, Build 63)
@@ -223,7 +223,7 @@ slack and making the 100 MHz domains stop depending on placement luck:
 1. **GowinSyn maps `x <= x + 1` as a LUT chain, not an ALU carry chain.** A 32-bit
    incrementer came out as 10–12 LUT levels (10.5 ns with routing); subtractions and
    additions of two variables do get the ALU chain (`COUT -> CIN`, 45 ps per bit).
-   Wide statistics counters are therefore `src/pipe_counter.v`: 8-bit slices with a
+   Wide statistics counters are therefore `src/rtl/pipe_counter.v`: 8-bit slices with a
    registered carry between them. Used by `ddr_perf` (33 counters) and the DDR read BIST.
 2. **Long combinational cones that are consumed once per transaction should be
    staged.** The audio DMA's command size (FIFO level -> room -> three 32-bit compares
@@ -232,7 +232,7 @@ slack and making the 100 MHz domains stop depending on placement luck:
 3. **Routing to the hard SoC's pins dominates on this die.** The EXTS read-data return
    (a slave's register mux -> the top-level 6:1 mux -> `EXTS_HRDATA` pins) was 20.6 ns,
    14 ns of it wire. Register reads now take one wait state (`exts_rd_wait` in
-   `src/ae350_demo.v`): the mux lands in a register, the register drives the pins. All
+   `src/rtl/ae350_demo.v`): the mux lands in a register, the register drives the pins. All
    EXTS slaves are zero-wait and hold their read data through the extra cycle. Writes
    are unchanged. The same applies to anything feeding the SoC's data inputs: the sdhost
    FIFO's 128:1 flop-array read mux into `EXTM_HWDATA` was the domain's second-longest
@@ -281,7 +281,7 @@ hard macro between its AHB-to-APB bridge (the PLIC sits behind it) and two clock
 from one net. The SD host and Ethernet sources, whose lines are low again by the time the
 handler completes, never showed it. Moving `APB_CLK` back to its own PLL output, with
 everything else unchanged, restored audio (324 interrupts for the test set, all bit-exact).
-`APB_CLK` therefore keeps `CLKOUT3`; the SDC comment and `src/ae350_demo.v` say why.
+`APB_CLK` therefore keeps `CLKOUT3`; the SDC comment and `src/rtl/ae350_demo.v` say why.
 
 **Global clock allocation is a lottery, and the RGMII RX clock lost it.** The GW5AST has
 8 PRIMARY and 8 LW global clock wires and this design uses all 16. Removing a PLL output
@@ -291,7 +291,7 @@ PRIMARY wire adds 1.8 ns of insertion delay on this path: the RXD capture window
 `RGMII_Input_Delay` no longer centred the sample, and gigabit receive went from 0 bad
 frames in 35 000 to half of all frames bad and 16 MB downloads timing out. `CLOCK_LOC
 "RGMII_RXC_d" LOCAL_CLOCK` is worse again (plain routing, and ddr3_sysclk broke with it).
-The fix in `src/ae350_demo.cst`: the eight nets that belong on PRIMARY wires are pinned
+The fix in `src/rtl/ae350_demo.cst`: the eight nets that belong on PRIMARY wires are pinned
 with `CLOCK_LOC ... BUFG = CLK`, and the RX clock is pinned to the first LW wire with
 `BUFG[8]` (BUFG[0-7] are PRIMARY, BUFG[8-15] LW -- found by trying; a reset nominated for
 a PRIMARY wire is silently ignored). With that the RGMII capture slacks are back to Build

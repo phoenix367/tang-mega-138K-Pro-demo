@@ -2,7 +2,7 @@
 
 ## 1. System overview
 
-The active design (`ae350_demo_top`, top file `src/ae350_demo.v`) instantiates the
+The active design (`ae350_demo_top`, top file `src/rtl/ae350_demo.v`) instantiates the
 Gowin-provided **AE350 hard SoC** and surrounds it with fabric IP: an external
 DDR3 controller bridge, the Triple-Speed Ethernet MAC, the custom `eth_dma`
 engine, and three PLLs.
@@ -55,7 +55,7 @@ graph TB
   DMA -->|"IRQ"| PLIC
 ```
 
-Key integration facts (`src/ae350_demo.v`):
+Key integration facts (`src/rtl/ae350_demo.v`):
 
 - **`eth_dma` config** hangs off the SoC's **EXTS** external-AHB *slave* port — the
   CPU masters it; register window at **`0xE8000000`**.
@@ -76,7 +76,7 @@ Key integration facts (`src/ae350_demo.v`):
 
 | Region | Base | Size | Notes |
 |---|---|---|---|
-| DDR3 SDRAM (data) | `0x0000_0000` | 1 GB (all of it: 2 x16 chips, 32-bit bus) | DDR_H* AHB → `ddr_bridge/ahb_ddr3_top` → DDR3 PHY (x32, 256-bit user port) |
+| DDR3 SDRAM (data) | `0x0000_0000` | 1 GB (all of it: 2 x16 chips, 32-bit bus) | DDR_H* AHB → `src/rtl/ddr_bridge/ahb_ddr3_top` → DDR3 PHY (x32, 256-bit user port) |
 | Flash XIP (instr.) | `0x8000_0000` | 16 MB | maps to SPI-NOR offset `0x60_0000`; U-Boot runs here |
 | PLIC | `0xE400_0000` | — | interrupt controller |
 | PLMT (mtime) | `0xE600_0000` | — | machine timer, **50 MHz** tick |
@@ -132,7 +132,7 @@ Notes:
 - The **PLMT mtime runs at 50 MHz** — this is the `timebase-frequency` in the
   Linux/U-Boot DTs. The RTC (10 MHz raw, exposed as a 1 Hz calendar) is *not*
   used for fine timing.
-- `rgmii_rxclk` is constrained at **125 MHz (8 ns)** in `src/ae350_demo.sdc` —
+- `rgmii_rxclk` is constrained at **125 MHz (8 ns)** in `src/rtl/ae350_demo.sdc` —
   see [06-key-findings.md](06-key-findings.md) for why the example's 50 ns value
   corrupted large RX frames.
 - The A25 core (and the DDR3 controller) are **hard blocks** — 800 MHz is
@@ -141,7 +141,7 @@ Notes:
 ## 5. Source layout
 
 ```
-src/
+src/rtl/
   ae350_demo.v            top: SoC + PLLs + DDR3 bridge + MAC + eth_dma
   ae350_demo.cst / .sdc   pin + timing constraints
   riscv_ae350_soc/        encrypted Andes AE350 IP (.v synth + .vo sim)
@@ -151,10 +151,10 @@ src/
   ddr3_memory_interface_1g/  hard DDR3 PHY IP netlist (x32, 1 GB; _512 / _400 / plain: older x16 ones, disabled)
   gw_ahb_ddr3*.v          AHB→DDR3 bridge
   triple_speed_ethernet_mac/  Gowin TSE MAC (encrypted)
-eth_dma/
+src/rtl/eth_dma/
   rtl/                    the custom DMA engine (see 05-eth-dma.md)
   tb/                     iverilog testbenches
   lib/                    vendored FPGADesignElements (CDC/FIFO primitives)
-firmware/                 bare-metal AE350 test firmware + DMA self-test
+src/firmware/                 bare-metal AE350 test firmware + DMA self-test
 linux/                    kernel DT, rootfs, initramfs node list, driver copy
 ```

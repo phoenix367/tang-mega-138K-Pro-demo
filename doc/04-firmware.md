@@ -1,6 +1,6 @@
 # Bare-metal firmware
 
-`firmware/src/main.c` is a self-contained rv32imac program (XIP from flash at
+`src/firmware/src/main.c` is a self-contained rv32imac program (XIP from flash at
 `0x8000_0000`, data/stack in DDR) that exercises the SoC and the `eth_dma` engine
 *before* any OS. It is flashed to `0x60_0000` in place of U-Boot.
 
@@ -73,7 +73,7 @@ These wrap the AndeStar V5 L1 CCTL operations. The same pattern is what the Linu
 
 ## Useful firmware CSRs (debug)
 
-`firmware/src/gw_eth_dma.h` mirrors the register map. Debug-only CSRs surface the
+`src/firmware/src/gw_eth_dma.h` mirrors the register map. Debug-only CSRs surface the
 DMA/AHB handshake when bringing up new gateware:
 
 - `TX_DBG 0x70` / `RX_DBG 0x74` = `{cmd_done_cnt[31:16], busy[0]}`

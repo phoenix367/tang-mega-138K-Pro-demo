@@ -6,7 +6,7 @@ build flows share one 16 MB SPI flash:
 | Flow | What it is | Tool | Output |
 |------|-----------|------|--------|
 | **Gateware** | `ae350_demo_top` SoC + `eth_dma` engine | Gowin `gw_sh` | `impl/pnr/mega_138K_test.fs` |
-| **Firmware** | bare-metal RV32 test (`firmware/`, DMA self-test, UART) | Vitis bare-metal GCC | `firmware/build/ae350_fw.bin` |
+| **Firmware** | bare-metal RV32 test (`src/firmware/`, DMA self-test, UART) | Vitis bare-metal GCC | `src/firmware/build/ae350_fw.bin` |
 | **RTL sims** | `eth_dma` testbenches (optional) | `iverilog` | pass/fail on stdout |
 | **Linux boot stack** | U-Boot + OpenSBI + RV32 kernel + busybox | Vitis linux-gnu GCC | `u-boot-ae350-xip.bin`, `fw_payload.bin.gz` |
 
@@ -77,7 +77,7 @@ cd firmware && make            # -> build/ae350_fw.bin   (CFLAGS already include
 Flash + run (this **overwrites U-Boot** at `0x600000` — reflash the boot stack to get
 Linux back):
 ```sh
-GOWIN_PATH=$GP firmware/flash_fw.sh              # writes ae350_fw.bin -> flash 0x600000 (run 55)
+GOWIN_PATH=$GP src/firmware/flash_fw.sh              # writes ae350_fw.bin -> flash 0x600000 (run 55)
 GOWIN_PATH=$GP MODE=sram scripts/gw_program.sh   # reload gateware -> CPU resets, XIP-boots the fw
 ```
 The self-test prints over **UART2** (logic analyzer / USB-TTL on **U16**, 8N1, 115200;
@@ -169,8 +169,8 @@ and `include/configs/ae350.h` env (`autostart=yes`, `bootcmd = "unzip 0x80200000
 | `0x800000` | `0x80200000` | `fw_payload.bin.gz` (OpenSBI + kernel + DTB, gzip) |
 
 ```sh
-GOWIN_PATH=$GP FW=~/projects/u-boot/u-boot-ae350-xip.bin SPIADDR=0x600000 firmware/flash_fw.sh
-GOWIN_PATH=$GP FW=~/projects/opensbi/build/platform/generic/firmware/fw_payload_gz.bin SPIADDR=0x800000 firmware/flash_fw.sh
+GOWIN_PATH=$GP FW=~/projects/u-boot/u-boot-ae350-xip.bin SPIADDR=0x600000 src/firmware/flash_fw.sh
+GOWIN_PATH=$GP FW=~/projects/opensbi/build/platform/generic/firmware/fw_payload_gz.bin SPIADDR=0x800000 src/firmware/flash_fw.sh
 GOWIN_PATH=$GP MODE=sram scripts/gw_program.sh        # or MODE=flash for persistent bitstream @0x0
 ```
 Reset (S3) → U-Boot auto-boots → gunzips the payload to DRAM `0x0` → OpenSBI → Linux →
