@@ -179,7 +179,7 @@ dtc -I dts -O dtb -o linux/ae350-linux.dtb linux/ae350-linux.dts
 ```sh
 FW_PAYLOAD_OFFSET=0x400000 LINUX_CROSS=$LGNU scripts/build_linux_boot.sh
 cd external/opensbi/build/platform/generic/firmware
-gzip -9 -k -f fw_payload.bin && cp -f fw_payload.bin.gz fw_payload_gz.bin
+xz --format=lzma --lzma1=preset=9,dict=8MiB -c fw_payload.bin > fw_payload_lzma.bin   # or: scripts/flash.sh kernel
 ```
 > **Footgun:** the kernel payload offset **must be 4 MB-aligned = `0x400000`** (rv32 sv32
 > superpage); `0x200000` fails silently before earlycon. `build_linux_boot.sh` *defaults*
@@ -193,9 +193,9 @@ scripts/config_uboot.sh        # one-time: defconfig + Kconfig tweaks (re-run on
 scripts/build_uboot.sh         # -> external/u-boot/u-boot-ae350-xip.bin (u-boot + DTB @0xf0000)
 ```
 DT adaptation (single CPU, 50 MHz clocks, no `spi@f0b00000`/mac/mmc nodes; its memory
-node still says 256 MB, harmless since U-Boot only gunzips the payload and Linux uses
+node still says 256 MB, harmless since U-Boot only decompresses the payload and Linux uses
 `linux/ae350-linux.dts` with the full 1 GB)
-and `include/configs/ae350.h` env (`autostart=yes`, `bootcmd = "unzip 0x80200000 0
+and `include/configs/ae350.h` env (`autostart=yes`, `bootcmd = "lzmadec 0x80200000 0
 0x2000000; sdboot 0"`) are **file edits in the tree**, not Kconfig — see memory
 `ae350-uboot-build`.
 
@@ -220,23 +220,23 @@ lvdesk / inputd / wavplay come from `src/apps/desktop` (`make install`).
 |--------------|----------|----------|
 | `0x000000` | — | FPGA bitstream (`.fs`) — for power-cycle autoboot |
 | `0x600000` | `0x80000000` | U-Boot (XIP) + appended DTB @ `+0xf0000` |
-| `0x800000` | `0x80200000` | `fw_payload.bin.gz` (OpenSBI + kernel + DTB, gzip) |
+| `0x800000` | `0x80200000` | `fw_payload_lzma.bin` (OpenSBI + kernel + DTB, LZMA; 8 MB region) |
 
 ```sh
 GOWIN_PATH=$GP scripts/flash.sh bitstream uboot kernel   # named targets; -n = dry run; 'load' = SRAM only
 # ...or the underlying commands:
 GOWIN_PATH=$GP FW=external/u-boot/u-boot-ae350-xip.bin SPIADDR=0x600000 src/firmware/flash_fw.sh
-GOWIN_PATH=$GP FW=external/opensbi/build/platform/generic/firmware/fw_payload_gz.bin SPIADDR=0x800000 src/firmware/flash_fw.sh
+GOWIN_PATH=$GP FW=external/opensbi/build/platform/generic/firmware/fw_payload_lzma.bin SPIADDR=0x800000 src/firmware/flash_fw.sh
 GOWIN_PATH=$GP MODE=sram scripts/gw_program.sh        # or MODE=flash for persistent bitstream @0x0
 ```
-Reset (S3) → U-Boot auto-boots → gunzips the payload to DRAM `0x0` → OpenSBI → Linux →
+Reset (S3) → U-Boot auto-boots → LZMA-decompresses the payload to DRAM `0x0` (~9 s) → OpenSBI → Linux →
 shell on UART2 (~24 s).
 
 > **Programmer quirk:** `programmer_cli`'s exFlash bridge only reliably writes images based
 > at **`0x0`** or **`0x600000`**. A separate write to a higher offset can be silently dropped
 > (prints `ends at <start>`, reads back `0xff`). For one-shot programming, build a single
 > combined image with `scripts/build_app_image.sh` (U-Boot @0, payload @ `PAYLOAD_OFF`).
-> Also: `--mcuFile` only writes files with a **`.bin`** extension (hence `fw_payload_gz.bin`).
+> Also: `--mcuFile` only writes files with a **`.bin`** extension (hence `fw_payload_lzma.bin`).
 
 ---
 

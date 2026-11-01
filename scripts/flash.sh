@@ -7,8 +7,9 @@
 #   load        load impl/pnr/mega_138K_test.fs into SRAM (volatile, gone at power-cycle)
 #   bitstream   write the .fs to flash 0x000000 (FPGA self-configures from it at power-on)
 #   uboot       external/u-boot/u-boot-ae350-xip.bin -> flash 0x600000 (U-Boot XIP + DTB)
-#   kernel      gzip external/opensbi/.../fw_payload.bin -> fw_payload_gz.bin -> flash 0x800000
-#               (OpenSBI + kernel + DTB; must stay under 8 MB, the region ends at 0x1000000)
+#   kernel      LZMA external/opensbi/.../fw_payload.bin -> fw_payload_lzma.bin -> flash 0x800000
+#               (OpenSBI + kernel + DTB; must stay under 8 MB, the region ends at 0x1000000;
+#               U-Boot's bootcmd lzmadec's it into DRAM)
 #   firmware    src/firmware/build/ae350_fw.bin -> flash 0x600000 (bare metal, replaces U-Boot)
 #
 # Options / env:
@@ -56,14 +57,16 @@ for t in "$@"; do
 		need "$FIRMWARE"; exflash "$FIRMWARE" 0x600000 ;;
 	kernel)
 		need "$PAYLOAD"
-		gz="${PAYLOAD%.bin}_gz.bin"
-		run sh -c "gzip -9 -c '$PAYLOAD' > '$gz'"
+		# LZMA "alone" format for U-Boot's lzmadec; the 8 MiB dictionary needs U-Boot's 16 MB
+		# malloc heap (CONFIG_SYS_MALLOC_LEN in the fork's defconfig). ~15 % smaller than gzip.
+		lz="${PAYLOAD%.bin}_lzma.bin"
+		run sh -c "xz --format=lzma --lzma1=preset=9,dict=8MiB -c '$PAYLOAD' > '$lz'"
 		if [ "$DRY" != 1 ]; then
-			sz=$(stat -c %s "$gz")
-			[ "$sz" -le $((8*1024*1024)) ] || { echo "error: $gz is $sz bytes, over the 8 MB region" >&2; exit 1; }
-			echo ">> $gz: $sz bytes"
+			sz=$(stat -c %s "$lz")
+			[ "$sz" -le $((8*1024*1024)) ] || { echo "error: $lz is $sz bytes, over the 8 MB region" >&2; exit 1; }
+			echo ">> $lz: $sz bytes"
 		fi
-		exflash "$gz" 0x800000 ;;
+		exflash "$lz" 0x800000 ;;
 	*) echo "unknown target: $t (load|bitstream|uboot|kernel|firmware)" >&2; exit 2 ;;
 	esac
 done

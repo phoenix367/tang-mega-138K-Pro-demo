@@ -16,7 +16,7 @@ flowchart TD
     KERN["Linux kernel<br/>(soft-atomic, UP)"] --> IMG["Image"]
     ROOTFS["linux/rootfs/<br/>(busybox musl + tools)"] --> IMG
     IMG --> PAY["OpenSBI fw_payload<br/>(OpenSBI+kernel+DTB)"]
-    PAY --> GZ["fw_payload.bin.gz"]
+    PAY --> GZ["fw_payload_lzma.bin"]
   end
   FS --> FLASH["flash @ 0x0"]
   FWBIN --> FLASH2["flash @ 0x600000 (bare-metal)"]
@@ -112,7 +112,7 @@ make ARCH=riscv CROSS_COMPILE=$LGNU -j$(nproc) Image
 cd ~/projects/mega_138K_test
 FW_PAYLOAD_OFFSET=0x400000 LINUX_CROSS=$LGNU scripts/build_linux_boot.sh
 cd external/opensbi/build/platform/generic/firmware
-gzip -9 -k -f fw_payload.bin && cp -f fw_payload.bin.gz fw_payload_gz.bin
+xz --format=lzma --lzma1=preset=9,dict=8MiB -c fw_payload.bin > fw_payload_lzma.bin   # or: scripts/flash.sh kernel
 ```
 
 Critical kernel facts (see [06-key-findings.md](06-key-findings.md)):
@@ -189,7 +189,7 @@ GOWIN_PATH=$GP MODE=flash scripts/gw_program.sh      # run 6 → config flash @0
 # boot images via the exFlash bridge (programmer_cli)
 GOWIN_PATH=$GP FW=src/firmware/build/<app>.bin   SPIADDR=0x600000 src/firmware/flash_fw.sh  # bare-metal
 GOWIN_PATH=$GP FW=external/u-boot/u-boot-ae350-xip.bin SPIADDR=0x600000 src/firmware/flash_fw.sh  # U-Boot
-GOWIN_PATH=$GP FW=.../fw_payload_gz.bin      SPIADDR=0x800000 src/firmware/flash_fw.sh  # kernel payload
+GOWIN_PATH=$GP FW=.../fw_payload_lzma.bin    SPIADDR=0x800000 src/firmware/flash_fw.sh  # kernel payload
 ```
 
 > **Programmer quirk:** the exFlash bridge reliably writes only images **based at

@@ -19,7 +19,7 @@ graph TD
 | `0x00_0000` | — (config) | FPGA bitstream; the FPGA loads this on power-up |
 | `0x60_0000` | `0x8000_0000` | U-Boot XIP image (`.text` runs in place) |
 | `0x6F_0000` | `0x800F_0000` | U-Boot DTB (`CONFIG_SYS_FDT_BASE`) |
-| `0x80_0000` | — | `fw_payload.bin.gz`, unzipped by U-Boot into DRAM |
+| `0x80_0000` | — | `fw_payload_lzma.bin`, LZMA-decompressed by U-Boot into DRAM (8 MB region) |
 
 For **bare-metal** work, the firmware `.bin` replaces U-Boot at `0x60_0000`
 (CPU `0x8000_0000`); there is no payload at `0x80_0000`.
@@ -41,8 +41,8 @@ sequenceDiagram
   FPGA->>A25: release reset → fetch @ 0x80000000
   Note over A25: harts_early_init():<br/>enable I/D cache, DC_COHEN,<br/>clear ECC/prefetch/CCTL_SUEN
   A25->>UB: run U-Boot XIP
-  UB->>DDR: gunzip fw_payload (flash 0x800000) → DRAM 0x0
-  Note over UB: unzip 0x80200000-style →<br/>OpenSBI@0x0, kernel@0x400000 (4 MB aligned)
+  UB->>DDR: lzmadec fw_payload (flash 0x800000) → DRAM 0x0, ~9 s
+  Note over UB: lzmadec 0x80200000 0 0x2000000 →<br/>OpenSBI@0x0, kernel@0x400000 (4 MB aligned)
   UB->>SBI: jump to 0x0
   SBI->>SBI: init (soft-atomic), set up M-mode traps
   SBI->>K: hand off to kernel @0x400000 (S-mode)
@@ -61,13 +61,16 @@ behave (the cache SRAM has no ECC; ECC-on makes `amoswap` hang). `DC_COHEN` is
 set and the code waits for `DC_COHSTA` — but on this SoC `DC_COHEN` reads back 0
 (no CM), which is the root cause behind the soft-atomic stack.
 
-## 3. Why gzip + unzip
+## 3. Why the payload is compressed (LZMA)
 
-The full kernel `Image` is ~25 MB and the `fw_payload` ~30 MB — too large to flash
-comfortably and slow to program. It is gzipped (~7 MB) and U-Boot's `unzip`
-expands it into DRAM at boot. `FW_PAYLOAD_OFFSET=0x400000` places the kernel
-4 MB-aligned inside the payload (sv32 superpage boot requirement — `0x200000`
-fails silently).
+The full kernel `Image` is ~26 MB and the `fw_payload` ~30 MB, while the flash region
+from `0x800000` to the end of the 16 MB NOR holds 8 MB. The payload is therefore
+LZMA-compressed (`scripts/flash.sh kernel`: `xz --format=lzma`, 8 MiB dictionary) to
+~6.4 MB and U-Boot's `lzmadec` expands it into DRAM at boot, about 9 s on the A25
+(gzip + `unzip` was used until 2026-11-02: 7.5 MB, 4 s; LZMA buys ~1.1 MB of headroom).
+The dictionary is allocated from U-Boot's heap, hence `CONFIG_SYS_MALLOC_LEN=0x1000000`
+in the fork's defconfig. `FW_PAYLOAD_OFFSET=0x400000` places the kernel 4 MB-aligned
+inside the payload (sv32 superpage boot requirement — `0x200000` fails silently).
 
 ## 4. Reset / reboot / poweroff
 
