@@ -12,9 +12,10 @@
 #     0x200000  Linux kernel Image (S-mode)   <- FW_PAYLOAD_OFFSET
 set -euo pipefail
 
-OPENSBI_DIR="${OPENSBI_DIR:-$HOME/projects/opensbi}"
-LINUX_DIR="${LINUX_DIR:-$HOME/projects/linux}"
-DTB="${DTB:-$HOME/projects/mega_138K_test/linux/ae350-linux.dtb}"
+REPO=$(cd "$(dirname "$0")/.." && pwd)
+OPENSBI_DIR="${OPENSBI_DIR:-$REPO/external/opensbi}"   # submodule: phoenix367/tang-mega-138k-opensbi
+LINUX_DIR="${LINUX_DIR:-$REPO/external/linux}"         # submodule: phoenix367/tang-mega-138k-linux
+DTB="${DTB:-$REPO/linux/ae350-linux.dtb}"
 CROSS="${LINUX_CROSS:-/mnt/data/xilinx/2025.2/gnu/riscv/linux_toolchain/lin32/bin/riscv32-amd-linux-gnu-}"
 FW_TEXT_START="${FW_TEXT_START:-0x00000000}"
 FW_PAYLOAD_OFFSET="${FW_PAYLOAD_OFFSET:-0x200000}"

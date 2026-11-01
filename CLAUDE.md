@@ -87,6 +87,10 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
 - `scripts/gw_run.sh` + `gw_run.tcl` — drive `gw_sh` (synthesis / PnR / bitstream)
   headlessly. `scripts/gw_program.sh` — program the board via `programmer_cli`.
   All adapted from `~/projects/tang_nano_9K_ov7670`.
+- `external/{u-boot,opensbi,linux}` — git **submodules**: the board forks of the Linux boot
+  stack (phoenix367/tang-mega-138k-{u-boot,opensbi,linux}, one port commit each on top of
+  upstream; `git submodule update --init` after cloning). `scripts/build_uboot.sh`,
+  `config_uboot.sh` and `build_linux_boot.sh` default to these paths. See BUILD.md §4.
 - `src/firmware/` — bare-metal **AE350 test firmware** (RISC-V, rv32imac) that runs on
   the SoC: UART2 banner/heartbeat + LED waterfall + key readback. Self-contained
   build (`make`) using the SDK BSP; flashed to SPI flash `0x600000` via

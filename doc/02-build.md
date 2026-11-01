@@ -104,13 +104,13 @@ make CROSS_COMPILE=$LGNU olddefconfig && make -j CROSS_COMPILE=$LGNU
 
 ```bash
 # kernel (regenerates the initramfs from linux/rootfs/ on every Image build)
-cd ~/projects/linux
+cd external/linux
 make ARCH=riscv CROSS_COMPILE=$LGNU -j$(nproc) Image
 
 # wrap Image (+ OpenSBI + DTB) into an OpenSBI fw_payload, then gzip
 cd ~/projects/mega_138K_test
 FW_PAYLOAD_OFFSET=0x400000 LINUX_CROSS=$LGNU scripts/build_linux_boot.sh
-cd ~/projects/opensbi/build/platform/generic/firmware
+cd external/opensbi/build/platform/generic/firmware
 gzip -9 -k -f fw_payload.bin && cp -f fw_payload.bin.gz fw_payload_gz.bin
 ```
 
@@ -183,7 +183,7 @@ GOWIN_PATH=$GP MODE=flash scripts/gw_program.sh      # run 6 → config flash @0
 
 # boot images via the exFlash bridge (programmer_cli)
 GOWIN_PATH=$GP FW=src/firmware/build/<app>.bin   SPIADDR=0x600000 src/firmware/flash_fw.sh  # bare-metal
-GOWIN_PATH=$GP FW=~/projects/u-boot/u-boot-ae350-xip.bin SPIADDR=0x600000 src/firmware/flash_fw.sh  # U-Boot
+GOWIN_PATH=$GP FW=external/u-boot/u-boot-ae350-xip.bin SPIADDR=0x600000 src/firmware/flash_fw.sh  # U-Boot
 GOWIN_PATH=$GP FW=.../fw_payload_gz.bin      SPIADDR=0x800000 src/firmware/flash_fw.sh  # kernel payload
 ```
 

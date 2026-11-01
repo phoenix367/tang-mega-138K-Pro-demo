@@ -47,7 +47,8 @@ Soft-atomic patches: `arch/riscv/include/asm/{soft_atomic.h,cmpxchg.h,atomic.h,b
 A25 page-table writeback (`PATCHES/0005`, `asm/a25-ptwb.h`) is required with the fast
 DDR bridge (gateware MODE 0x10000): without it fork/exec oopses.
 ```
-cd ~/projects/linux
+# paths relative to the repo root; the trees are submodules (git submodule update --init)
+cd external/linux
 make ARCH=riscv CROSS_COMPILE=$LGNU -j$(nproc) Image
 # verify atomic-free (only 1 harmless reservation-clear sc.w is OK):
 $LGNU.objdump -d vmlinux | grep -cE '\b(amo[a-z]+|lr\.[wd]|sc\.[wd])\b'
@@ -58,11 +59,11 @@ Soft-atomic patches: `lib/sbi/{riscv_atomic.c,riscv_locks.c,sbi_ipi.c}`; A25 pri
 fixes in `firmware/fw_base.S` (CLEAR_MDT no-op, lottery-skip, trap handler) and the
 `andestech,a25` DTB (`linux/ae350-linux.dts`).
 ```
-cd ~/projects/opensbi
+cd external/opensbi
 rm -f build/platform/generic/firmware/fw_payload.*
 make CROSS_COMPILE=$LGNU PLATFORM=generic FW_TEXT_START=0x0 \
-     FW_FDT_PATH=~/projects/mega_138K_test/linux/ae350-linux.dtb \
-     FW_PAYLOAD_PATH=~/projects/linux/arch/riscv/boot/Image \
+     FW_FDT_PATH=../../linux/ae350-linux.dtb \
+     FW_PAYLOAD_PATH=../linux/arch/riscv/boot/Image \
      FW_PAYLOAD_OFFSET=0x400000        # MUST be 4 MB-aligned (rv32 sv32 superpage)
 cd build/platform/generic/firmware
 gzip -9 -k -f fw_payload.bin
@@ -80,8 +81,8 @@ cd ~/projects/mega_138K_test && bash scripts/build_uboot.sh   # -> u-boot-ae350-
 ## Flash + run
 ```
 cd ~/projects/mega_138K_test
-GOWIN_PATH=$GOWIN_PATH FW=~/projects/u-boot/u-boot-ae350-xip.bin SPIADDR=0x600000 src/firmware/flash_fw.sh
-GOWIN_PATH=$GOWIN_PATH FW=~/projects/opensbi/build/platform/generic/firmware/fw_payload_gz.bin SPIADDR=0x800000 src/firmware/flash_fw.sh
+GOWIN_PATH=$GOWIN_PATH FW=external/u-boot/u-boot-ae350-xip.bin SPIADDR=0x600000 src/firmware/flash_fw.sh
+GOWIN_PATH=$GOWIN_PATH FW=external/opensbi/build/platform/generic/firmware/fw_payload_gz.bin SPIADDR=0x800000 src/firmware/flash_fw.sh
 GOWIN_PATH=$GOWIN_PATH MODE=sram scripts/gw_program.sh   # load bitstream
 ```
 Power on / reset (S3) → U-Boot auto-boots → OpenSBI → Linux → `~ #` on UART2 (B19, 115200 8N1).

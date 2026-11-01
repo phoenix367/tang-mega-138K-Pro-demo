@@ -1,0 +1,9 @@
+[submodule "external/u-boot"]
+	path = external/u-boot
+	url = git@github.com:phoenix367/tang-mega-138k-u-boot.git
+[submodule "external/opensbi"]
+	path = external/opensbi
+	url = git@github.com:phoenix367/tang-mega-138k-opensbi.git
+[submodule "external/linux"]
+	path = external/linux
+	url = git@github.com:phoenix367/tang-mega-138k-linux.git

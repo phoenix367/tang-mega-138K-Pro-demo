@@ -18,7 +18,8 @@
 #     u-boot.bin to FDT_OFFSET and append the DTB.
 set -euo pipefail
 
-UBOOT_DIR="${UBOOT_DIR:-$HOME/projects/u-boot}"
+REPO=$(cd "$(dirname "$0")/.." && pwd)
+UBOOT_DIR="${UBOOT_DIR:-$REPO/external/u-boot}"        # submodule: phoenix367/tang-mega-138k-u-boot
 CROSS="${UBOOT_CROSS:-/mnt/data/xilinx/2025.2/gnu/riscv/linux_toolchain/lin32/bin/riscv32-amd-linux-gnu-}"
 HF_LIBGCC="${UBOOT_HF_LIBGCC:-/usr/lib/gcc/riscv64-unknown-elf/13.2.0/rv32imafdc/ilp32d}"
 DTB="${UBOOT_DTB:-arch/riscv/dts/ae350_32.dtb}"

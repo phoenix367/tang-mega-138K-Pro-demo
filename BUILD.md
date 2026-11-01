@@ -31,8 +31,9 @@ the no-coherence-manager constraints behind the soft-atomics in **CACHE_ISSUES.m
 > **PATH trap:** the user's shell profile prepends a crippled `riscv64-unknown-elf-`
 > to `PATH`. Always pass `CROSS_COMPILE`/`PLATFORM_LIBGCC` as **absolute paths**.
 
-External trees (siblings of this repo): `~/projects/linux`, `~/projects/opensbi`,
-`~/projects/u-boot`. Verified board config (from `misa`/`mmsc_cfg` CSRs): **A25**,
+The boot-stack trees are submodules: `external/linux`, `external/opensbi`, `external/u-boot`
+(forks phoenix367/tang-mega-138k-{linux,opensbi,u-boot}; `git submodule update --init`
+after cloning). Paths below are relative to the repo root. Verified board config (from `misa`/`mmsc_cfg` CSRs): **A25**,
 RV32 IMAFDC + S/U (Linux-capable), single hart, 32 KB I + 32 KB D L1 (4-way, 32 B
 line), **CCTL cache-control CSRs present** (`mmsc_cfg` b16), no L2, no coherence
 manager. Clocks (logic-analyzer-verified): **core 800 MHz, AHB/APB/DDR 50 MHz,
@@ -109,9 +110,9 @@ Full rationale and the working flash/boot recipe are in **[BOOT.md](BOOT.md)**. 
 export LGNU=/mnt/data/xilinx/2025.2/gnu/riscv/linux_toolchain/lin32/bin/riscv32-amd-linux-gnu-
 ```
 
-### 4a. Kernel (`~/projects/linux`, 6.12, RV32, UP + soft atomics)
+### 4a. Kernel (`external/linux`, 6.12, RV32, UP + soft atomics)
 ```sh
-cd ~/projects/linux
+cd external/linux
 make ARCH=riscv CROSS_COMPILE=$LGNU -j$(nproc) Image     # -> arch/riscv/boot/Image
 ```
 Key config (`.config` on disk; built on this machine): `CONFIG_SMP=n` (UP — qspinlock
@@ -134,10 +135,10 @@ $LGNU.objdump -d vmlinux | grep -cE '\b(amo[a-z]+|lr\.[wd]|sc\.[wd])\b'   # expe
 dtc -I dts -O dtb -o linux/ae350-linux.dtb linux/ae350-linux.dts
 ```
 
-### 4c. OpenSBI fw_payload (`~/projects/opensbi`) + gzip
+### 4c. OpenSBI fw_payload (`external/opensbi`) + gzip
 ```sh
 FW_PAYLOAD_OFFSET=0x400000 LINUX_CROSS=$LGNU scripts/build_linux_boot.sh
-cd ~/projects/opensbi/build/platform/generic/firmware
+cd external/opensbi/build/platform/generic/firmware
 gzip -9 -k -f fw_payload.bin && cp -f fw_payload.bin.gz fw_payload_gz.bin
 ```
 > **Footgun:** the kernel payload offset **must be 4 MB-aligned = `0x400000`** (rv32 sv32
@@ -146,10 +147,10 @@ gzip -9 -k -f fw_payload.bin && cp -f fw_payload.bin.gz fw_payload_gz.bin
 > Soft-atomic patches in opensbi `lib/sbi/{riscv_atomic,riscv_locks,sbi_ipi}.c` +
 > `firmware/fw_base.S` must already be applied.
 
-### 4d. U-Boot (`~/projects/u-boot`, hard-float XIP loader)
+### 4d. U-Boot (`external/u-boot`, hard-float XIP loader)
 ```sh
 scripts/config_uboot.sh        # one-time: defconfig + Kconfig tweaks (re-run on a clean tree)
-scripts/build_uboot.sh         # -> ~/projects/u-boot/u-boot-ae350-xip.bin (u-boot + DTB @0xf0000)
+scripts/build_uboot.sh         # -> external/u-boot/u-boot-ae350-xip.bin (u-boot + DTB @0xf0000)
 ```
 DT adaptation (single CPU, 50 MHz clocks, 256 MB DRAM, no `spi@f0b00000`/mac/mmc nodes)
 and `include/configs/ae350.h` env (`autostart=yes`, `bootcmd = "unzip 0x80200000 0
@@ -180,8 +181,8 @@ lvdesk / inputd / wavplay come from `src/apps/desktop` (`make install`).
 | `0x800000` | `0x80200000` | `fw_payload.bin.gz` (OpenSBI + kernel + DTB, gzip) |
 
 ```sh
-GOWIN_PATH=$GP FW=~/projects/u-boot/u-boot-ae350-xip.bin SPIADDR=0x600000 src/firmware/flash_fw.sh
-GOWIN_PATH=$GP FW=~/projects/opensbi/build/platform/generic/firmware/fw_payload_gz.bin SPIADDR=0x800000 src/firmware/flash_fw.sh
+GOWIN_PATH=$GP FW=external/u-boot/u-boot-ae350-xip.bin SPIADDR=0x600000 src/firmware/flash_fw.sh
+GOWIN_PATH=$GP FW=external/opensbi/build/platform/generic/firmware/fw_payload_gz.bin SPIADDR=0x800000 src/firmware/flash_fw.sh
 GOWIN_PATH=$GP MODE=sram scripts/gw_program.sh        # or MODE=flash for persistent bitstream @0x0
 ```
 Reset (S3) → U-Boot auto-boots → gunzips the payload to DRAM `0x0` → OpenSBI → Linux →
@@ -215,7 +216,7 @@ LGNU=/mnt/data/xilinx/2025.2/gnu/riscv/linux_toolchain/lin32/bin/riscv32-amd-lin
 
 GOWIN_PATH=$GP STAGE=all scripts/gw_run.sh            # gateware bitstream
 make -C firmware                                       # bare-metal firmware
-( cd ~/projects/linux && make ARCH=riscv CROSS_COMPILE=$LGNU -j$(nproc) Image )
+( cd external/linux && make ARCH=riscv CROSS_COMPILE=$LGNU -j$(nproc) Image )
 dtc -I dts -O dtb -o linux/ae350-linux.dtb linux/ae350-linux.dts
 FW_PAYLOAD_OFFSET=0x400000 LINUX_CROSS=$LGNU scripts/build_linux_boot.sh
 scripts/build_uboot.sh
