@@ -6,16 +6,19 @@
 # Flash payload.img to SPI flash 0x800000 (= CPU 0x80200000), then in U-Boot:
 #   bootm 0x80200000
 
-GCC_DIR ?= /mnt/data/xilinx/2025.2/Vitis/gnu/riscv/lin/bin
-CROSS   ?= $(GCC_DIR)/riscv64-unknown-elf-
-# U-Boot's mkimage (built in the U-Boot tree); override if elsewhere.
-MKIMAGE ?= $(HOME)/projects/u-boot/tools/mkimage
+# Andes bare-metal GCC (nds32le-elf-newlib-v5) under ANDES_ROOT; override CROSS for another.
+ANDES_ROOT ?= /mnt/data/toolchains
+CROSS      ?= $(ANDES_ROOT)/nds32le-elf-newlib-v5/bin/riscv32-elf-
+# U-Boot's mkimage (built in the U-Boot submodule); override if elsewhere.
+MKIMAGE ?= ../../../external/u-boot/tools/mkimage
 
 CC      := $(CROSS)gcc
 OBJCOPY := $(CROSS)objcopy
 
 LOAD    := 0x00100000          # DRAM load + entry address (matches payload.ld)
-ARCH    := -march=rv32imac_zicsr_zifencei -mabi=ilp32 -mcmodel=medany
+# -mno-save-restore: this is linked -nostdlib, and the Andes GCC would otherwise emit
+# calls to libgcc's __riscv_save_*/__riscv_restore_* prologue helpers.
+ARCH    := -march=rv32imac_zicsr_zifencei -mabi=ilp32 -mcmodel=medany -mno-save-restore
 CFLAGS  := $(ARCH) -Os -ffreestanding -nostdlib -fno-pic -Wall -Wextra \
 	-fno-asynchronous-unwind-tables -fno-unwind-tables -Wl,--build-id=none
 

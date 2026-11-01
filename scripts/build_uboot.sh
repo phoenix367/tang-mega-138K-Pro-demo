@@ -8,11 +8,11 @@
 # right toolchain and assembles the flash image; it does not re-run defconfig.
 #
 # Why each piece (see project memory ae350-uboot-build):
-#   - CROSS is the Vitis linux-gnu rv32 toolchain (its ld supports -pie, unlike
-#     the bare-metal *-elf ones). Give it by ABSOLUTE path: the user's profile
-#     prepends a crippled riscv64-unknown-elf- to PATH.
-#   - HF_LIBGCC: the AMD toolchain ships no hard-float (ilp32d) libgcc, so we
-#     point PLATFORM_LIBGCC at the Debian elf toolchain's ilp32d libgcc.
+#   - CROSS is the Andes Linux rv32 toolchain (its ld supports -pie, unlike the
+#     bare-metal *-elf ones, and it ships the hard-float ilp32d libgcc). Give it by
+#     ABSOLUTE path: the user's profile prepends a crippled riscv64-unknown-elf- to PATH.
+#   - HF_LIBGCC (optional): a toolchain without an ilp32d libgcc, such as the AMD
+#     Vitis linux-gnu one, needs PLATFORM_LIBGCC pointed at one (UBOOT_HF_LIBGCC).
 #   - The AE350 board finds its DTB at CONFIG_SYS_FDT_BASE=0x800f0000, i.e. at
 #     FDT_OFFSET (=0x800f0000-0x80000000) into the flash image. So: pad
 #     u-boot.bin to FDT_OFFSET and append the DTB.
@@ -20,8 +20,12 @@ set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 UBOOT_DIR="${UBOOT_DIR:-$REPO/external/u-boot}"        # submodule: phoenix367/tang-mega-138k-u-boot
-CROSS="${UBOOT_CROSS:-/mnt/data/xilinx/2025.2/gnu/riscv/linux_toolchain/lin32/bin/riscv32-amd-linux-gnu-}"
-HF_LIBGCC="${UBOOT_HF_LIBGCC:-/usr/lib/gcc/riscv64-unknown-elf/13.2.0/rv32imafdc/ilp32d}"
+# Andes Linux GCC (nds32le-linux-glibc-v5d): PIE-capable ld, ships the ilp32d libgcc.
+ANDES_ROOT="${ANDES_ROOT:-/mnt/data/toolchains}"
+CROSS="${UBOOT_CROSS:-$ANDES_ROOT/nds32le-linux-glibc-v5d/bin/riscv32-linux-}"
+# Only for a toolchain without a hard-float libgcc (the AMD/Vitis linux-gnu one needed
+# the elf toolchain's ilp32d libgcc): UBOOT_HF_LIBGCC=/path/to/rv32imafdc/ilp32d
+HF_LIBGCC="${UBOOT_HF_LIBGCC:-}"
 DTB="${UBOOT_DTB:-arch/riscv/dts/ae350_32.dtb}"
 FDT_OFFSET="${UBOOT_FDT_OFFSET:-983040}"      # 0xf0000 = SYS_FDT_BASE - TEXT_BASE
 OUT="${UBOOT_IMAGE:-$UBOOT_DIR/u-boot-ae350-xip.bin}"
@@ -31,7 +35,11 @@ OUT="${UBOOT_IMAGE:-$UBOOT_DIR/u-boot-ae350-xip.bin}"
 cd "$UBOOT_DIR"
 
 echo ">> Building U-Boot (hard-float XIP) with $CROSS"
-make -j"$(nproc)" CROSS_COMPILE="$CROSS" PLATFORM_LIBGCC="-L $HF_LIBGCC -lgcc"
+if [ -n "$HF_LIBGCC" ]; then
+    make -j"$(nproc)" CROSS_COMPILE="$CROSS" PLATFORM_LIBGCC="-L $HF_LIBGCC -lgcc"
+else
+    make -j"$(nproc)" CROSS_COMPILE="$CROSS"
+fi
 
 [ -f u-boot.bin ] || { echo "build produced no u-boot.bin" >&2; exit 1; }
 [ -f "$DTB" ]     || { echo "DTB not found: $DTB (build it / check name)" >&2; exit 1; }

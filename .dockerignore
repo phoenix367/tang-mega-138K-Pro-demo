@@ -1,0 +1,5 @@
+# docker/Dockerfile copies only these two files out of the build context; everything else
+# (submodules, netlists, rootfs) is mounted at run time by docker/run.sh.
+*
+!scripts/build_musl_toolchain.sh
+!PATCHES/0012-musl-riscv32-soft-atomics.patch

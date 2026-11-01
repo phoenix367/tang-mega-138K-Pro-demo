@@ -1,7 +1,8 @@
 # Test firmware for the AE350 SoC (Tang Mega 138K Pro Dock), XIP build.
 #
-# Toolchain: the RISC-V GCC that ships with Xilinx Vitis works (rv32 multilib).
-# Override CROSS / GCC_DIR if yours lives elsewhere.
+# Toolchain: the Andes bare-metal GCC (nds32le-elf-newlib-v5, riscv32-elf-*, from
+# github.com/andestech/Andes-Development-Kit releases), unpacked under ANDES_ROOT.
+# Any rv32imac bare-metal GCC works too: override CROSS.
 #
 #   make            - build ELF + .bin + .lst + size
 #   make clean
@@ -9,8 +10,8 @@
 # Flash the resulting build/ae350_fw.bin to the board's SPI flash so the
 # AE350 boots it (see README.md).
 
-GCC_DIR ?= /mnt/data/xilinx/2025.2/Vitis/gnu/riscv/lin/bin
-CROSS   ?= $(GCC_DIR)/riscv64-unknown-elf-
+ANDES_ROOT ?= /mnt/data/toolchains
+CROSS      ?= $(ANDES_ROOT)/nds32le-elf-newlib-v5/bin/riscv32-elf-
 
 CC      := $(CROSS)gcc
 OBJCOPY := $(CROSS)objcopy

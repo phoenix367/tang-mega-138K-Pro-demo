@@ -6,9 +6,9 @@ build flows share one 16 MB SPI flash:
 | Flow | What it is | Tool | Output |
 |------|-----------|------|--------|
 | **Gateware** | `ae350_demo_top` SoC + `eth_dma` engine | Gowin `gw_sh` | `impl/pnr/mega_138K_test.fs` |
-| **Firmware** | bare-metal RV32 test (`src/firmware/`, DMA self-test, UART) | Vitis bare-metal GCC | `src/firmware/build/ae350_fw.bin` |
+| **Firmware** | bare-metal RV32 test (`src/firmware/`, DMA self-test, UART) | Andes bare-metal GCC | `src/firmware/build/ae350_fw.bin` |
 | **RTL sims** | `eth_dma` testbenches (optional) | `iverilog` | pass/fail on stdout |
-| **Linux boot stack** | U-Boot + OpenSBI + RV32 kernel + busybox | Vitis linux-gnu GCC | `u-boot-ae350-xip.bin`, `fw_payload.bin.gz` |
+| **Linux boot stack** | U-Boot + OpenSBI + RV32 kernel + busybox | Andes Linux GCC | `u-boot-ae350-xip.bin`, `fw_payload.bin.gz` |
 
 The Linux boot stack is documented in depth in **[BOOT.md](BOOT.md)**; this file is
 the master build/toolchain reference. Repo layout is in **[CLAUDE.md](CLAUDE.md)**;
@@ -18,14 +18,19 @@ the no-coherence-manager constraints behind the soft-atomics in **CACHE_ISSUES.m
 
 ## Toolchains
 
+Both Andes toolchains come from the [Andes-Development-Kit releases](https://github.com/andestech/Andes-Development-Kit/releases)
+(`ast-v5_4_1-release-linux`: `nds32le-elf-newlib-v5.txz`, `nds32le-linux-glibc-v5d.txz`),
+unpacked under `ANDES_ROOT` (default `/mnt/data/toolchains`; the Makefiles and scripts
+read it). `docker/bootstrap.sh` builds an image with all of them (section 0).
+
 | Purpose | Path / package | Notes |
 |---------|----------------|-------|
 | FPGA synth/PnR/program | `GOWIN_PATH=/mnt/data/Gowin_V1.9.12.02_SP2_linux` | `gw_sh`, `programmer_cli`. Floating **license server** — flaky; if down, syn/pnr fail "License verification failed". |
-| Bare-metal firmware | `/mnt/data/xilinx/2025.2/Vitis/gnu/riscv/lin/bin/riscv64-unknown-elf-gcc` | actually `riscv32-xilinx-elf`, GCC 13.4, rv32 multilib. `-march=rv32imac_zicsr_zifencei -mabi=ilp32`. |
-| Kernel / OpenSBI / U-Boot | `LGNU=/mnt/data/xilinx/2025.2/gnu/riscv/linux_toolchain/lin32/bin/riscv32-amd-linux-gnu-` | GCC 13.4, **PIE-capable** (the bare-metal `-elf` linkers are not). |
-| Hard-float libgcc (U-Boot) | `/usr/lib/gcc/riscv64-unknown-elf/13.2.0/rv32imafdc/ilp32d` | the AMD linux-gnu toolchain ships no ilp32d libgcc. |
+| Bare-metal firmware | `ANDES_ROOT/nds32le-elf-newlib-v5/bin/riscv32-elf-` | Andes `nds32le-elf-newlib-v5` (GCC 14.2, newlib, rv32 multilibs; `-march=rv32imac_zicsr_zifencei -mabi=ilp32`). Any rv32imac bare-metal GCC works via `CROSS=`; the `-nostdlib` payload needs `-mno-save-restore`. |
+| Kernel / OpenSBI / U-Boot | `LGNU=$ANDES_ROOT/nds32le-linux-glibc-v5d/bin/riscv32-linux-` | Andes `nds32le-linux-glibc-v5d` (GCC 14.2, binutils 2.42): **PIE-capable** ld (the bare-metal `-elf` linkers are not) and it ships the ilp32d libgcc U-Boot needs. |
+| (alternative) AMD Vitis `riscv32-amd-linux-gnu-` | GCC 13.4, PIE-capable | works too, but ships no ilp32d libgcc: set `UBOOT_HF_LIBGCC=/usr/lib/gcc/riscv64-unknown-elf/13.2.0/rv32imafdc/ilp32d`. |
 | Userspace / rootfs | `~/projects/riscv32-ilp32d--musl--stable-2025.08-1/bin/riscv32-buildroot-linux-musl-` (Bootlin) | GCC 14.3, musl 1.2.5 with the soft-atomic `libc.a` (PATCHES/0012); rebuild it with `scripts/build_musl_toolchain.sh`. The Vitis glibc/musl userspace toolchains are broken. |
-| Device tree | `dtc` (`/mnt/data/xilinx/2025.2/Vitis/bin/dtc` or kernel `scripts/dtc`) | |
+| Device tree | `dtc` (Debian `device-tree-compiler` or kernel `scripts/dtc`) | |
 | RTL simulation | `iverilog` / `vvp` | |
 
 > **PATH trap:** the user's shell profile prepends a crippled `riscv64-unknown-elf-`
@@ -43,6 +48,32 @@ A `CMakeLists.txt` wraps most of this: targets `hw_synth`/`hw_pnr`/`hw_all`,
 `firmware`, `flash-bitstream`, `upload`, `uboot-config`/`uboot`/`uboot-flash`,
 `payload`/`payload-flash`, `help-targets`. The Linux kernel/OpenSBI steps are
 driven by `scripts/build_linux_boot.sh` (not CMake).
+
+---
+
+## 0. Building in Docker (optional)
+
+`docker/bootstrap.sh` builds an image with every cross toolchain above (both Andes
+toolchains fetched by checksum from the Andes release, the Bootlin musl toolchain with the
+soft-atomic `libc.a` built by `scripts/build_musl_toolchain.sh`) and the host tools, and
+writes `docker/.env`. `docker/run.sh` runs a command in it with the repo at `/work`, the
+Gowin install bind-mounted read-only at `/opt/gowin` (`GOWIN_PATH` set), the userspace
+package dir at `/userspace` and USB passed through:
+
+```sh
+docker/bootstrap.sh --gowin-path /mnt/data/Gowin_V1.9.12.02_SP2_linux   # once; ~3 GB image
+docker/run.sh make -C src/firmware
+docker/run.sh scripts/build_uboot.sh
+docker/run.sh make -C external/linux ARCH=riscv CROSS_COMPILE=riscv32-linux- -j8 Image
+docker/run.sh env FW_PAYLOAD_OFFSET=0x400000 scripts/build_linux_boot.sh
+docker/run.sh env STAGE=all scripts/gw_run.sh        # gateware; the licence server must be reachable
+docker/run.sh scripts/rootfs/build_all.sh
+```
+
+Options: `--tag`, `--andes-release` (+ `--andes-*-sha256`), `--uid/--gid`, `--userspace`,
+`--no-cache`, `--dry-run`. The Gowin tools are never copied into the image. Inside the
+container the toolchains are under `/opt/toolchains` (`ANDES_ROOT`, `TOOLCHAIN`), so every
+Makefile and script works unchanged.
 
 ---
 
@@ -107,7 +138,7 @@ Gowin `mac.vo` netlist and need the Gowin simulator, not `iverilog`.
 Full rationale and the working flash/boot recipe are in **[BOOT.md](BOOT.md)**. Summary:
 
 ```sh
-export LGNU=/mnt/data/xilinx/2025.2/gnu/riscv/linux_toolchain/lin32/bin/riscv32-amd-linux-gnu-
+export LGNU=/mnt/data/toolchains/nds32le-linux-glibc-v5d/bin/riscv32-linux-
 ```
 
 ### 4a. Kernel (`external/linux`, 6.12, RV32, UP + soft atomics)
@@ -214,7 +245,7 @@ shell on UART2 (~24 s).
 
 ```sh
 GP=/mnt/data/Gowin_V1.9.12.02_SP2_linux
-LGNU=/mnt/data/xilinx/2025.2/gnu/riscv/linux_toolchain/lin32/bin/riscv32-amd-linux-gnu-
+LGNU=/mnt/data/toolchains/nds32le-linux-glibc-v5d/bin/riscv32-linux-
 
 GOWIN_PATH=$GP STAGE=all scripts/gw_run.sh            # gateware bitstream
 make -C firmware                                       # bare-metal firmware

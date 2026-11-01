@@ -111,6 +111,11 @@ keep them `true` for any design that reuses config pins, `false` otherwise.
 
 Set `GOWIN_PATH` to the Gowin install root (the dir containing `IDE/`); on this
 machine that is `/mnt/data/Gowin_V1.9.12.02_SP2_linux`.
+Cross toolchains: Andes `nds32le-elf-newlib-v5` (bare metal) and `nds32le-linux-glibc-v5d`
+(U-Boot/OpenSBI/kernel) under `ANDES_ROOT` (default `/mnt/data/toolchains`), Bootlin musl
+(rootfs) in `~/projects/`; see BUILD.md "Toolchains". `docker/bootstrap.sh` + `docker/run.sh`
+build everything in a container with the Gowin install bind-mounted. Scratch builds that
+need space go under `/mnt/data/build/` (the root disk is nearly full).
 
 ```
 # Synthesis only

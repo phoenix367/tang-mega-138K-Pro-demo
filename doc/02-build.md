@@ -8,7 +8,7 @@ flowchart TD
   subgraph GW["Gateware (Gowin gw_sh)"]
     SRC["src/rtl/*.v + src/rtl/eth_dma/rtl + .cst + .sdc"] --> SYN["GowinSyn"] --> PNR["Place & Route"] --> FS["impl/pnr/*.fs<br/>(bitstream)"]
   end
-  subgraph FW["Bare-metal firmware (riscv64-unknown-elf, Vitis)"]
+  subgraph FW["Bare-metal firmware (Andes riscv32-elf GCC)"]
     FWSRC["src/firmware/src/main.c + bsp"] --> FWBIN["build/*.bin<br/>(XIP @ 0x80000000)"]
   end
   subgraph BOOTSTACK["Linux boot stack (riscv32 linux-gnu + musl)"]
@@ -29,8 +29,8 @@ flowchart TD
 | Purpose | Toolchain |
 |---|---|
 | Gowin gw_sh / programmer | `/mnt/data/Gowin_V1.9.12.02_SP2_linux` (`GOWIN_PATH`) |
-| Bare-metal firmware | `…/Vitis/gnu/riscv/lin/bin/riscv64-unknown-elf-gcc` (rv32imac, `-DREF_TEST_CLK`) |
-| U-Boot / OpenSBI / kernel | `/mnt/data/xilinx/2025.2/gnu/riscv/linux_toolchain/lin32/bin/riscv32-amd-linux-gnu-` (`LGNU`) |
+| Bare-metal firmware | `$ANDES_ROOT/nds32le-elf-newlib-v5/bin/riscv32-elf-gcc` (Andes newlib GCC 14.2; rv32imac, `-DREF_TEST_CLK`) |
+| U-Boot / OpenSBI / kernel | `$ANDES_ROOT/nds32le-linux-glibc-v5d/bin/riscv32-linux-` (`LGNU`; Andes Linux GCC 14.2, PIE-capable ld, ilp32d libgcc) |
 | Userspace / rootfs (musl) | `~/projects/riscv32-ilp32d--musl--stable-2025.08-1/bin/riscv32-buildroot-linux-musl-…` |
 
 > **Soft-atomic caveat:** the musl `libc.a` in the Bootlin toolchain's sysroot is
@@ -94,8 +94,9 @@ make CROSS_COMPILE=$LGNU ae350_rv32_defconfig
                  --disable DM_SPI --disable SPI_FLASH
 make CROSS_COMPILE=$LGNU olddefconfig && make -j CROSS_COMPILE=$LGNU
 ```
-- Hard-float (ilp32d) build needs an external ilp32d libgcc:
-  `PLATFORM_LIBGCC="-L /usr/lib/gcc/riscv64-unknown-elf/13.2.0/rv32imafdc/ilp32d -lgcc"`.
+- Hard-float (ilp32d) build: the Andes toolchain ships the ilp32d libgcc. A toolchain
+  without one (AMD Vitis) needs `PLATFORM_LIBGCC="-L <ilp32d libgcc dir> -lgcc"`
+  (`UBOOT_HF_LIBGCC` for `scripts/build_uboot.sh`).
 - DTB must sit at `CONFIG_SYS_FDT_BASE=0x800f0000` (flash `0x6f0000`): the combined
   image is `u-boot.bin` padded to `0xf0000` + `ae350_32.dtb` appended.
 - Helper: `scripts/build_uboot.sh` / `scripts/config_uboot.sh`.

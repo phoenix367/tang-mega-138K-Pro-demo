@@ -27,8 +27,10 @@ the Andes toolchain (which the SDK assumes):
 
 ## Build
 
-Toolchain: the RISC-V GCC bundled with Xilinx Vitis works (rv32 multilib). Override
-`GCC_DIR` if yours is elsewhere.
+Toolchain: the Andes bare-metal GCC (`nds32le-elf-newlib-v5`, `riscv32-elf-*`) under
+`ANDES_ROOT` (default `/mnt/data/toolchains`). Any rv32imac bare-metal GCC works:
+override `CROSS=`. The `payload/` build is linked `-nostdlib` and therefore passes
+`-mno-save-restore` (otherwise GCC emits calls to libgcc's `__riscv_save_*` helpers).
 
 ```
 make                  # -> build/ae350_fw.{elf,bin,lst,map}

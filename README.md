@@ -62,9 +62,22 @@ Toolchains (all by absolute path; see [BUILD.md](BUILD.md) for why):
 | Target | Toolchain |
 |---|---|
 | Gateware | Gowin EDA 1.9.12.02 SP2, `GOWIN_PATH=<install root>` |
-| Bare-metal firmware | any rv32imac bare-metal GCC (`riscv64-unknown-elf-`) |
-| U-Boot, OpenSBI, kernel | a PIE-capable Linux-gnu rv32 GCC (`riscv32-amd-linux-gnu-` from AMD Vitis is used here) |
+| Bare-metal firmware | Andes `nds32le-elf-newlib-v5` (`riscv32-elf-`), from the [Andes-Development-Kit releases](https://github.com/andestech/Andes-Development-Kit/releases) |
+| U-Boot, OpenSBI, kernel | Andes `nds32le-linux-glibc-v5d` (`riscv32-linux-`), same release: PIE-capable ld, ilp32d libgcc |
 | Rootfs / userspace | Bootlin `riscv32-ilp32d--musl--stable-2025.08-1` with the soft-atomic `libc.a`: `scripts/build_musl_toolchain.sh` |
+
+Both Andes toolchains unpack under `ANDES_ROOT` (default `/mnt/data/toolchains`), which the
+Makefiles and scripts read. Or skip the installs and build everything in Docker:
+
+```sh
+docker/bootstrap.sh --gowin-path /path/to/Gowin   # builds the image (~3 GB), writes docker/.env
+docker/run.sh make -C src/firmware                # any command runs in the container, repo at /work
+docker/run.sh                                     # interactive shell
+```
+
+The image holds all three toolchains and the host tools; the Gowin install stays on the
+host and is bind-mounted read-only, with USB passed through for the programmer and the
+UART console.
 
 Build and program the gateware:
 

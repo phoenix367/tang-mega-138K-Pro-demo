@@ -10,7 +10,8 @@ set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 UBOOT_DIR="${UBOOT_DIR:-$REPO/external/u-boot}"
-CROSS="${UBOOT_CROSS:-/mnt/data/xilinx/2025.2/gnu/riscv/linux_toolchain/lin32/bin/riscv32-amd-linux-gnu-}"
+ANDES_ROOT="${ANDES_ROOT:-/mnt/data/toolchains}"
+CROSS="${UBOOT_CROSS:-$ANDES_ROOT/nds32le-linux-glibc-v5d/bin/riscv32-linux-}"   # Andes Linux GCC
 
 [ -d "$UBOOT_DIR" ] || { echo "UBOOT_DIR not found: $UBOOT_DIR (git submodule update --init external/u-boot)" >&2; exit 1; }
 cd "$UBOOT_DIR"

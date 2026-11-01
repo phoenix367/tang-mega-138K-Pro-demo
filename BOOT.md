@@ -33,7 +33,7 @@ U-Boot auto-runs (`CONFIG_BOOTCOMMAND`): `unzip 0x80200000 0 0x2000000; sdboot 0
 ## Build
 
 Toolchains:
-- Linux/kernel/OpenSBI: `LGNU=/mnt/data/xilinx/2025.2/gnu/riscv/linux_toolchain/lin32/bin/riscv32-amd-linux-gnu-`
+- Linux/kernel/OpenSBI: `LGNU=/mnt/data/toolchains/nds32le-linux-glibc-v5d/bin/riscv32-linux-`
 - busybox initramfs: `riscv32-buildroot-linux-musl-` (prebuilt rootfs in `linux/rootfs/`;
   busybox config `linux/busybox.config`; every rootfs binary is rebuilt by `scripts/rootfs/`)
 - `GOWIN_PATH=/mnt/data/Gowin_V1.9.12.02_SP2_linux`
