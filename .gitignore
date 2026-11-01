@@ -50,3 +50,7 @@ __pycache__/
 desktop/build/
 desktop/inputd
 desktop/build_lvgl.log
+
+# --- Logs (tool output, never source) ---
+*.log
+/eth_dma/formal/ahb_master/**/logfile.txt
