@@ -133,6 +133,13 @@ Critical kernel facts (see [06-key-findings.md](06-key-findings.md)):
 in and the kernel reflashed — edits on the live device do **not** persist.
 
 - busybox (musl static, soft-atomic), `init`→busybox, `/etc/inittab` → `rcS`.
+  Built from the unmodified busybox mirror at commit `371fe9f71d445d18be28c82a2a6d82115c8af19d`
+  (v1.37.0.git, 2024-07-14) with `linux/busybox.config` (= `defconfig` + `CONFIG_STATIC`,
+  `CONFIG_STATIC_LIBGCC`, and HWCLOCK / RDATE / TC / SHA*_HWACCEL off);
+  `scripts/build_busybox.sh` fetches that commit, builds it with the soft-atomic musl
+  toolchain, checks the result has no lr/sc/amo and (with `INSTALL=1`) copies it into
+  `linux/rootfs/bin/`. Only the build-date banner differs between rebuilds; with
+  `SOURCE_DATE_EPOCH=1781018868` the result is byte-identical to the shipped binary.
 - Privilege: **doas** (`permit persist :wheel`), users `root` / `ae350` (pw `ae350`).
 - SSH: **dropbear** (`dropbearmulti` + symlinks), stable host keys in `/etc/dropbear/`.
   `scp`/`sftp` from a modern OpenSSH client need the SFTP subsystem: a static

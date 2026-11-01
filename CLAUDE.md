@@ -161,6 +161,8 @@ Sources (and tarballs) of every library and application cross-built for the boar
 rootfs — busybox, dropbear, musl-linked tools, sftp-server, etc. — live **outside this
 repo** in `/home/ivan/projects/ae350_linux_user_level/`, one subdirectory per package
 (plus any build script next to it). Put every new userspace package there, not in the
-session scratchpad or `/tmp`, so it can be rebuilt later. The binaries go into
+session scratchpad or `/tmp`, so it can be rebuilt later. busybox is the exception: it
+is unmodified upstream, so only its config (`linux/busybox.config`) and the fetch+build
+recipe (`scripts/build_busybox.sh`) are kept, in this repo. The binaries go into
 `linux/rootfs/` (static musl, soft-atomic libc — see doc/02-build.md), from which the
 kernel build bakes the initramfs; nothing copied onto the live board persists.

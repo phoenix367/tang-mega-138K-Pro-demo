@@ -156,6 +156,13 @@ and `include/configs/ae350.h` env (`autostart=yes`, `bootcmd = "unzip 0x80200000
 0x2000000; sdboot 0"`) are **file edits in the tree**, not Kconfig — see memory
 `ae350-uboot-build`.
 
+### 4e. busybox (`linux/rootfs/bin/busybox`)
+```sh
+INSTALL=1 scripts/build_busybox.sh     # mirror/busybox @ 371fe9f + linux/busybox.config, static musl
+```
+The config is `defconfig` + `CONFIG_STATIC=y` (soft-atomic `libc.a`) with HWCLOCK / RDATE /
+TC / SHA*_HWACCEL off. Other rootfs packages: `~/projects/ae350_linux_user_level/<pkg>/`.
+
 ---
 
 ## 5. Flash layout & deploy
