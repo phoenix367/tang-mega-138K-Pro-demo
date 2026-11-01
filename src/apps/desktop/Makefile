@@ -25,9 +25,7 @@ LDFLAGS := -static $(ARCH) -Wl,--gc-sections -s
 
 BUILD := build
 
-LV_SRC  := $(shell find $(LVGL_DIR)/src -name '*.c') \
-           $(shell find $(LVGL_DIR)/demos/widgets -name '*.c') \
-           $(LVGL_DIR)/demos/lv_demos.c
+LV_SRC  := $(shell find $(LVGL_DIR)/src -name '*.c')
 LV_OBJ  := $(patsubst $(LVGL_DIR)/%.c,$(BUILD)/lvgl/%.o,$(LV_SRC))
 APP_SRC := $(wildcard lvdesk/*.c)
 APP_OBJ := $(patsubst lvdesk/%.c,$(BUILD)/app/%.o,$(APP_SRC))

@@ -249,6 +249,39 @@ void desk_fan_icon_set(lv_obj_t *icon, int rpm)
     lv_obj_set_style_bg_color(lv_obj_get_child(icon, FAN_BLADES), c, 0);
 }
 
+/* ---- clock icon (tile) ------------------------------------------------ */
+/* a ring with an hour hand at 2 and a minute hand at 12, white */
+typedef struct { lv_point_precise_t hour[2], min[2]; } clock_pts_t;
+static void clock_free(lv_event_t *e) { lv_free(lv_event_get_user_data(e)); }
+
+lv_obj_t *desk_clock_icon(lv_obj_t *parent, int size)
+{
+    int lw = size >= 24 ? size / 9 : 2, c = size / 2;
+    clock_pts_t *p = lv_malloc(sizeof(*p));
+    p->hour[0] = (lv_point_precise_t){ c, c };
+    p->hour[1] = (lv_point_precise_t){ c + size * 22 / 100, c - size * 13 / 100 };
+    p->min[0] = (lv_point_precise_t){ c, c };
+    p->min[1] = (lv_point_precise_t){ c, c - size * 32 / 100 };
+    lv_obj_t *ic = lv_obj_create(parent);
+    lv_obj_remove_style_all(ic);
+    lv_obj_set_size(ic, size, size);
+    lv_obj_set_style_radius(ic, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_border_width(ic, lw, 0);
+    lv_obj_set_style_border_color(ic, lv_color_white(), 0);
+    lv_obj_add_event_cb(ic, clock_free, LV_EVENT_DELETE, p);
+    lv_obj_t *h = lv_line_create(ic);
+    lv_line_set_points(h, p->hour, 2);
+    lv_obj_t *m = lv_line_create(ic);
+    lv_line_set_points(m, p->min, 2);
+    for (lv_obj_t *l = h;; l = m) {
+        lv_obj_set_style_line_width(l, lw, 0);
+        lv_obj_set_style_line_rounded(l, true, 0);
+        lv_obj_set_style_line_color(l, lv_color_white(), 0);
+        if (l == m) break;
+    }
+    return ic;
+}
+
 /* ---- status bar ------------------------------------------------------- */
 static void bar_update(lv_timer_t *t)
 {
@@ -352,21 +385,22 @@ static void bar_create(lv_obj_t *scr)
 
 /* ---- home screen: tile grid ------------------------------------------- */
 typedef struct {
-    const char *icon, *name;
+    const char *icon, *name;                 /* icon: symbol text, or NULL to use icon_fn */
     void (*build)(lv_obj_t *);
     void (*action)(void);
     uint32_t color;
+    lv_obj_t *(*icon_fn)(lv_obj_t *parent, int size);
 } tile_t;
 
 static const tile_t s_tiles[] = {
-    { LV_SYMBOL_CHARGE,   "System",    panel_sysmon,   NULL, 0x3b82f6 },
-    { LV_SYMBOL_DIRECTORY,"Files",     panel_files,    NULL, 0xf59e0b },
-    { LV_SYMBOL_AUDIO,    "Audio",     panel_audio,    NULL, 0x10b981 },
-    { NULL,               "Network",   panel_network,  NULL, 0x8b5cf6 },   /* NULL = wired icon */
-    { LV_SYMBOL_KEYBOARD, "Console",   panel_console,  NULL, 0x64748b },
-    { LV_SYMBOL_SETTINGS, "Settings",  panel_settings, NULL, 0xef4444 },
-    { LV_SYMBOL_IMAGE,    "Widgets",   NULL, demo_widgets_start,   0xec4899 },
-    { LV_SYMBOL_LIST,     "About",     panel_about,    NULL, 0x0ea5e9 },
+    { LV_SYMBOL_CHARGE,   "System",      panel_sysmon,   NULL, 0x3b82f6, NULL },
+    { LV_SYMBOL_DIRECTORY,"Files",       panel_files,    NULL, 0xf59e0b, NULL },
+    { LV_SYMBOL_AUDIO,    "Audio",       panel_audio,    NULL, 0x10b981, NULL },
+    { NULL,               "Network",     panel_network,  NULL, 0x8b5cf6, desk_wired_icon },
+    { LV_SYMBOL_KEYBOARD, "Console",     panel_console,  NULL, 0x64748b, NULL },
+    { LV_SYMBOL_SETTINGS, "Settings",    panel_settings, NULL, 0xef4444, NULL },
+    { NULL,               "Date & Time", panel_datetime, NULL, 0xec4899, desk_clock_icon },
+    { LV_SYMBOL_LIST,     "About",       panel_about,    NULL, 0x0ea5e9, NULL },
 };
 
 static void tile_click(lv_event_t *e)
@@ -404,8 +438,8 @@ static void home_create(void)
             lv_obj_set_style_text_font(ic, &lv_font_montserrat_32, 0);
             lv_obj_set_style_text_color(ic, lv_color_white(), 0);
         } else {
-            ic = desk_wired_icon(b, 34);
-            desk_wired_icon_set(ic, 1);
+            ic = t->icon_fn(b, 34);
+            if (t->icon_fn == desk_wired_icon) desk_wired_icon_set(ic, 1);
         }
         lv_obj_align(ic, LV_ALIGN_CENTER, 0, -22);
 
@@ -498,6 +532,7 @@ int main(int argc, char **argv)
     lv_obj_t *scr = lv_screen_active();
     lv_obj_remove_style_all(scr);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
+    datetime_restore();            /* time zone saved on the SD card, before the clock shows */
     bar_create(scr);
     desk_set_dark(true);
 

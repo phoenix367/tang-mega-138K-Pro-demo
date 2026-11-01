@@ -2607,7 +2607,7 @@
 #define LV_USE_DEMO_VECTOR_GRAPHIC 0
 
 /** Widgets demo */
-#define LV_USE_DEMO_WIDGETS 1
+#define LV_USE_DEMO_WIDGETS 0
 
 /** Flex layout demo */
 #define LV_USE_DEMO_FLEX_LAYOUT 0

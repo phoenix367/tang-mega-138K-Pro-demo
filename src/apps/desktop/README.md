@@ -64,14 +64,18 @@ PC: host/netinput.py  --tcp 5555-->  board: inputd  --/dev/uinput-->  /dev/input
     **Audio** (WAV list from `/home/ae350`, `/tmp`; plays via a `wavplay` child
     process; "Test tone" writes and plays a 440/880 Hz stereo file), **Network**
     (RX/TX kbit/s chart, IP/MAC/link), **Console** (runs a shell command as root,
-    shows the output; quick buttons for dmesg/ps/free/df/…), **Settings** (dark/light
-    theme, FPS overlay, restart desktop, reboot/poweroff with confirmation),
-    **Widgets** / **Benchmark** (LVGL's demos on their own screen, "Exit demo"
-    button on the top layer).
+    streams the output from a pty, Stop button; quick buttons for
+    dmesg/ps/free/df/ping/…), **Settings** (dark/light theme, FPS overlay, restart
+    desktop, reboot/poweroff with confirmation), **Date & Time** (calendar + hour/minute
+    rollers set the system clock with `clock_settime`; region/city dropdowns from the
+    tzdata subset in `/usr/share/zoneinfo` (`scripts/rootfs/build_tzdata.sh`) apply a
+    zone by copying it to `/etc/localtime` + `/etc/timezone`; the zone is saved to
+    `/mnt/sd/ae350/timezone` when an SD card is mounted and restored at start-up,
+    nothing else survives a reboot of the initramfs rootfs; there is no battery RTC).
 - **`lv_conf.h`** — LVGL configuration: RGB565, CLIB malloc/string, fbdev driver
   in partial mode with a 120-line draw buffer, POSIX fs on drive `A:`, file
   explorer, sysmon/perf monitor (hidden by default), Montserrat 12–32 + UNSCII,
-  widgets + benchmark demos, log level WARN to stdout.
+  calendar/roller/dropdown widgets, no demos, log level WARN to stdout.
 
 ## Build
 

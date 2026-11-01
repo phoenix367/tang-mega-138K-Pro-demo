@@ -22,6 +22,7 @@ lv_obj_t *desk_card(lv_obj_t *parent, const char *title);
 lv_obj_t *desk_msgbox(const char *title, const char *text);
 /* wired-network icon (two boxes joined by a cable, GNOME "network-wired" style);
  * state: 1 = link up (white), 0 = cable unplugged (grey + red slash), -1 = unknown (grey) */
+lv_obj_t *desk_clock_icon(lv_obj_t *parent, int size);   /* tile icon: a clock face */
 lv_obj_t *desk_wired_icon(lv_obj_t *parent, int size);
 void desk_wired_icon_set(lv_obj_t *icon, int state);
 /* fan icon (three blades around a hub); rpm > 0 = white, else red */
@@ -61,7 +62,9 @@ void panel_network(lv_obj_t *parent);
 void panel_console(lv_obj_t *parent);
 void panel_settings(lv_obj_t *parent);
 void panel_about(lv_obj_t *parent);
-void demo_widgets_start(void);
+void panel_datetime(lv_obj_t *parent);
+int  datetime_set_zone(const char *zone);   /* /etc/localtime + TZ + SD copy; 0 on success */
+void datetime_restore(void);               /* apply the zone saved on the SD card, if any */
 void audio_play_file(const char *path);   /* used by the file browser */
 
 #endif

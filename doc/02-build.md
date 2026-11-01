@@ -163,6 +163,10 @@ upstream; the recipes are the only project-specific part.
   until the rootfs is refreshed with `INSTALL=1`; the shipped `dropbearmulti` and `doas`
   still carry debug info (the scripts strip, and match them once stripped); everything
   else rebuilds byte-identically.
+- Time zones: slim tzdata (IANA 2026e, the zone1970.tab zones + UTC, ~217 KB) in
+  `/usr/share/zoneinfo` from `scripts/rootfs/build_tzdata.sh`; the desktop's Date & Time
+  panel copies the chosen zone to `/etc/localtime` (musl reads it) and keeps the choice
+  on the SD card.
 - Desktop: **lvdesk** (LVGL 9.6 on `/dev/fb0`, `S70desktop`) and **inputd** (uinput
   bridge fed by `src/apps/desktop/host/netinput.py` over tcp/5555, `S60inputd`), plus
   **wavplay**; built with `src/apps/desktop/Makefile` (`make install` copies them here).

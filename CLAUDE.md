@@ -60,7 +60,8 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    thermal block; the board has no current sense, so no power measurement. See
    src/rtl/sensor/README.md.
    **Desktop + input:** `src/apps/desktop/` = LVGL 9.6 desktop (`lvdesk`, static musl) on
-   `/dev/fb0` with system monitor, file browser, WAV player, network, console and
+   `/dev/fb0` with system monitor, file browser, WAV player, network, console, date & time
+   (clock + tzdata zone, `linux/rootfs/usr/share/zoneinfo` from `scripts/rootfs/build_tzdata.sh`) and
    settings panels, started on VT 1 by `S70desktop`; keyboard/mouse come from the PC
    over TCP (`src/apps/desktop/host/netinput.py` → `inputd` on the board → `/dev/uinput`, kernel
    #59+ with EVDEV/UINPUT). LVGL sources live in `~/projects/ae350_linux_user_level/lvgl/`.

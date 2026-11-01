@@ -5,7 +5,7 @@
 # lvdesk / inputd / wavplay are built from this repo (src/apps/desktop) and are not covered.
 set -euo pipefail
 cd "$(dirname "$0")"
-for s in ncurses libpcap tcpdump htop iproute2 dropbear doas sftp_server busybox; do
+for s in ncurses libpcap tcpdump htop iproute2 dropbear doas sftp_server tzdata busybox; do
 	echo "### $s"
 	./build_$s.sh
 done

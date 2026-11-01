@@ -3,7 +3,6 @@
  * their objects go (LV_EVENT_DELETE), so leaving a panel is just lv_obj_clean. */
 #define _GNU_SOURCE
 #include "lvdesk.h"
-#include "demos/lv_demos.h"
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -18,6 +17,7 @@
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 static void timer_del_on_delete(lv_event_t *e)
@@ -918,41 +918,6 @@ void panel_settings(lv_obj_t *parent)
 /* ====================================================================== */
 /* LVGL demos on their own screen with a floating Back button              */
 /* ====================================================================== */
-static lv_obj_t *s_desk_scr;
-
-static void demo_scr_deleted(lv_event_t *e)
-{
-    lv_obj_t *b = lv_obj_get_user_data(lv_event_get_target(e));
-    if (b) lv_obj_delete(b);
-}
-
-static void demo_back(lv_event_t *e)
-{
-    (void)e;
-    lv_obj_t *demo_scr = lv_screen_active();
-    lv_screen_load(s_desk_scr);
-    lv_obj_delete_async(demo_scr);      /* we are inside the button's own event */
-    desk_set_dark(desk_is_dark());      /* the demo re-initialised the default theme */
-    desk_go_home();
-}
-
-static void demo_screen(void (*demo)(void))
-{
-    s_desk_scr = lv_screen_active();
-    lv_obj_t *scr = lv_obj_create(NULL);
-    lv_screen_load(scr);
-    demo();
-    /* the button lives on the top layer: removed when the demo screen goes */
-    lv_obj_t *b = lv_button_create(lv_layer_top());
-    lv_obj_align(b, LV_ALIGN_TOP_RIGHT, -6, 6);
-    lv_obj_set_style_bg_color(b, lv_palette_main(LV_PALETTE_RED), 0);
-    lv_obj_add_event_cb(b, demo_back, LV_EVENT_CLICKED, NULL);
-    lv_label_set_text(lv_label_create(b), LV_SYMBOL_CLOSE " Exit demo");
-    lv_obj_set_user_data(scr, b);
-    lv_obj_add_event_cb(scr, demo_scr_deleted, LV_EVENT_DELETE, NULL);
-}
-
-void demo_widgets_start(void) { demo_screen(lv_demo_widgets); }
 
 void panel_about(lv_obj_t *parent)
 {
@@ -970,4 +935,315 @@ void panel_about(lv_obj_t *parent)
         "This desktop: LVGL " LVGL_VERSION_INFO " on /dev/fb0, software rendering.\n"
         "Mouse and keyboard arrive from the PC over Ethernet (desktop/host/netinput.py).\n\n"
         "Source: desktop/ in the mega_138K_test repository.");
+}
+
+/* ====================================================================== */
+/* Date & Time: set the clock and the time zone                           */
+/* ====================================================================== */
+/* Zones come from the slim tzdata subset in /usr/share/zoneinfo (zone1970.tab
+ * lists them). Applying a zone copies its TZif file to /etc/localtime (what
+ * musl reads in every new process), points this process's TZ at it and saves
+ * the name on the SD card when one is mounted: the rootfs is an initramfs, so
+ * nothing else survives a reboot. The clock is set with clock_settime(). */
+#define ZONEINFO  "/usr/share/zoneinfo"
+#define TZ_NAME   "/etc/timezone"             /* name of the zone in /etc/localtime */
+#define TZ_SAVE   "/mnt/sd/ae350/timezone"    /* persisted copy (SD card) */
+
+static char **s_zones;
+static int s_nzones;
+
+static int cmp_str(const void *a, const void *b) { return strcmp(*(char *const *)a, *(char *const *)b); }
+
+static void zones_load(void)
+{
+    if (s_zones) return;
+    int cap = 400;
+    s_zones = malloc(cap * sizeof(char *));
+    s_zones[s_nzones++] = strdup("Etc/UTC");
+    FILE *f = fopen(ZONEINFO "/zone1970.tab", "r");
+    char line[512];
+    while (f && fgets(line, sizeof(line), f)) {
+        if (line[0] == '#') continue;
+        char *save = NULL, *col = strtok_r(line, "\t", &save);
+        col = col ? strtok_r(NULL, "\t", &save) : NULL;
+        col = col ? strtok_r(NULL, "\t\n", &save) : NULL;
+        if (!col || !*col) continue;
+        if (s_nzones == cap) s_zones = realloc(s_zones, (cap *= 2) * sizeof(char *));
+        s_zones[s_nzones++] = strdup(col);
+    }
+    if (f) fclose(f);
+    qsort(s_zones + 1, s_nzones - 1, sizeof(char *), cmp_str);
+}
+
+static void write_text(const char *path, const char *txt)
+{
+    FILE *f = fopen(path, "w");
+    if (f) { fputs(txt, f); fputc('\n', f); fclose(f); }
+}
+
+/* current zone name: /etc/timezone, else UTC */
+static const char *tz_current(char *buf, int len)
+{
+    if (sysinfo_read_file(TZ_NAME, buf, len) > 0) {
+        buf[strcspn(buf, "\n")] = 0;
+        if (buf[0]) return buf;
+    }
+    snprintf(buf, len, "Etc/UTC");
+    return buf;
+}
+
+/* apply a zone system-wide; returns 0 on success */
+int datetime_set_zone(const char *zone)
+{
+    char src[300];
+    snprintf(src, sizeof(src), ZONEINFO "/%s", zone);
+    FILE *in = fopen(src, "rb");
+    if (!in) return -1;
+    FILE *out = fopen("/etc/localtime.new", "wb");
+    if (!out) { fclose(in); return -1; }
+    char buf[4096];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), in)) > 0) fwrite(buf, 1, n, out);
+    fclose(in); fclose(out);
+    if (rename("/etc/localtime.new", "/etc/localtime")) return -1;
+    write_text(TZ_NAME, zone);
+    setenv("TZ", zone, 1);     /* musl re-reads the zone when the TZ string changes */
+    tzset();
+    if (sd_mounted()) { mkdir("/mnt/sd/ae350", 0755); write_text(TZ_SAVE, zone); }
+    return 0;
+}
+
+/* at start-up: the zone saved on the SD card, if any */
+void datetime_restore(void)
+{
+    char z[128];
+    if (sysinfo_read_file(TZ_SAVE, z, sizeof(z)) <= 0) return;
+    z[strcspn(z, "\n")] = 0;
+    if (z[0] && !strstr(z, "..")) datetime_set_zone(z);
+}
+
+typedef struct {
+    lv_obj_t *cal, *hour, *min, *now, *region, *city, *zone_lbl, *status;
+    lv_calendar_date_t sel;                 /* date picked on the calendar */
+    char *regions;                          /* dropdown option strings */
+    char *cities;
+    int *city_idx;                          /* city dropdown row -> s_zones index */
+    int ncity;
+} dt_t;
+
+static void dt_now_tick(lv_timer_t *t)
+{
+    dt_t *d = lv_timer_get_user_data(t);
+    time_t now = time(NULL);
+    struct tm tm;
+    localtime_r(&now, &tm);
+    char b[96];
+    strftime(b, sizeof(b), "%Y-%m-%d  %H:%M:%S  %Z (UTC%z)", &tm);
+    lv_label_set_text(d->now, b);
+}
+
+static void dt_cal_changed(lv_event_t *e)
+{
+    dt_t *d = lv_event_get_user_data(e);
+    lv_calendar_date_t p;
+    if (lv_calendar_get_pressed_date(d->cal, &p) == LV_RESULT_OK) {
+        d->sel = p;
+        lv_calendar_set_highlighted_dates(d->cal, &d->sel, 1);
+    }
+}
+
+static void dt_set_clock(lv_event_t *e)
+{
+    dt_t *d = lv_event_get_user_data(e);
+    struct tm tm;
+    memset(&tm, 0, sizeof(tm));
+    tm.tm_year = d->sel.year - 1900;
+    tm.tm_mon = d->sel.month - 1;
+    tm.tm_mday = d->sel.day;
+    tm.tm_hour = lv_roller_get_selected(d->hour);
+    tm.tm_min = lv_roller_get_selected(d->min);
+    tm.tm_isdst = -1;                       /* let the zone rules decide */
+    time_t t = mktime(&tm);
+    struct timespec ts = { .tv_sec = t, .tv_nsec = 0 };
+    if (t == (time_t)-1 || clock_settime(CLOCK_REALTIME, &ts)) {
+        lv_label_set_text_fmt(d->status, "clock: %s", strerror(errno));
+        lv_obj_set_style_text_color(d->status, lv_palette_main(LV_PALETTE_RED), 0);
+        return;
+    }
+    lv_calendar_set_today_date(d->cal, d->sel.year, d->sel.month, d->sel.day);
+    lv_label_set_text(d->status, "clock set (not kept over a reboot: no battery RTC)");
+    lv_obj_set_style_text_color(d->status, lv_palette_main(LV_PALETTE_GREEN), 0);
+}
+
+/* fill the city dropdown for the region selected in the region dropdown */
+static void dt_fill_cities(dt_t *d, const char *want_zone)
+{
+    char region[64];
+    lv_dropdown_get_selected_str(d->region, region, sizeof(region));
+    size_t rl = strlen(region);
+    free(d->cities); free(d->city_idx);
+    d->cities = malloc(64 * s_nzones + 1); d->cities[0] = 0;
+    d->city_idx = malloc(s_nzones * sizeof(int));
+    d->ncity = 0;
+    int sel = 0;
+    char *w = d->cities;
+    for (int i = 0; i < s_nzones; i++) {
+        const char *z = s_zones[i];
+        bool match = strncmp(z, region, rl) == 0 && z[rl] == '/';
+        if (!match && strcmp(region, "UTC") == 0 && strcmp(z, "Etc/UTC") == 0) match = true;
+        if (!match) continue;
+        if (want_zone && strcmp(z, want_zone) == 0) sel = d->ncity;
+        d->city_idx[d->ncity++] = i;
+        const char *city = strchr(z, '/') ? strchr(z, '/') + 1 : z;
+        if (w != d->cities) *w++ = '\n';
+        for (; *city; city++) *w++ = *city == '_' ? ' ' : *city;
+        *w = 0;
+    }
+    lv_dropdown_set_options(d->city, d->cities);
+    lv_dropdown_set_selected(d->city, sel);
+}
+
+static void dt_region_changed(lv_event_t *e) { dt_fill_cities(lv_event_get_user_data(e), NULL); }
+
+static void dt_show_zone(dt_t *d)
+{
+    char z[128], b[200];
+    tz_current(z, sizeof(z));
+    time_t now = time(NULL);
+    struct tm tm;
+    localtime_r(&now, &tm);
+    strftime(b, sizeof(b), "%Z, UTC%z", &tm);
+    lv_label_set_text_fmt(d->zone_lbl, "%s  (%s)", z, b);
+}
+
+static void dt_apply_zone(lv_event_t *e)
+{
+    dt_t *d = lv_event_get_user_data(e);
+    int row = lv_dropdown_get_selected(d->city);
+    if (row < 0 || row >= d->ncity) return;
+    const char *z = s_zones[d->city_idx[row]];
+    if (datetime_set_zone(z)) {
+        lv_label_set_text_fmt(d->status, "zone %s: %s", z, strerror(errno));
+        lv_obj_set_style_text_color(d->status, lv_palette_main(LV_PALETTE_RED), 0);
+        return;
+    }
+    dt_show_zone(d);
+    lv_label_set_text_fmt(d->status, sd_mounted() ? "zone %s applied and saved on the SD card" : "zone %s applied (no SD card: not kept over a reboot)", z);
+    lv_obj_set_style_text_color(d->status, lv_palette_main(LV_PALETTE_GREEN), 0);
+    /* local time changed: refresh the pickers */
+    time_t now = time(NULL);
+    struct tm tm;
+    localtime_r(&now, &tm);
+    lv_roller_set_selected(d->hour, tm.tm_hour, LV_ANIM_OFF);
+    lv_roller_set_selected(d->min, tm.tm_min, LV_ANIM_OFF);
+}
+
+static void dt_free(lv_event_t *e)
+{
+    dt_t *d = lv_event_get_user_data(e);
+    free(d->regions); free(d->cities); free(d->city_idx); free(d);
+}
+
+static lv_obj_t *dt_roller(lv_obj_t *parent, int n, int sel)
+{
+    char *opts = malloc(n * 3 + 1), *w = opts;
+    for (int i = 0; i < n; i++) w += sprintf(w, i ? "\n%02d" : "%02d", i);
+    lv_obj_t *r = lv_roller_create(parent);
+    lv_roller_set_options(r, opts, LV_ROLLER_MODE_INFINITE);   /* copied */
+    free(opts);
+    lv_roller_set_visible_row_count(r, 3);
+    lv_obj_set_style_text_font(r, &lv_font_montserrat_20, 0);
+    lv_obj_set_width(r, 64);
+    lv_roller_set_selected(r, sel, LV_ANIM_OFF);
+    return r;
+}
+
+void panel_datetime(lv_obj_t *parent)
+{
+    zones_load();
+    dt_t *d = calloc(1, sizeof(*d));
+    lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_ROW);
+    lv_obj_set_style_pad_column(parent, 10, 0);
+
+    time_t now = time(NULL);
+    struct tm tm;
+    localtime_r(&now, &tm);
+    if (tm.tm_year + 1900 < 2000) { tm.tm_year = 2026 - 1900; tm.tm_mon = 0; tm.tm_mday = 1; }   /* 1970 epoch at boot */
+    d->sel.year = tm.tm_year + 1900; d->sel.month = tm.tm_mon + 1; d->sel.day = tm.tm_mday;
+
+    /* ---- left: date + time ---- */
+    lv_obj_t *left = desk_card(parent, "Date and time");
+    lv_obj_set_size(left, LV_PCT(54), LV_PCT(100));
+    d->now = lv_label_create(left);
+    lv_obj_set_style_text_font(d->now, &lv_font_montserrat_16, 0);
+    d->cal = lv_calendar_create(left);
+    lv_obj_set_size(d->cal, LV_PCT(100), 218);
+    lv_obj_set_style_text_font(d->cal, &lv_font_montserrat_14, 0);
+    lv_calendar_set_today_date(d->cal, d->sel.year, d->sel.month, d->sel.day);
+    lv_calendar_set_showed_date(d->cal, d->sel.year, d->sel.month);
+    lv_calendar_set_highlighted_dates(d->cal, &d->sel, 1);
+    lv_calendar_add_header_arrow(d->cal);
+    lv_obj_add_event_cb(d->cal, dt_cal_changed, LV_EVENT_VALUE_CHANGED, d);
+
+    lv_obj_t *row = lv_obj_create(left);
+    lv_obj_remove_style_all(row);
+    lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(row, 8, 0);
+    d->hour = dt_roller(row, 24, tm.tm_hour);
+    lv_obj_t *colon = lv_label_create(row);
+    lv_label_set_text(colon, ":");
+    lv_obj_set_style_text_font(colon, &lv_font_montserrat_24, 0);
+    d->min = dt_roller(row, 60, tm.tm_min);
+    lv_obj_t *b = lv_button_create(row);
+    lv_obj_add_event_cb(b, dt_set_clock, LV_EVENT_CLICKED, d);
+    lv_label_set_text(lv_label_create(b), LV_SYMBOL_OK " Set clock");
+
+    /* ---- right: time zone ---- */
+    lv_obj_t *right = desk_card(parent, "Time zone");
+    lv_obj_set_size(right, LV_PCT(45), LV_PCT(100));
+    d->zone_lbl = lv_label_create(right);
+    lv_obj_set_style_text_font(d->zone_lbl, &lv_font_montserrat_16, 0);
+    dt_show_zone(d);
+
+    /* regions: unique first path components, UTC first */
+    d->regions = malloc(32 * s_nzones + 8);
+    strcpy(d->regions, "UTC");
+    char last[64] = "";
+    int nreg = 1, cur_reg = 0;
+    char curz[128];
+    tz_current(curz, sizeof(curz));
+    for (int i = 1; i < s_nzones; i++) {
+        const char *sl = strchr(s_zones[i], '/');
+        if (!sl) continue;
+        char r[64];
+        snprintf(r, sizeof(r), "%.*s", (int)(sl - s_zones[i]), s_zones[i]);
+        if (strcmp(r, last)) { strcat(d->regions, "\n"); strcat(d->regions, r); strcpy(last, r); nreg++; }
+        if (strncmp(curz, r, strlen(r)) == 0 && curz[strlen(r)] == '/') cur_reg = nreg - 1;
+    }
+    lv_obj_t *l = lv_label_create(right); lv_label_set_text(l, "Region"); lv_obj_set_style_text_opa(l, LV_OPA_70, 0);
+    d->region = lv_dropdown_create(right);
+    lv_obj_set_width(d->region, LV_PCT(100));
+    lv_dropdown_set_options(d->region, d->regions);
+    lv_dropdown_set_selected(d->region, cur_reg);
+    lv_obj_add_event_cb(d->region, dt_region_changed, LV_EVENT_VALUE_CHANGED, d);
+    l = lv_label_create(right); lv_label_set_text(l, "City"); lv_obj_set_style_text_opa(l, LV_OPA_70, 0);
+    d->city = lv_dropdown_create(right);
+    lv_obj_set_width(d->city, LV_PCT(100));
+    dt_fill_cities(d, curz);
+    b = lv_button_create(right);
+    lv_obj_add_event_cb(b, dt_apply_zone, LV_EVENT_CLICKED, d);
+    lv_label_set_text(lv_label_create(b), LV_SYMBOL_OK " Apply zone");
+
+    d->status = lv_label_create(right);
+    lv_label_set_long_mode(d->status, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(d->status, LV_PCT(100));
+    lv_label_set_text(d->status, "The rootfs is an initramfs: the zone is kept only on an SD card (/mnt/sd/ae350/timezone), the clock is lost at reboot.");
+    lv_obj_set_style_text_opa(d->status, LV_OPA_70, 0);
+
+    lv_timer_t *t = lv_timer_create(dt_now_tick, 1000, d);
+    lv_obj_add_event_cb(parent, timer_del_on_delete, LV_EVENT_DELETE, t);
+    lv_obj_add_event_cb(parent, dt_free, LV_EVENT_DELETE, d);
+    dt_now_tick(t);
 }
