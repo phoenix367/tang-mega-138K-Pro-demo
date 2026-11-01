@@ -81,6 +81,7 @@ cd ~/projects/mega_138K_test && bash scripts/build_uboot.sh   # -> u-boot-ae350-
 ## Flash + run
 ```
 cd ~/projects/mega_138K_test
+scripts/flash.sh uboot kernel            # = the two flash_fw.sh lines below (kernel target gzips first)
 GOWIN_PATH=$GOWIN_PATH FW=external/u-boot/u-boot-ae350-xip.bin SPIADDR=0x600000 src/firmware/flash_fw.sh
 GOWIN_PATH=$GOWIN_PATH FW=external/opensbi/build/platform/generic/firmware/fw_payload_gz.bin SPIADDR=0x800000 src/firmware/flash_fw.sh
 GOWIN_PATH=$GOWIN_PATH MODE=sram scripts/gw_program.sh   # load bitstream

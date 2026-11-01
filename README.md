@@ -96,7 +96,8 @@ make -C external/linux ARCH=riscv CROSS_COMPILE=$LGNU tang_mega_138k_defconfig I
 FW_PAYLOAD_OFFSET=0x400000 LINUX_CROSS=$LGNU scripts/build_linux_boot.sh   # external/opensbi
 ```
 
-Then follow [BOOT.md](BOOT.md) for the flash commands and the boot sequence. The
+Then `scripts/flash.sh bitstream uboot kernel` programs the board (or `docker/run.sh --flash ...`
+from the container); [BOOT.md](BOOT.md) has the flash layout and the boot sequence. The
 rootfs binaries are rebuilt with `scripts/rootfs/build_all.sh`.
 
 ## Documentation

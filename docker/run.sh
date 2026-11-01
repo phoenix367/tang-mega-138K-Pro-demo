@@ -10,13 +10,19 @@
 #   docker/run.sh make -C external/linux ARCH=riscv CROSS_COMPILE=riscv32-linux- -j8 Image
 #   docker/run.sh env STAGE=all scripts/gw_run.sh   # gateware (needs the licence server)
 #   docker/run.sh scripts/rootfs/build_all.sh       # rootfs binaries
+#   docker/run.sh --flash [-n] TARGET...            # program the board: scripts/flash.sh in the
+#                                                   # container (load | bitstream | uboot |
+#                                                   # kernel | firmware; -n = dry run)
 #
 # USB (programmer_cli, the UART console) is passed through when /dev/bus/usb exists;
 # the container runs as the uid/gid chosen at bootstrap, so the host's udev rules for the
 # Gowin programmer (Programmer/bin/50-programmer_usb.rules) must already allow that user.
 set -euo pipefail
 
-case "${1:-}" in -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d' | cut -c3-; exit 0 ;; esac
+case "${1:-}" in
+-h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d' | cut -c3-; exit 0 ;;
+--flash)   shift; set -- scripts/flash.sh "$@" ;;
+esac
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$HERE/.." && pwd)

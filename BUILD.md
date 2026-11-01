@@ -68,6 +68,7 @@ docker/run.sh make -C external/linux ARCH=riscv CROSS_COMPILE=riscv32-linux- -j8
 docker/run.sh env FW_PAYLOAD_OFFSET=0x400000 scripts/build_linux_boot.sh
 docker/run.sh env STAGE=all scripts/gw_run.sh        # gateware; the licence server must be reachable
 docker/run.sh scripts/rootfs/build_all.sh
+docker/run.sh --flash bitstream uboot kernel      # program the board from the container (USB passed through)
 ```
 
 Options: `--tag`, `--andes-release` (+ `--andes-*-sha256`), `--uid/--gid`, `--userspace`,
@@ -222,6 +223,8 @@ lvdesk / inputd / wavplay come from `src/apps/desktop` (`make install`).
 | `0x800000` | `0x80200000` | `fw_payload.bin.gz` (OpenSBI + kernel + DTB, gzip) |
 
 ```sh
+GOWIN_PATH=$GP scripts/flash.sh bitstream uboot kernel   # named targets; -n = dry run; 'load' = SRAM only
+# ...or the underlying commands:
 GOWIN_PATH=$GP FW=external/u-boot/u-boot-ae350-xip.bin SPIADDR=0x600000 src/firmware/flash_fw.sh
 GOWIN_PATH=$GP FW=external/opensbi/build/platform/generic/firmware/fw_payload_gz.bin SPIADDR=0x800000 src/firmware/flash_fw.sh
 GOWIN_PATH=$GP MODE=sram scripts/gw_program.sh        # or MODE=flash for persistent bitstream @0x0
