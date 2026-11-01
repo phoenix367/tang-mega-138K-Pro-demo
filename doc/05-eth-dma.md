@@ -212,11 +212,16 @@ graph LR
 - `eth_ahb_arbiter` is a 2-master priority arbiter (RX over TX) with a **registered
   grant** so a transfer is never preempted mid-burst. It forwards the **full 32-bit
   address** — unlike the Gowin AHBBusArbiter IP, which only forwards a fixed 1 MB
-  window at `0x80000000` (that IP was tried first and abandoned for DMA).
+  window at `0x80000000` (that IP was tried first and abandoned for DMA). The top
+  level now instantiates its 4-master descendant `ahb_arbiter4`
+  (`src/rtl/audio/rtl/`), which also carries the SD host's and the audio engine's DMA.
 - `extm_bridge` adapts the 32-bit masters to the **64-bit EXTM data** bus (write
   replicates to both lanes; read selects by `HADDR[2]`). It also drives
   `EXTM_HREADY` from the arbiter's `SHREADYMUXM0` — a wiring detail whose absence
   originally deadlocked every DMA transfer.
-- `ahb_master.v` is single-beat (v1). Sustained line-rate would want INCR bursts,
-  but the practical ceiling here is DDR bandwidth (~6 MB/s), not the AHB beat
-  count — see [06-key-findings.md](06-key-findings.md).
+- `ahb_master.v` v2 issues pipelined **INCR16/8/4 bursts of 64-bit beats** (the EXTM
+  port charges ~16 cycles per burst start and breaks undefined-length INCR into
+  singles, so fixed-length bursts are what pays). With the current `ddr_bridge`
+  the link does TCP ≈65 Mbit/s RX / ≈40 TX and lossless UDP RX to 80 Mbit/s; the
+  original single-beat v1 on the stock Gowin bridge was capped at ~6 MB/s by DDR
+  latency — see [06-key-findings.md](06-key-findings.md).

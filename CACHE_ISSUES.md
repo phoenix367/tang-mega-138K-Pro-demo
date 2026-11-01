@@ -1,7 +1,10 @@
 # AE350 DRAM Atomics / Cache Coherence Issue
 
-**Status:** Open hardware/IP limitation. **Blocks Linux** (and stock OpenSBI) on this
-gateware. Bare-metal / RTOS is unaffected.
+**Status:** hardware/IP limitation, **worked around**: the whole stack (OpenSBI, Linux,
+musl) runs single-hart with software atomics (`PATCHES/`, `doc/06-key-findings.md`),
+and Linux has been stable on it since mid-2026. This file is the original investigation
+and is kept as the reference for *why*; bare-metal / RTOS code that never uses the A
+extension on DRAM is unaffected.
 
 **Target:** Gowin GW5AST-138B (`gw5ast138b-007`), Andes **A25** core (RV32IMAFDC,
 `misa=0x4094312d`, `marchid=0x80000a25`, `mimpid=0x00000160`), Tang Mega 138K Pro Dock.

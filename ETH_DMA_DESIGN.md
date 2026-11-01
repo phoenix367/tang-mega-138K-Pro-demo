@@ -1,5 +1,9 @@
 # Gowin AE350 Ethernet — descriptor-ring DMA design
 
+> Design notes written before and during the implementation. The engine as built is
+> described in `doc/05-eth-dma.md` (current block list, CSRs, burst mode, numbers);
+> where the two differ, that document is the one that matches the RTL.
+
 Goal: replace the single-frame PIO path (`gw_ahb_ethernet` bridge + `gw_tse.c`)
 with a **descriptor-ring DMA**, so many frames are in flight and throughput is no
 longer capped by the per-frame round-trip. The PIO driver is preserved at

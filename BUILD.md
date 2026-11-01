@@ -36,8 +36,8 @@ The boot-stack trees are submodules: `external/linux`, `external/opensbi`, `exte
 after cloning). Paths below are relative to the repo root. Verified board config (from `misa`/`mmsc_cfg` CSRs): **A25**,
 RV32 IMAFDC + S/U (Linux-capable), single hart, 32 KB I + 32 KB D L1 (4-way, 32 B
 line), **CCTL cache-control CSRs present** (`mmsc_cfg` b16), no L2, no coherence
-manager. Clocks (logic-analyzer-verified): **core 800 MHz, AHB/APB/DDR 50 MHz,
-RTC 10 MHz**, DDR3 200 MHz.
+manager. Clocks (logic-analyzer-verified): **core 800 MHz, AHB/APB 50 MHz, data-memory bus 100 MHz,
+RTC 10 MHz**, DDR3 400 MHz (DDR3-800).
 
 A `CMakeLists.txt` wraps most of this: targets `hw_synth`/`hw_pnr`/`hw_all`,
 `firmware`, `flash-bitstream`, `upload`, `uboot-config`/`uboot`/`uboot-flash`,
@@ -152,7 +152,9 @@ gzip -9 -k -f fw_payload.bin && cp -f fw_payload.bin.gz fw_payload_gz.bin
 scripts/config_uboot.sh        # one-time: defconfig + Kconfig tweaks (re-run on a clean tree)
 scripts/build_uboot.sh         # -> external/u-boot/u-boot-ae350-xip.bin (u-boot + DTB @0xf0000)
 ```
-DT adaptation (single CPU, 50 MHz clocks, 256 MB DRAM, no `spi@f0b00000`/mac/mmc nodes)
+DT adaptation (single CPU, 50 MHz clocks, no `spi@f0b00000`/mac/mmc nodes; its memory
+node still says 256 MB, harmless since U-Boot only gunzips the payload and Linux uses
+`linux/ae350-linux.dts` with the full 1 GB)
 and `include/configs/ae350.h` env (`autostart=yes`, `bootcmd = "unzip 0x80200000 0
 0x2000000; sdboot 0"`) are **file edits in the tree**, not Kconfig — see memory
 `ae350-uboot-build`.

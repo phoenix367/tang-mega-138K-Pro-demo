@@ -47,10 +47,10 @@ sequenceDiagram
   SBI->>SBI: init (soft-atomic), set up M-mode traps
   SBI->>K: hand off to kernel @0x400000 (S-mode)
   Note over K: single-hart, soft-atomic,<br/>CONFIG_SMP=n
-  K->>K: PLIC, 8250 UART, PMU, eth0 (gw-tse), unpack initramfs
+  K->>K: PLIC, 8250 UART, PMU, eth0 (gw-tse), fb0, ALSA, mmc, hwmon,<br/>unpack initramfs
   K->>US: Run /init  (→ busybox init → /etc/inittab)
-  US->>US: rcS: mount, busybox --install, setuid /bin/ping,<br/>S40network (eth0 192.168.200.2), S50ssh (dropbear)
-  US->>US: getty → login (ae350 / ae350)
+  US->>US: rcS: mount, busybox --install, setuid ping/doas,<br/>S40network (eth0 192.168.200.2), S45sdcard (/mnt/sd),<br/>S50ssh (dropbear), S60inputd, S70desktop (lvdesk on VT1), S80fan
+  US->>US: getty on UART2 → login (ae350 / ae350)
 ```
 
 ### `harts_early_init()` (U-Boot, `arch/riscv/cpu/andes/cpu.c`)
@@ -100,4 +100,22 @@ stateDiagram-v2
 - Boot args include **`no_hash_pointers`** (no HW RNG → `%pK` would otherwise print
   `(ptrval)` and break `netstat`/`ss`).
 - `eth0` = `192.168.200.2/24` (static, `S40network`); host side `192.168.200.1`.
-- SSH: `ssh ae350@192.168.200.2` (pw `ae350`), then `doas` for root.
+- SSH: `ssh ae350@192.168.200.2` (pw `ae350`), then `doas` for root. `scp`/`sftp`
+  work through the static OpenSSH `sftp-server` that dropbear execs.
+- The rootfs is an **initramfs**: nothing written on the board survives a reboot.
+  Change `linux/rootfs/` (and `scripts/rootfs/` for the binaries), rebuild the
+  kernel, reflash the payload.
+
+## 6. Userspace services (`/etc/init.d`)
+
+| Script | Service |
+|---|---|
+| `S40network` | static `eth0`, `lo` |
+| `S45sdcard` | mounts `/dev/mmcblk0(p1)` on `/mnt/sd` when a card is present |
+| `S50ssh` | dropbear on port 22 with the baked-in host keys |
+| `S60inputd` | `inputd`: keyboard/mouse events from the PC over TCP 5555 → `/dev/uinput` |
+| `S70desktop` | `lvdesk`, the LVGL desktop on `/dev/fb0` (VT 1) |
+| `S80fan` | fan curve for the `gowin-fan` hwmon device |
+
+The desktop's host-side half is `src/apps/desktop/host/netinput.py` (see
+`src/apps/desktop/README.md`).

@@ -3,9 +3,11 @@
 ## 1. System overview
 
 The active design (`ae350_demo_top`, top file `src/rtl/ae350_demo.v`) instantiates the
-Gowin-provided **AE350 hard SoC** and surrounds it with fabric IP: an external
-DDR3 controller bridge, the Triple-Speed Ethernet MAC, the custom `eth_dma`
-engine, and three PLLs.
+Gowin-provided **AE350 hard SoC** and surrounds it with fabric IP: the custom
+`ddr_bridge` in front of the hard DDR3 PHY, the Triple-Speed Ethernet MAC with the
+custom `eth_dma` engine, the LCD scan-out, audio, microSD, sensor and fan cores on
+the SoC's external AHB slave port, and three PLLs. The diagram shows the memory and
+network paths; the other peripherals hang off the same EXTS/EXTM ports (section 2).
 
 ```mermaid
 graph TB
@@ -20,39 +22,54 @@ graph TB
       EXTM["EXTM master AHB<br/>32-addr / 64-data"]
     end
 
-    PLLA["Gowin_PLL_AE350<br/>800 / 50 / 10 MHz"]
-    PLLD["Gowin_PLL_DDR3<br/>200 / 50 MHz"]
-    PLLE["Gowin_PLL_ETH<br/>125 / 25 MHz"]
+    PLLA["Gowin_PLL_AE350<br/>800 / 50 / 50 / 10 MHz"]
+    PLLD["Gowin_PLL_DDR3<br/>400 MHz"]
+    PLLE["Gowin_PLL_ETH<br/>125 / 25 / 33.3 MHz"]
 
-    DDRBR["ahb_ddr3_top (ddr_bridge)<br/>AHB→DDR3 bridge"]
-    DDRPHY["DDR3_Memory_Interface_Top<br/>(hard PHY)"]
+    DDRBR["ahb_ddr3_top (ddr_bridge)<br/>AHB→DDR3, 256-bit, line buffered<br/>+ read-only video port"]
+    DDRPHY["DDR3_Memory_Interface_Top<br/>(hard PHY, user clock 100 MHz)"]
 
     DMA["gw_eth_dma_core<br/>(RX+TX DMA, CSR, MDIO)"]
-    ARB["eth_ahb_arbiter<br/>2 masters → 1"]
+    ARB["ahb_arbiter4<br/>eth RX, eth TX, SD, audio → 1"]
     BR["extm_bridge<br/>32 ↔ 64 data"]
     MAC["Triple_Speed_Ethernet_MAC_Top<br/>(RGMII, MDIO)"]
+    VID["video (LCD scan-out)"]
+    AUD["audio (PT8211 + DMA)"]
+    SDH["sdhost (4-bit SD + DMA)"]
+    SEN["sensor / fan"]
   end
 
   FLASH[("SPI NOR W25Q128<br/>16 MB")]
   DDR[("DDR3 SDRAM<br/>1 GB (2 x16, 32-bit bus)")]
   PHYC["RTL8211F<br/>RGMII PHY"]
+  LCD["800×480 RGB panel"]
 
   FLASH -.config + XIP.-> SOC
   PLLA --> SOC
-  PLLA --> DDRBR
+  DDRPHY -.100 MHz user clock.-> SOC
   PLLD --> DDRPHY
   PLLE --> MAC
+  PLLE --> VID
 
   DDRH --> DDRBR --> DDRPHY --> DDR
+  DDRBR -->|"video port"| VID --> LCD
 
-  A25 -->|"config: EXTS @0xE8000000"| EXTS --> DMA
+  A25 -->|"EXTS @0xE80xxxxx"| EXTS --> DMA
+  EXTS --> VID
+  EXTS --> AUD
+  EXTS --> SDH
+  EXTS --> SEN
   DMA -->|"m0 RX write"| ARB
   DMA -->|"m1 TX read"| ARB
+  SDH -->|"m2"| ARB
+  AUD -->|"m3"| ARB
   ARB --> BR --> EXTM --> DDRBR
   DMA <-->|"byte stream"| MAC
   DMA -->|"miim_*"| MAC
   MAC <-->|RGMII 125 MHz| PHYC
-  DMA -->|"IRQ"| PLIC
+  DMA -->|"IRQ 4"| PLIC
+  AUD -->|"IRQ 11"| PLIC
+  SDH -->|"IRQ 12"| PLIC
 ```
 
 Key integration facts (`src/rtl/ae350_demo.v`):
@@ -64,10 +81,15 @@ Key integration facts (`src/rtl/ae350_demo.v`):
   custom DDR arbiter needed. EXTM is **32-bit address but 64-bit data**, so
   `extm_bridge.v` adapts the 32-bit DMA masters to 64-bit (write replicates to
   both lanes; read selects the lane by `HADDR[2]`).
-- Two DMA masters (RX-write `m0`, TX-read `m1`) merge through
-  `eth_ahb_arbiter.v` (fixed priority **RX > TX**, registered grant = no
-  mid-transfer preemption). This replaced the Gowin AHBBusArbiter IP, which only
-  forwards a fixed 1 MB window at `0x80000000` and is unsuitable for DMA.
+- Four DMA masters merge onto EXTM through `src/rtl/audio/rtl/ahb_arbiter4.v`
+  (fixed priority, registered grant = no mid-transfer preemption): eth RX-write
+  `m0`, eth TX-read `m1`, the SD host's DMA `m2` and the audio fetch engine `m3`.
+  It grew out of `eth_dma/rtl/eth_ahb_arbiter.v`, which replaced the Gowin
+  AHBBusArbiter IP (that one only forwards a fixed 1 MB window at `0x80000000` and
+  is unsuitable for DMA). The SoC's own DMAC cannot reach fabric cores at all.
+- The LCD core does **not** use EXTM: it reads the framebuffer through a dedicated
+  read-only **video port** on `ddr_bridge` (reading over EXTM cost the CPU ~37 % of
+  its memory bandwidth).
 - The **MDIO controller lives in the MAC** (`miim_*` + `mdc`/`mdio` pads are MAC
   ports), so `gw_eth_dma_core.miim_*` wires straight to it.
 - MAC IRQ → SoC `EXT_INT[0]` → PLIC source 4.
@@ -80,10 +102,20 @@ Key integration facts (`src/rtl/ae350_demo.v`):
 | Flash XIP (instr.) | `0x8000_0000` | 16 MB | maps to SPI-NOR offset `0x60_0000`; U-Boot runs here |
 | PLIC | `0xE400_0000` | — | interrupt controller |
 | PLMT (mtime) | `0xE600_0000` | — | machine timer, **50 MHz** tick |
-| **eth_dma CSR (EXTS)** | `0xE800_0000` | 4 KB | DMA control/status, MDIO (see [05-eth-dma.md](05-eth-dma.md)) |
+| **eth_dma CSR (EXTS)** | `0xE800_0000` | 2 KB | DMA control/status, MDIO (see [05-eth-dma.md](05-eth-dma.md)); IRQ EXT_INT[0] = PLIC 4 |
+| **LCD scan-out (EXTS)** | `0xE800_1000` | 256 B | `src/rtl/video/`, framebuffer address/timing; reads DDR via the bridge's video port |
+| **Audio PT8211 (EXTS)** | `0xE800_2000` | 256 B | `src/rtl/audio/`, FIFO + DMA fetch engine; IRQ EXT_INT[1] = PLIC 11 |
+| **ADC sensors (EXTS)** | `0xE800_4000` | 256 B | `src/rtl/sensor/`, die temperature + supply rails (`HADDR[14]`) |
+| **Fan (EXTS)** | `0xE800_8000` | 256 B | `src/rtl/fan/`, PWM + tacho (`HADDR[15]`) |
+| **SD host (EXTS)** | `0xE802_0000` | 256 B | `src/rtl/sdhost/`, 4-bit SD + DMA (`HADDR[17]`); IRQ EXT_INT[2] = PLIC 12 |
 | SMU | `0xF010_0000` | — | system management (HSM / reset) |
 | UART2 | `0xF030_0000` | — | console (header pin B19 @ 115200) |
 | WDT (atcwdt200) | `0xF050_0000` | — | watchdog (drives reset) |
+| **DDR perf / bridge MODE (ext. APB)** | `0xF800_0000` | — | `src/rtl/ddr_perf.v`: bus event counters, trace, bridge MODE register (`scripts/ddr_perf.py`) |
+
+EXTS register reads take one wait state (the read data is registered before the
+SoC's pins for timing); writes are zero-wait. Every peripheral above has a README
+next to its RTL with the full register map.
 
 > The DMA engine's buffers live in **normal DRAM** (e.g. `0x0401_0000`); the custom
 > arbiter forwards the full 32-bit address, so there is no low-1 MB / `0x80000000`
@@ -109,26 +141,37 @@ graph LR
 
   OSC --> PA["Gowin_PLL_AE350<br/>VCO = 800 MHz"]
   PA --> C1["core 800 MHz"]
-  PA --> C0["AHB/DDR-dom 50 MHz"]
-  PA --> C3["APB 50 MHz"]
+  PA --> C2["AHB 50 MHz"]
+  PA --> C3["APB 50 MHz (own output!)"]
   PA --> C4["RTC 10 MHz"]
 
-  OSC --> PD["Gowin_PLL_DDR3<br/>VCO = 800 MHz"]
-  PD --> D2["DDR3 memory 200 MHz"]
-  PD --> D0["ddr3_clkin 50 MHz"]
+  OSC --> PD["Gowin_PLL_DDR3"]
+  PD --> D["DDR3 memory 400 MHz (DDR3-800)"]
+  OSC --> DDRIP["DDR3 IP reference 50 MHz"]
+  DDRIP --> U["DDR3 IP user clock 100 MHz<br/>= SoC DDR_CLK + ddr_bridge"]
 
   OSC --> PE["Gowin_PLL_ETH<br/>VCO = 1000 MHz"]
   PE --> E1["RGMII TX 125 MHz"]
   PE --> E3["100M 25 MHz"]
+  PE --> E2["LCD pixel 33.3 MHz"]
 
-  PHY["PHY RGMII_RXC"] --> RX["rgmii_rxclk 125 MHz<br/>(RX capture domain)"]
+  PHY["PHY RGMII_RXC"] --> RX["rgmii_rxclk 125 MHz<br/>(RX capture domain, LW wire BUFG[8])"]
 ```
 
 Notes:
 
 - All output frequencies are **verified on hardware** (clock-probe ÷256 +
   firmware `mcycle`/`mtime` calibration): core 800, AHB/APB/PLMT 50, RTC 10,
-  DDR3 200, RGMII TX 125 MHz.
+  DDR3 400, RGMII TX 125 MHz.
+- The SoC's data-memory clock `DDR_CLK` (100 MHz) **is the DDR3 IP's user clock**
+  (Build 64+), so `ddr_bridge` is single-clock; the AE350 PLL's 100 MHz output is
+  unused. The DDR3 IP takes its 50 MHz reference straight from the board clock
+  (Build 65+).
+- `APB_CLK` must stay on its **own** PLL output even though it is 1:1 with `AHB_CLK`:
+  fed from the AHB net, the SoC's PLIC drops interrupt completions (audio stalls).
+  All 16 global clock wires are used and pinned with `CLOCK_LOC` in the `.cst`; the
+  RGMII RX clock must stay on an LW wire or gigabit RX breaks. See
+  [06-key-findings.md](06-key-findings.md).
 - The **PLMT mtime runs at 50 MHz** — this is the `timebase-frequency` in the
   Linux/U-Boot DTs. The RTC (10 MHz raw, exposed as a 1 Hz calendar) is *not*
   used for fine timing.
@@ -142,19 +185,29 @@ Notes:
 
 ```
 src/rtl/
-  ae350_demo.v            top: SoC + PLLs + DDR3 bridge + MAC + eth_dma
-  ae350_demo.cst / .sdc   pin + timing constraints
+  ae350_demo.v            top: SoC + PLLs + DDR3 bridge + MAC + eth_dma + peripherals
+  ae350_demo.cst / .sdc   pin, clock-wire and timing constraints
   riscv_ae350_soc/        encrypted Andes AE350 IP (.v synth netlist + .ipc config)
-  gowin_pll_ae350/        core/AHB/RTC PLL
-  gowin_pll_ddr3/         DDR3 PLL
-  gowin_pll_eth/          Ethernet 125/25 MHz PLL
-  ddr3_memory_interface_1g/  hard DDR3 PHY IP netlist (x32, 1 GB, DDR3-800)
-  ddr_bridge/             AHB→DDR3 line-buffered bridge (see its README)
+  gowin_pll_ae350/        core / AHB / APB / RTC PLL
+  gowin_pll_ddr3/         DDR3 400 MHz PLL
+  gowin_pll_eth/          Ethernet 125/25 MHz + LCD 33.3 MHz PLL
+  ddr3_memory_interface_1g/  hard DDR3 PHY IP netlist (x32, 1 GB, DDR3-800) + regen recipe
+  ddr_bridge/             AHB→DDR3 line-buffered bridge, video port (README, tb/run_all.sh)
+  ddr_perf.v, pipe_counter.v  bus perf counters / MODE register on the external APB
   triple_speed_ethernet_mac/  Gowin TSE MAC (encrypted)
-src/rtl/eth_dma/
-  rtl/                    the custom DMA engine (see 05-eth-dma.md)
-  tb/                     iverilog testbenches
-  lib/                    vendored FPGADesignElements (CDC/FIFO primitives)
-src/firmware/                 bare-metal AE350 test firmware + DMA self-test
-linux/                    kernel DT, rootfs, initramfs node list, driver copy
+  gw_ahb_ethernet*.v      MAC wrapper
+  eth_dma/                the custom DMA engine: rtl/, tb/, formal/, lib/ (see 05-eth-dma.md)
+  video/                  LCD scan-out core (README)
+  audio/                  PT8211 output core + DMA fetch engine, ahb_arbiter4 (README)
+  sdhost/                 4-bit SD host + DMA (README)
+  sensor/                 hard-ADC scan sequencer (README)
+  fan/                    PWM + tacho (README)
+  key_debounce.v, pll_init.v  reset debounce, PLL bring-up
+  led_blink.*             disabled sample design
+src/firmware/             bare-metal AE350 test firmware + DMA self-test
+src/apps/desktop/         LVGL desktop (lvdesk), inputd, wavplay; host/netinput.py
+src/apps/tests/           userspace hardware probes (atomics, memory, fb, audio, ...)
+linux/                    kernel DT, busybox config, rootfs, initramfs node list
+external/                 U-Boot / OpenSBI / Linux board forks (submodules)
+PATCHES/                  the board changes as patches; scripts/rootfs/ rebuilds the rootfs
 ```

@@ -1,0 +1,118 @@
+# Tang Mega 138K Pro — RISC-V Linux on the Gowin AE350
+
+A Gowin EDA FPGA project for the **Sipeed Tang Mega 138K Pro Dock** (GW5AST-138B,
+Arora V) that brings up the FPGA's hard **Andes AE350 SoC** (A25 core, rv32imafdc,
+800 MHz), surrounds it with custom fabric peripherals, and boots **Linux 6.12** to a
+busybox userspace with gigabit Ethernet, an 800×480 LCD desktop, audio, microSD,
+sensors and fan control.
+
+The defining constraint: this SoC has **no coherence manager**, so hardware atomics
+(`amo*`, `lr/sc`) hang on a DRAM cache miss. The whole stack is therefore built
+**single-hart "soft-atomic"**: OpenSBI, the kernel and the musl libc all replace
+atomic read-modify-write with interrupt-disabled plain loads and stores. See
+[doc/06-key-findings.md](doc/06-key-findings.md) and [CACHE_ISSUES.md](CACHE_ISSUES.md).
+
+## What works
+
+| Feature | Fabric block (`src/rtl/`) | Linux side | Notes |
+|---|---|---|---|
+| 1 GB DDR3-800, 32-bit bus | `ddr_bridge/` + Gowin DDR3 PHY | — | line-buffered AHB→DDR3 bridge, ~23× the stock bridge; video read port; perf counters in `ddr_perf.v` |
+| Gigabit Ethernet | `eth_dma/` + Gowin TSE MAC | `gw_tse` (PATCHES / kernel fork) | descriptor-ring DMA with 64-bit INCR bursts; TCP ≈65 Mbit/s RX, ≈40 TX; ssh/scp/sftp via dropbear |
+| 5" 800×480 RGB LCD | `video/` | `gowin-lcdfb` fbdev | scans the framebuffer straight from DDR3; fbcon + LVGL 9.6 desktop (`src/apps/desktop/`) |
+| Audio (PT8211 DAC) | `audio/` | ALSA `gowin-pt8211` | own DMA fetch engine, 2048-frame FIFO |
+| microSD (4-bit SD host) | `sdhost/` | `gowin-sdhost` mmc_host | `/dev/mmcblk0`, ~6 MB/s read / 3 MB/s write, mounted at `/mnt/sd` |
+| Die temperature, supply rails | `sensor/` | hwmon `gowin-adc` | the GW5AST's two hard ADC cores |
+| 4-pin fan | `fan/` | hwmon `gowin-fan` + `S80fan` curve | PWM + tacho on header M1 |
+| Keyboard / mouse | — | `inputd` → `/dev/uinput` | sent from the PC over TCP (`src/apps/desktop/host/netinput.py`) |
+| Console | — | UART2, 115200 | header pin B19; `scripts/uart_console.py` |
+
+Current state in flash: gateware **Build 65**, kernel **#71** (2026-11-01).
+
+## Repository layout
+
+```
+mega_138K_test.gprj      Gowin project (file list; impl/ holds process settings + build output)
+src/rtl/                 all HDL: ae350_demo.v top, constraints, one directory per fabric block
+                         (each with rtl/, tb/ and a README), the encrypted AE350 + MAC netlists,
+                         PLLs and the DDR3 PHY netlist
+src/firmware/            bare-metal test firmware (XIP from flash, UART banner, DMA self-test)
+src/apps/                Linux userspace built here: desktop/ (LVGL desktop, inputd, wavplay)
+                         and tests/ (hardware probes: atomics, memory throughput, fb, ...)
+linux/                   kernel device tree, busybox config, the prebuilt static rootfs that
+                         the kernel bakes into its initramfs, initramfs node list
+external/                git submodules: the board forks of U-Boot, OpenSBI and Linux
+PATCHES/                 the same board changes as patch series against pristine upstream,
+                         plus the musl soft-atomic patch (see PATCHES/README.md)
+scripts/                 gw_run.sh / gw_program.sh (Gowin flow), build_uboot.sh,
+                         build_linux_boot.sh, build_musl_toolchain.sh, rootfs/ (one
+                         reproducible build script per rootfs binary), uart_console.py,
+                         ddr_perf.py, timing_summary.py
+doc/                     the curated documentation set (start at doc/README.md)
+```
+
+## Getting started
+
+```sh
+git clone --recursive git@github.com:phoenix367/tang-mega-138K-Pro-demo.git
+cd tang-mega-138K-Pro-demo
+```
+
+Toolchains (all by absolute path; see [BUILD.md](BUILD.md) for why):
+
+| Target | Toolchain |
+|---|---|
+| Gateware | Gowin EDA 1.9.12.02 SP2, `GOWIN_PATH=<install root>` |
+| Bare-metal firmware | any rv32imac bare-metal GCC (`riscv64-unknown-elf-`) |
+| U-Boot, OpenSBI, kernel | a PIE-capable Linux-gnu rv32 GCC (`riscv32-amd-linux-gnu-` from AMD Vitis is used here) |
+| Rootfs / userspace | Bootlin `riscv32-ilp32d--musl--stable-2025.08-1` with the soft-atomic `libc.a`: `scripts/build_musl_toolchain.sh` |
+
+Build and program the gateware:
+
+```sh
+GOWIN_PATH=/path/to/Gowin STAGE=all  scripts/gw_run.sh      # synthesis + PnR -> impl/pnr/mega_138K_test.fs
+GOWIN_PATH=/path/to/Gowin MODE=flash scripts/gw_program.sh  # or MODE=sram for a volatile load
+```
+
+Build and flash the Linux boot stack (U-Boot at flash 0x600000, gzipped OpenSBI+kernel
+payload at 0x800000):
+
+```sh
+export LGNU=/path/to/riscv32-amd-linux-gnu-
+scripts/config_uboot.sh && scripts/build_uboot.sh                      # external/u-boot
+make -C external/linux ARCH=riscv CROSS_COMPILE=$LGNU tang_mega_138k_defconfig Image
+FW_PAYLOAD_OFFSET=0x400000 LINUX_CROSS=$LGNU scripts/build_linux_boot.sh   # external/opensbi
+```
+
+Then follow [BOOT.md](BOOT.md) for the flash commands and the boot sequence. The
+rootfs binaries are rebuilt with `scripts/rootfs/build_all.sh`.
+
+## Documentation
+
+| Where | What |
+|---|---|
+| [doc/README.md](doc/README.md) | Entry point: architecture, build, boot, firmware, the eth_dma engine, key findings |
+| [BUILD.md](BUILD.md) | Every build flow with the exact commands, toolchain traps, flash layout |
+| [BOOT.md](BOOT.md) | Booting Linux: U-Boot → OpenSBI → kernel, flash procedure, console |
+| [CACHE_ISSUES.md](CACHE_ISSUES.md) | The no-coherence-manager investigation that led to the soft-atomic stack |
+| [ETH_DMA_DESIGN.md](ETH_DMA_DESIGN.md) | Original design notes for the Ethernet DMA engine |
+| [PATCHES/README.md](PATCHES/README.md) | What each patch changes and why |
+| `src/rtl/<block>/README.md` | Register maps, timing notes and test procedure for each fabric block |
+| `src/apps/desktop/README.md`, `src/firmware/README.md` | The LVGL desktop and the bare-metal firmware |
+| [CLAUDE.md](CLAUDE.md) | Dense project reference kept for AI-assisted work; accurate, if terse |
+
+## Related repositories
+
+- [tang-mega-138k-u-boot](https://github.com/phoenix367/tang-mega-138k-u-boot),
+  [tang-mega-138k-opensbi](https://github.com/phoenix367/tang-mega-138k-opensbi),
+  [tang-mega-138k-linux](https://github.com/phoenix367/tang-mega-138k-linux): the
+  `external/` submodules, each upstream plus one board commit and a `README.tang-mega-138k.md`.
+- busybox is unmodified [mirror/busybox](https://github.com/mirror/busybox) at
+  `371fe9f`, built from `linux/busybox.config`; the other rootfs tools (dropbear, doas,
+  htop, tcpdump, nstat, sftp-server) are unmodified upstream releases pinned by URL and
+  checksum in `scripts/rootfs/`.
+
+## License
+
+MIT, see [LICENSE](LICENSE). The AE350 SoC, Triple-Speed Ethernet MAC and DDR3 PHY are
+Gowin/Andes IP delivered as encrypted netlists through the Gowin IDE and are subject to
+their own licences; this repository holds the generated netlists, not their sources.
