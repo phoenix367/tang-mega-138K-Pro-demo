@@ -24,6 +24,9 @@ lv_obj_t *desk_msgbox(const char *title, const char *text);
  * state: 1 = link up (white), 0 = cable unplugged (grey + red slash), -1 = unknown (grey) */
 lv_obj_t *desk_wired_icon(lv_obj_t *parent, int size);
 void desk_wired_icon_set(lv_obj_t *icon, int state);
+/* fan icon (three blades around a hub); rpm > 0 = white and spinning, else red and still */
+lv_obj_t *desk_fan_icon(lv_obj_t *parent, int size);
+void desk_fan_icon_set(lv_obj_t *icon, int rpm);
 
 /* input.c */
 bool input_init(lv_display_t *disp);

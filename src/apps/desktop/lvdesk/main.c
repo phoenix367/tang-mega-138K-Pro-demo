@@ -34,7 +34,7 @@
 lv_obj_t *g_content;
 lv_display_t *g_disp;
 
-static lv_obj_t *s_bar, *s_bar_clock, *s_bar_ip, *s_bar_net_icon, *s_bar_cpu, *s_bar_temp, *s_bar_fan, *s_bar_mem, *s_bar_title;
+static lv_obj_t *s_bar, *s_bar_clock, *s_bar_ip, *s_bar_net_icon, *s_bar_cpu, *s_bar_temp, *s_bar_fan, *s_bar_fan_icon, *s_bar_fan_box, *s_bar_mem, *s_bar_title;
 static lv_obj_t *s_home;
 static bool s_dark = true;
 static int s_tty_fd = -1;
@@ -208,6 +208,70 @@ void desk_wired_icon_set(lv_obj_t *icon, int state)
     else lv_obj_add_flag(slash, LV_OBJ_FLAG_HIDDEN);
 }
 
+/* ---- fan icon --------------------------------------------------------- */
+/* Three blade arcs around a hub (children 0..2 arcs, 3 hub). While the fan
+ * turns the blades rotate 20 degrees every 80 ms (one turn in ~1.4 s). */
+#define FAN_BLADES 3
+typedef struct { lv_obj_t *icon; lv_timer_t *timer; int angle; } fan_icon_t;
+
+static void fan_spin(lv_timer_t *t)
+{
+    fan_icon_t *f = lv_timer_get_user_data(t);
+    f->angle = (f->angle + 20) % 360;
+    for (int i = 0; i < FAN_BLADES; i++) lv_arc_set_rotation(lv_obj_get_child(f->icon, i), f->angle);
+}
+
+static void fan_free(lv_event_t *e)
+{
+    fan_icon_t *f = lv_event_get_user_data(e);
+    if (f->timer) lv_timer_delete(f->timer);
+    lv_free(f);
+}
+
+lv_obj_t *desk_fan_icon(lv_obj_t *parent, int size)
+{
+    fan_icon_t *f = lv_malloc(sizeof(*f));
+    memset(f, 0, sizeof(*f));
+    lv_obj_t *ic = lv_obj_create(parent);
+    lv_obj_remove_style_all(ic);
+    lv_obj_set_size(ic, size, size);
+    lv_obj_set_user_data(ic, f);
+    lv_obj_add_event_cb(ic, fan_free, LV_EVENT_DELETE, f);
+    f->icon = ic;
+    for (int i = 0; i < FAN_BLADES; i++) {
+        lv_obj_t *a = lv_arc_create(ic);
+        lv_obj_remove_style_all(a);
+        lv_obj_set_size(a, size, size);
+        lv_obj_center(a);
+        lv_obj_remove_flag(a, LV_OBJ_FLAG_CLICKABLE);
+        lv_arc_set_bg_angles(a, i * 120, i * 120 + 75);
+        lv_arc_set_value(a, 0);                               /* no indicator arc */
+        lv_obj_set_style_arc_width(a, size * 7 / 20, LV_PART_MAIN);
+        lv_obj_set_style_arc_rounded(a, false, LV_PART_MAIN);
+        lv_obj_set_style_arc_opa(a, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_arc_opa(a, LV_OPA_TRANSP, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_opa(a, LV_OPA_TRANSP, LV_PART_KNOB);
+    }
+    lv_obj_t *hub = lv_obj_create(ic);
+    lv_obj_remove_style_all(hub);
+    lv_obj_set_size(hub, size * 3 / 10, size * 3 / 10);
+    lv_obj_center(hub);
+    lv_obj_set_style_radius(hub, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(hub, LV_OPA_COVER, 0);
+    desk_fan_icon_set(ic, 0);
+    return ic;
+}
+
+void desk_fan_icon_set(lv_obj_t *icon, int rpm)
+{
+    fan_icon_t *f = lv_obj_get_user_data(icon);
+    lv_color_t c = rpm > 0 ? lv_color_white() : lv_palette_main(LV_PALETTE_RED);
+    for (int i = 0; i < FAN_BLADES; i++) lv_obj_set_style_arc_color(lv_obj_get_child(icon, i), c, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(lv_obj_get_child(icon, FAN_BLADES), c, 0);
+    if (rpm > 0 && !f->timer) f->timer = lv_timer_create(fan_spin, 80, f);
+    else if (rpm <= 0 && f->timer) { lv_timer_delete(f->timer); f->timer = NULL; }
+}
+
 /* ---- status bar ------------------------------------------------------- */
 static void bar_update(lv_timer_t *t)
 {
@@ -234,12 +298,17 @@ static void bar_update(lv_timer_t *t)
     lv_label_set_text_fmt(s_bar_mem, "%lu MB free", s_si.mem_avail_kb / 1024);
     /* fan: tacho rpm; red warning when the fan should turn but gives no pulses */
     if (!s_si.fan_present) {
-        lv_label_set_text(s_bar_fan, "");
+        lv_obj_add_flag(s_bar_fan_box, LV_OBJ_FLAG_HIDDEN);
+        desk_fan_icon_set(s_bar_fan_icon, 0);
     } else if (s_si.fan_fault || s_si.fan_rpm <= 0) {
-        lv_label_set_text(s_bar_fan, LV_SYMBOL_WARNING " FAN STOPPED");
+        lv_obj_remove_flag(s_bar_fan_box, LV_OBJ_FLAG_HIDDEN);
+        desk_fan_icon_set(s_bar_fan_icon, 0);
+        lv_label_set_text(s_bar_fan, "FAN STOPPED");
         lv_obj_set_style_text_color(s_bar_fan, lv_palette_main(LV_PALETTE_RED), 0);
     } else {
-        lv_label_set_text_fmt(s_bar_fan, LV_SYMBOL_REFRESH " %d", s_si.fan_rpm);
+        lv_obj_remove_flag(s_bar_fan_box, LV_OBJ_FLAG_HIDDEN);
+        desk_fan_icon_set(s_bar_fan_icon, s_si.fan_rpm);
+        lv_label_set_text_fmt(s_bar_fan, "%d rpm", s_si.fan_rpm);
         lv_obj_set_style_text_color(s_bar_fan, lv_color_white(), 0);
     }
 }
@@ -283,7 +352,18 @@ static void bar_create(lv_obj_t *scr)
     lv_obj_set_style_text_font(s_bar_ip, &lv_font_montserrat_16, 0);
     s_bar_cpu = bar_label("");
     s_bar_temp = bar_label("");
-    s_bar_fan = bar_label("");
+    /* fan: spinning icon + rpm (hidden when there is no fan hwmon device) */
+    s_bar_fan_box = lv_obj_create(s_bar);
+    lv_obj_remove_style_all(s_bar_fan_box);
+    lv_obj_set_size(s_bar_fan_box, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(s_bar_fan_box, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(s_bar_fan_box, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(s_bar_fan_box, 6, 0);
+    s_bar_fan_icon = desk_fan_icon(s_bar_fan_box, 16);
+    s_bar_fan = lv_label_create(s_bar_fan_box);
+    lv_label_set_text(s_bar_fan, "");
+    lv_obj_set_style_text_color(s_bar_fan, lv_color_white(), 0);
+    lv_obj_set_style_text_font(s_bar_fan, &lv_font_montserrat_16, 0);
     s_bar_mem = bar_label("");
     lv_obj_set_flex_grow(s_bar_mem, 1);
     s_bar_clock = bar_label("");
