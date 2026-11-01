@@ -1,7 +1,8 @@
 # src/rtl/sdhost/ — native 4-bit SD host with DMA
 
-Replaces the SPI-mode path of `src/rtl/sdspi/` (kept in the tree, disabled in the
-project) for the Dock's microSD slot **J19**. Same pins, now used as the real SD
+Replaces the SPI-mode path of the former `sdspi/` core (removed from the tree on
+2026-11-01 together with Gowin's unused SD IPs; git history has them) for the Dock's
+microSD slot **J19**. Same pins, now used as the real SD
 bus:
 
 | card pin | FPGA pin (bank) | use |
@@ -41,9 +42,9 @@ All lines have 10 kΩ pull-ups on the Dock; the FPGA I/Os add `PULL_MODE=UP`.
     stalls the card while the DMA drains.
   - Sticky STATUS bits (done / timeout / CRC / end-bit / CRC-status / DMA / FIFO)
     with an INT_EN mask → `EXT_INT[2]` = PLIC source 12.
-- `rtl/ahb_arbiter3.v` — the EXTM arbiter with a third master (priority: Ethernet
-  RX > SD > Ethernet TX); superseded by `src/rtl/audio/rtl/ahb_arbiter4.v` (audio DMA as
-  the fourth master, below SD) and kept disabled in the project.
+- The EXTM arbiter with SD as the third master (priority: Ethernet RX > SD >
+  Ethernet TX) is `src/rtl/audio/rtl/ahb_arbiter4.v` (audio DMA as the fourth master,
+  below SD); the earlier three-master `ahb_arbiter3.v` was removed on 2026-11-01.
 - `tb/` — `run_tb.sh`: the core + DMA on a 64-bit AHB memory with random wait
   states against `sd_card_model.v` (a behavioural card: identification, CID/CSD/
   SCR, CMD17/18/24/25/12, ACMD6, CRC checking, injectable CRC error). The bench
@@ -71,7 +72,7 @@ remove" when unmounted) and browses it under "SD card".
 
 ## Results (Build 61, kernel #66, 4 GB class-10 card)
 
-| | native 4-bit host | SPI-mode path (`src/rtl/sdspi/`) |
+| | native 4-bit host | SPI-mode path (former `sdspi/`) |
 |---|---|---|
 | sequential read | 6.0–6.6 MB/s | 1.0 MB/s |
 | sequential write | 3.0 MB/s | 0.9 MB/s |

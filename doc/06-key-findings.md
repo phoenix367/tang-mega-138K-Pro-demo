@@ -70,10 +70,10 @@ are only registered, `HREADY`/`HRDATA` come from flops, and burst beats are pred
 Measured vs 50 MHz: +34% sequential read (148 MB/s), +43% memset, +39% memcpy; kernel to
 `/init` in 2.83 s. See src/rtl/ddr_bridge/README.md.
 
-Board DDR: 2x H5TQ4G63EFR-RDC (4 Gbit x16, 1 GB on a 32-bit bus); the design uses 16 bits
-/ 256 MB. The stock IP ran at 200 MHz, below the DDR3 DLL-on minimum (300 MHz), with 2 Gbit
-timings. The active netlist is `src/rtl/ddr3_memory_interface_400/`: 400 MHz, with the
-correct 4 Gbit timings. **Caveat:** at 400 MHz gigabit RX sees ~2e-5 frames rejected by
+Board DDR: 2x H5TQ4G63EFR-RDC (4 Gbit x16, 1 GB on a 32-bit bus). The stock IP ran at
+200 MHz, below the DDR3 DLL-on minimum (300 MHz), with 2 Gbit timings and only 16 bits /
+256 MB. The active netlist is `src/rtl/ddr3_memory_interface_1g/`: 400 MHz, x32, 15 row
+bits (all 1 GB), with the correct 4 Gbit timings. **Caveat:** at 400 MHz gigabit RX sees ~2e-5 frames rejected by
 the MAC CRC check (0 at 200 MHz); see §3.
 
 ## 3. RGMII RX clock must be constrained at 125 MHz

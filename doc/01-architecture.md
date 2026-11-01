@@ -24,7 +24,7 @@ graph TB
     PLLD["Gowin_PLL_DDR3<br/>200 / 50 MHz"]
     PLLE["Gowin_PLL_ETH<br/>125 / 25 MHz"]
 
-    DDRBR["gw_ahb_ddr3_top<br/>AHB→DDR3 bridge"]
+    DDRBR["ahb_ddr3_top (ddr_bridge)<br/>AHB→DDR3 bridge"]
     DDRPHY["DDR3_Memory_Interface_Top<br/>(hard PHY)"]
 
     DMA["gw_eth_dma_core<br/>(RX+TX DMA, CSR, MDIO)"]
@@ -144,12 +144,12 @@ Notes:
 src/rtl/
   ae350_demo.v            top: SoC + PLLs + DDR3 bridge + MAC + eth_dma
   ae350_demo.cst / .sdc   pin + timing constraints
-  riscv_ae350_soc/        encrypted Andes AE350 IP (.v synth + .vo sim)
+  riscv_ae350_soc/        encrypted Andes AE350 IP (.v synth netlist + .ipc config)
   gowin_pll_ae350/        core/AHB/RTC PLL
   gowin_pll_ddr3/         DDR3 PLL
   gowin_pll_eth/          Ethernet 125/25 MHz PLL
-  ddr3_memory_interface_1g/  hard DDR3 PHY IP netlist (x32, 1 GB; _512 / _400 / plain: older x16 ones, disabled)
-  gw_ahb_ddr3*.v          AHB→DDR3 bridge
+  ddr3_memory_interface_1g/  hard DDR3 PHY IP netlist (x32, 1 GB, DDR3-800)
+  ddr_bridge/             AHB→DDR3 line-buffered bridge (see its README)
   triple_speed_ethernet_mac/  Gowin TSE MAC (encrypted)
 src/rtl/eth_dma/
   rtl/                    the custom DMA engine (see 05-eth-dma.md)

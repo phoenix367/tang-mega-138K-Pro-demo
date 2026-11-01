@@ -11,7 +11,7 @@
         <Option type="disable_insert_pad" value="1"/>
         <Option type="enable_dsrm" value="0"/>
         <Option type="include_path" value="/mnt/data/Gowin_V1.9.12.02_SP2_linux/IDE/ipcore/RiscV_AE350_SOC/data"/>
-        <Option type="include_path" value="/home/ivan/projects/mega_138K_test/src/ddr3_memory_interface_1g"/>
+        <Option type="include_path" value="/home/ivan/projects/mega_138K_test/src/rtl/ddr3_memory_interface_1g"/>
         <Option type="output_file" value="ddr3_memory_interface.vg"/>
         <Option type="output_template" value="ddr3_memory_interface_tmp.v"/>
         <Option type="ram_balance" value="1"/>

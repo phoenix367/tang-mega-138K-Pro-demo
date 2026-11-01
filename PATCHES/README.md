@@ -143,7 +143,8 @@ with a coherence manager (or AXI exclusive-access support).
   `spi0: spi@e8010000`): buffered, polled `spi_controller` (2 KB TX/RX buffers, CS as a
   register bit, SCK = 50 MHz / (2·(DIV+1))). The card itself is driven by the mainline
   `mmc_spi` host (`CONFIG_MMC_SPI`, DT child `mmc-spi-slot`, 25 MHz, 3.3 V, polled card
-  detect) → `/dev/mmcblk0`. Gateware: `src/rtl/sdspi/` (Build 58+). Kernel #62.
+  detect) → `/dev/mmcblk0`. Gateware: the `sdspi/` core (Build 58–60; removed from the tree
+  on 2026-11-01, superseded by 0011 + `src/rtl/sdhost/`). Kernel #62.
 
 ## 0011 — Linux MMC host driver for the gateware's native SD host core
 - New `drivers/mmc/host/gowin-sdhost.c` (`MMC_GOWIN_SDHOST`, DT `"gowin,ae350-sdhost"`,

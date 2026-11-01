@@ -22,14 +22,14 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    stalls) — see doc/06-key-findings.md. The 16 global clock wires are all used and pinned
    in `src/rtl/ae350_demo.cst` (`CLOCK_LOC`): the RGMII RX clock must stay on an LW wire
    (`BUFG[8]`), on a PRIMARY wire its capture window shifts and gigabit RX breaks. `src/rtl/riscv_ae350_soc/` is encrypted Andes IP
-   (`.v` synth source + `.vo` sim netlist) — regenerate via the IDE IP wizard, don't
-   hand-edit. `src/rtl/key_debounce.v` debounces the DDR3/AE350 resets.
+   (`.v` synth netlist + `.ipc` wizard config; the `.vo` sim netlist and the wizard's
+   `temp/` are not kept) — regenerate via the IDE IP wizard, don't hand-edit. `src/rtl/key_debounce.v` debounces the DDR3/AE350 resets.
    DDR3 is **1 GB** (both x16 chips on the 32-bit bus, 15 row bits,
    `src/rtl/ddr3_memory_interface_1g/`, bridge `ADDR_BITS = 30`, 256-bit datapath: one BL8 =
-   one 32 B line — see src/rtl/ddr_bridge/README.md; the x16 / 512 MB netlist stays disabled in
-   `src/rtl/ddr3_memory_interface_512/`).
+   one 32 B line — see src/rtl/ddr_bridge/README.md; the older x16 netlists are gone, git
+   history before 2026-11-01 has them).
    DDR3 path: SoC data-memory AHB (`DDR_H*`) -> **`src/rtl/ddr_bridge/`** (`ahb_ddr3_top`,
-   line-buffered bridge, replaces Gowin's `src/rtl/gw_ahb_ddr3*.v`, now `enable="0"`) ->
+   line-buffered bridge; Gowin's stock `gw_ahb_ddr3` was removed from the tree) ->
    DDR3 IP. `src/rtl/ddr_perf.v` = bus perf counters/trace + bridge MODE register on the
    SoC external APB @ `0xF8000000` (reset MODE 0x10000 = overlapped reads; needs the
    Linux page-table writeback patch `PATCHES/0005`, else use 0x100 — see
@@ -74,9 +74,9 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    master (arbiter master 2) on EXTS @ `0xE8020000` (`HADDR[17]`), IRQ EXT_INT[2] =
    PLIC 12, for the Dock slot J19 (CLK D23, CMD D24, DAT0..3 H23/J23/A25/B25, detect
    J15). Linux `PATCHES/0011` (`gowin-sdhost` mmc_host, 64 KB bounce buffer) →
-   `/dev/mmcblk0`, mounted at `/mnt/sd` by `S45sdcard`. `src/rtl/sdspi/` (SPI-mode master +
-   `spi-gowin` + mmc_spi, PATCHES/0010) is the earlier, slower route, kept but disabled.
-   Gowin's native SD IPs never answered on this board; see src/rtl/sdhost/README.md.
+   `/dev/mmcblk0`, mounted at `/mnt/sd` by `S45sdcard`. The earlier SPI-mode route (`sdspi/`
+   core + `spi-gowin` + mmc_spi, PATCHES/0010) and Gowin's native SD IPs (never answered on
+   this board) were removed from the tree on 2026-11-01; see src/rtl/sdhost/README.md.
 2. **`led_blink` — a disabled sample.** Counter-based LED blinker (`CLK_FREQ_HZ` /
    `BLINK_HZ` params) on the board's `clk`=P16 / `rst_n`=K16 / `led`=J14. Files present
    but `enable="0"` in the `.gprj`. To switch back to it: enable its three files, disable

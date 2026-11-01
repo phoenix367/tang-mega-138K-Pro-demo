@@ -1,6 +1,6 @@
 # ddr_bridge — AHB → DDR3 bridge for the AE350 data memory
 
-Replaces Gowin's `gw_ahb_ddr3` (src/rtl/gw_ahb_ddr3*.v, now disabled in the .gprj) between
+Replaces Gowin's `gw_ahb_ddr3` (removed from the tree on 2026-11-01; git history has it) between
 the AE350 SoC's customized data-memory AHB bus (`DDR_H*`, 64-bit, **100 MHz**) and the
 Gowin DDR3 Memory Interface IP (`DDR3_Memory_Interface_Top`, 1:4, **x32 bus** = both x16
 chips, BL8 = **256 bits = one 32 B line**, **DDR3-800**, `src/rtl/ddr3_memory_interface_1g/`).
@@ -10,8 +10,8 @@ board's memory. The AE350 forwards its whole 2 GB data window (0x00000000–0x7F
 
 History: the bridge started on the x16 IP (BL8 = 128 bits = half a line: a line fill was two
 reads, critical half first, with per-half valid bits, and a 16 B write-merge block), first with
-14 row bits (256 MB, `src/rtl/ddr3_memory_interface_400/`), then 15 (512 MB,
-`src/rtl/ddr3_memory_interface_512/`, `ADDR_BITS = 29`). The 32-bit version dropped the half
+14 row bits (256 MB, former `ddr3_memory_interface_400/`), then 15 (512 MB, former
+`ddr3_memory_interface_512/`, `ADDR_BITS = 29`; both netlists removed 2026-11-01, see git history). The 32-bit version dropped the half
 machinery instead of parameterizing it: every DDR command is now one whole line, the line
 buffers / current line have one valid bit, the merge block is 32 B with a 32-bit mask (a WRAP4
 eviction is a single DDR write), and the command / return FIFOs and the video port carry 256
