@@ -73,7 +73,15 @@ docker/run.sh scripts/rootfs/build_all.sh
 Options: `--tag`, `--andes-release` (+ `--andes-*-sha256`), `--uid/--gid`, `--userspace`,
 `--no-cache`, `--dry-run`. The Gowin tools are never copied into the image. Inside the
 container the toolchains are under `/opt/toolchains` (`ANDES_ROOT`, `TOOLCHAIN`), so every
-Makefile and script works unchanged.
+Makefile and script works unchanged. Verified in the image: firmware, payload, U-Boot,
+OpenSBI payload, kernel, all rootfs packages, and a gateware synthesis (`gw_sh` runs with
+`QT_QPA_PLATFORM=offscreen`, preset in the image, since it is a Qt program even headless;
+the licence server is reached through the default bridge network). The submodule's
+`tools/mkimage` is a host binary of whichever side built U-Boot last; the payload Makefile
+falls back to the distro `mkimage` (`u-boot-tools`, in the image) when it cannot run.
+
+> Docker with the containerd image store keeps image layers under **containerd's** root
+> (`/var/lib/containerd`), not under Docker's `data-root`; move both when relocating.
 
 ---
 

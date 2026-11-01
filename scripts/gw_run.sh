@@ -27,7 +27,8 @@ TCL_SCRIPT="$SCRIPT_DIR/gw_run.tcl"
 
 cd "$GOWIN_PATH"
 export LD_LIBRARY_PATH="./IDE/lib"
-export LD_PRELOAD="/lib/x86_64-linux-gnu/libstdc++.so.6 /lib/x86_64-linux-gnu/libfreetype.so"
+# versioned sonames: the unversioned .so links exist only with the -dev packages installed
+export LD_PRELOAD="/lib/x86_64-linux-gnu/libstdc++.so.6 /lib/x86_64-linux-gnu/libfreetype.so.6"
 
 # The floating license server is flaky ("License verification failed  Server
 # not responding."): retry a few times before giving up.

@@ -74,6 +74,7 @@ ENV ANDES_ROOT=/opt/toolchains \
     TOOLCHAIN=/opt/toolchains/riscv32-ilp32d--musl--stable-2025.08-1 \
     AE350_USERSPACE=/userspace \
     GOWIN_PATH=/opt/gowin \
+    QT_QPA_PLATFORM=offscreen \
     PATH=/opt/toolchains/nds32le-linux-glibc-v5d/bin:/opt/toolchains/nds32le-elf-newlib-v5/bin:/usr/local/bin:/usr/bin:/bin
 
 USER builder
