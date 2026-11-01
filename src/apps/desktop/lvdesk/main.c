@@ -34,7 +34,7 @@
 lv_obj_t *g_content;
 lv_display_t *g_disp;
 
-static lv_obj_t *s_bar, *s_bar_clock, *s_bar_ip, *s_bar_cpu, *s_bar_temp, *s_bar_fan, *s_bar_mem, *s_bar_title;
+static lv_obj_t *s_bar, *s_bar_clock, *s_bar_ip, *s_bar_net_icon, *s_bar_cpu, *s_bar_temp, *s_bar_fan, *s_bar_mem, *s_bar_title;
 static lv_obj_t *s_home;
 static bool s_dark = true;
 static int s_tty_fd = -1;
@@ -152,6 +152,62 @@ lv_obj_t *desk_msgbox(const char *title, const char *text)
     return mb;
 }
 
+/* ---- wired-network icon ----------------------------------------------- */
+/* LVGL's symbol font has Wi-Fi but no Ethernet glyph, so the icon is drawn: two
+ * boxes (top-left, bottom-right) joined by a stepped cable, like GNOME's
+ * network-wired-symbolic. Children: 0 cable, 1 box, 2 box, 3 red slash. */
+typedef struct { lv_point_precise_t cable[4], slash[2]; } wired_pts_t;
+
+static void wired_free(lv_event_t *e) { lv_free(lv_event_get_user_data(e)); }
+
+lv_obj_t *desk_wired_icon(lv_obj_t *parent, int size)
+{
+    int w = size * 5 / 4, b = size * 9 / 20, lw = size >= 24 ? size / 8 : 2;
+    wired_pts_t *p = lv_malloc(sizeof(*p));
+    p->cable[0] = (lv_point_precise_t){ b / 2, b / 2 };
+    p->cable[1] = (lv_point_precise_t){ w / 2, b / 2 };
+    p->cable[2] = (lv_point_precise_t){ w / 2, size - b / 2 };
+    p->cable[3] = (lv_point_precise_t){ w - b / 2, size - b / 2 };
+    p->slash[0] = (lv_point_precise_t){ 1, size - 1 };
+    p->slash[1] = (lv_point_precise_t){ w - 1, 1 };
+
+    lv_obj_t *ic = lv_obj_create(parent);
+    lv_obj_remove_style_all(ic);
+    lv_obj_set_size(ic, w, size);
+    lv_obj_add_event_cb(ic, wired_free, LV_EVENT_DELETE, p);
+
+    lv_obj_t *cable = lv_line_create(ic);
+    lv_line_set_points(cable, p->cable, 4);
+    lv_obj_set_style_line_width(cable, lw, 0);
+    lv_obj_set_style_line_rounded(cable, true, 0);
+    for (int i = 0; i < 2; i++) {
+        lv_obj_t *box = lv_obj_create(ic);
+        lv_obj_remove_style_all(box);
+        lv_obj_set_size(box, b, b);
+        lv_obj_set_pos(box, i ? w - b : 0, i ? size - b : 0);
+        lv_obj_set_style_radius(box, b / 4, 0);
+        lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
+    }
+    lv_obj_t *slash = lv_line_create(ic);
+    lv_line_set_points(slash, p->slash, 2);
+    lv_obj_set_style_line_width(slash, lw, 0);
+    lv_obj_set_style_line_rounded(slash, true, 0);
+    lv_obj_set_style_line_color(slash, lv_palette_main(LV_PALETTE_RED), 0);
+    desk_wired_icon_set(ic, -1);
+    return ic;
+}
+
+void desk_wired_icon_set(lv_obj_t *icon, int state)
+{
+    lv_color_t c = state == 1 ? lv_color_white() : lv_palette_lighten(LV_PALETTE_GREY, 1);
+    lv_obj_set_style_line_color(lv_obj_get_child(icon, 0), c, 0);
+    lv_obj_set_style_bg_color(lv_obj_get_child(icon, 1), c, 0);
+    lv_obj_set_style_bg_color(lv_obj_get_child(icon, 2), c, 0);
+    lv_obj_t *slash = lv_obj_get_child(icon, 3);
+    if (state == 0) lv_obj_remove_flag(slash, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(slash, LV_OBJ_FLAG_HIDDEN);
+}
+
 /* ---- status bar ------------------------------------------------------- */
 static void bar_update(lv_timer_t *t)
 {
@@ -161,7 +217,15 @@ static void bar_update(lv_timer_t *t)
     struct tm tm;
     localtime_r(&now, &tm);
     lv_label_set_text_fmt(s_bar_clock, "%02d:%02d:%02d", tm.tm_hour, tm.tm_min, tm.tm_sec);
-    lv_label_set_text_fmt(s_bar_ip, LV_SYMBOL_WIFI " %s", s_si.ip[0] ? s_si.ip : "no ip");
+    /* the IP stays configured when the cable is pulled: show the link, not the address */
+    desk_wired_icon_set(s_bar_net_icon, s_si.carrier);
+    if (s_si.carrier == 0) {
+        lv_label_set_text(s_bar_ip, "no link");
+        lv_obj_set_style_text_color(s_bar_ip, lv_palette_lighten(LV_PALETTE_GREY, 1), 0);
+    } else {
+        lv_label_set_text(s_bar_ip, s_si.ip[0] ? s_si.ip : "no ip");
+        lv_obj_set_style_text_color(s_bar_ip, lv_color_white(), 0);
+    }
     lv_label_set_text_fmt(s_bar_cpu, "CPU %d%%", s_si.cpu_pct);
     if (s_si.temp_mc != INT32_MIN)
         lv_label_set_text_fmt(s_bar_temp, "%d.%d" "\xC2\xB0" "C", s_si.temp_mc / 1000, (abs(s_si.temp_mc) % 1000) / 100);
@@ -205,7 +269,18 @@ static void bar_create(lv_obj_t *scr)
     lv_obj_set_style_text_font(s_bar_title, &lv_font_montserrat_18, 0);
     lv_obj_set_clickable(s_bar_title, true);
     lv_obj_add_event_cb(s_bar_title, (lv_event_cb_t)desk_go_home, LV_EVENT_CLICKED, NULL);
-    s_bar_ip = bar_label("");
+    /* network: wired icon + address / "no link" */
+    lv_obj_t *net = lv_obj_create(s_bar);
+    lv_obj_remove_style_all(net);
+    lv_obj_set_size(net, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(net, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(net, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(net, 6, 0);
+    s_bar_net_icon = desk_wired_icon(net, 16);
+    s_bar_ip = lv_label_create(net);
+    lv_label_set_text(s_bar_ip, "");
+    lv_obj_set_style_text_color(s_bar_ip, lv_color_white(), 0);
+    lv_obj_set_style_text_font(s_bar_ip, &lv_font_montserrat_16, 0);
     s_bar_cpu = bar_label("");
     s_bar_temp = bar_label("");
     s_bar_fan = bar_label("");
@@ -230,7 +305,7 @@ static const tile_t s_tiles[] = {
     { LV_SYMBOL_CHARGE,   "System",    panel_sysmon,   NULL, 0x3b82f6 },
     { LV_SYMBOL_DIRECTORY,"Files",     panel_files,    NULL, 0xf59e0b },
     { LV_SYMBOL_AUDIO,    "Audio",     panel_audio,    NULL, 0x10b981 },
-    { LV_SYMBOL_WIFI,     "Network",   panel_network,  NULL, 0x8b5cf6 },
+    { NULL,               "Network",   panel_network,  NULL, 0x8b5cf6 },   /* NULL = wired icon */
     { LV_SYMBOL_KEYBOARD, "Console",   panel_console,  NULL, 0x64748b },
     { LV_SYMBOL_SETTINGS, "Settings",  panel_settings, NULL, 0xef4444 },
     { LV_SYMBOL_IMAGE,    "Widgets",   NULL, demo_widgets_start,   0xec4899 },
@@ -265,10 +340,16 @@ static void home_create(void)
         lv_obj_set_style_shadow_opa(b, LV_OPA_30, 0);
         lv_obj_add_event_cb(b, tile_click, LV_EVENT_CLICKED, (void *)t);
 
-        lv_obj_t *ic = lv_label_create(b);
-        lv_label_set_text(ic, t->icon);
-        lv_obj_set_style_text_font(ic, &lv_font_montserrat_32, 0);
-        lv_obj_set_style_text_color(ic, lv_color_white(), 0);
+        lv_obj_t *ic;
+        if (t->icon) {
+            ic = lv_label_create(b);
+            lv_label_set_text(ic, t->icon);
+            lv_obj_set_style_text_font(ic, &lv_font_montserrat_32, 0);
+            lv_obj_set_style_text_color(ic, lv_color_white(), 0);
+        } else {
+            ic = desk_wired_icon(b, 34);
+            desk_wired_icon_set(ic, 1);
+        }
         lv_obj_align(ic, LV_ALIGN_CENTER, 0, -22);
 
         lv_obj_t *nm = lv_label_create(b);

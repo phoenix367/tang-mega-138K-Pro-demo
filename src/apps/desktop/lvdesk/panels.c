@@ -534,7 +534,8 @@ static void net_tick(lv_timer_t *t)
     n->p_rx = n->si.rx_bytes; n->p_tx = n->si.tx_bytes; n->p_tick = now;
     lv_label_set_text_fmt(n->ip, "%s / 24", n->si.ip[0] ? n->si.ip : "none");
     lv_label_set_text(n->mac, n->si.mac);
-    if (n->si.link_speed > 0) lv_label_set_text_fmt(n->link, "%s, %d Mbit/s", n->si.operstate, n->si.link_speed);
+    if (n->si.carrier == 0) lv_label_set_text(n->link, "no carrier (cable unplugged)");
+    else if (n->si.link_speed > 0) lv_label_set_text_fmt(n->link, "%s, %d Mbit/s", n->si.operstate, n->si.link_speed);
     else lv_label_set_text(n->link, n->si.operstate);
 }
 

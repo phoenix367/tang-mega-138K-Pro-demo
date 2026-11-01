@@ -20,6 +20,10 @@ bool desk_is_dark(void);
 void desk_request_exit(int code);
 lv_obj_t *desk_card(lv_obj_t *parent, const char *title);
 lv_obj_t *desk_msgbox(const char *title, const char *text);
+/* wired-network icon (two boxes joined by a cable, GNOME "network-wired" style);
+ * state: 1 = link up (white), 0 = cable unplugged (grey + red slash), -1 = unknown (grey) */
+lv_obj_t *desk_wired_icon(lv_obj_t *parent, int size);
+void desk_wired_icon_set(lv_obj_t *icon, int state);
 
 /* input.c */
 bool input_init(lv_display_t *disp);
@@ -35,6 +39,7 @@ typedef struct {
     int rail_mv[8];                /* hwmon in0..in7, -1 = n/a */
     char rail_label[8][24];
     int link_speed;                /* Mbit/s, -1 = down/unknown */
+    int carrier;                   /* /sys/class/net/eth0/carrier: 1 = cable + link, 0 = no link, -1 = n/a */
     char ip[20], mac[20], operstate[12];
     unsigned long long rx_bytes, tx_bytes;
     int fan_rpm, fan_pwm, fan_present, fan_fault;   /* gowin-fan hwmon (-1 / 0 if absent) */

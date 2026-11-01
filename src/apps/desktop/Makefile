@@ -8,7 +8,9 @@
 # LVGL sources live outside the repo (CLAUDE.md "Linux userspace sources"):
 #   ~/projects/ae350_linux_user_level/lvgl/lvgl-<ver>/
 
-TC       ?= $(HOME)/projects/riscv32-ilp32d--musl--stable-2025.08-1
+# Bootlin musl toolchain with the soft-atomic libc.a; TOOLCHAIN is what the Docker image
+# and scripts/rootfs/common.sh use, TC the older name
+TC       ?= $(if $(TOOLCHAIN),$(TOOLCHAIN),$(HOME)/projects/riscv32-ilp32d--musl--stable-2025.08-1)
 CROSS    ?= $(TC)/bin/riscv32-buildroot-linux-musl-
 CC       := $(CROSS)gcc
 AR       := $(CROSS)ar

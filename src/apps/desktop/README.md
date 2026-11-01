@@ -43,7 +43,7 @@ PC: host/netinput.py  --tcp 5555-->  board: inputd  --/dev/uinput-->  /dev/input
 - **`lvdesk/`** — the desktop (`/etc/init.d/S70desktop`, supervised restart loop,
   log in `/run/desktop.log`):
   - `main.c` — fbdev display, VT 1 to `KD_GRAPHICS` + keyboard `K_OFF` (restored on
-    exit), status bar (clock, IP, CPU %, die temperature, fan rpm — red "FAN
+    exit), status bar (clock, wired-link icon + IP or "no link" when the cable is out, CPU %, die temperature, fan rpm — red "FAN
     STOPPED" when the tacho gives no pulses, free memory), home tile
     grid, panel container with Back. `-p <panel>` opens a panel at start (for
     screenshots), `-T` leaves the VT alone. Only one copy runs: `lvdesk` takes

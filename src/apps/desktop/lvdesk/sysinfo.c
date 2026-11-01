@@ -148,6 +148,7 @@ void sysinfo_sample(sysinfo_t *si)
 
     /* network: eth0 */
     si->link_speed = read_int("/sys/class/net/eth0/speed", -1);
+    si->carrier = read_int("/sys/class/net/eth0/carrier", -1);   /* phylib: 0 as soon as the cable goes */
     sysinfo_read_file("/sys/class/net/eth0/address", si->mac, sizeof(si->mac));
     sysinfo_read_file("/sys/class/net/eth0/operstate", si->operstate, sizeof(si->operstate));
     if (sysinfo_read_file("/sys/class/net/eth0/statistics/rx_bytes", buf, sizeof(buf)) > 0) si->rx_bytes = strtoull(buf, NULL, 10);
