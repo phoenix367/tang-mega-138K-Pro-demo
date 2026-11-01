@@ -156,12 +156,16 @@ and `include/configs/ae350.h` env (`autostart=yes`, `bootcmd = "unzip 0x80200000
 0x2000000; sdboot 0"`) are **file edits in the tree**, not Kconfig — see memory
 `ae350-uboot-build`.
 
-### 4e. busybox (`linux/rootfs/bin/busybox`)
+### 4e. rootfs binaries (`linux/rootfs/`)
 ```sh
-INSTALL=1 scripts/build_busybox.sh     # mirror/busybox @ 371fe9f + linux/busybox.config, static musl
+scripts/rootfs/build_all.sh            # ncurses, libpcap, tcpdump, htop, nstat, dropbear, doas, sftp-server, busybox
+INSTALL=1 scripts/rootfs/build_busybox.sh   # or any single build_<pkg>.sh; INSTALL=1 replaces the rootfs file
 ```
-The config is `defconfig` + `CONFIG_STATIC=y` (soft-atomic `libc.a`) with HWCLOCK / RDATE /
-TC / SHA*_HWACCEL off. Other rootfs packages: `~/projects/ae350_linux_user_level/<pkg>/`.
+Each script fetches + checksums its upstream tarball into `~/projects/ae350_linux_user_level/<pkg>/`,
+builds static against the soft-atomic musl toolchain, verifies 0 lr/sc/amo and says whether the
+result is identical to the shipped binary. busybox = mirror/busybox @ `371fe9f` +
+`linux/busybox.config` (`defconfig` + `CONFIG_STATIC=y`, HWCLOCK / RDATE / TC / SHA*_HWACCEL off).
+lvdesk / inputd / wavplay come from `src/apps/desktop` (`make install`).
 
 ---
 

@@ -132,25 +132,36 @@ Critical kernel facts (see [06-key-findings.md](06-key-findings.md)):
 `linux/rootfs/` is a **static-binary ramfs** (no shared libs). Contents are baked
 in and the kernel reflashed — edits on the live device do **not** persist.
 
+Every cross-built binary below is reproduced by a script in `scripts/rootfs/`
+(`build_all.sh` runs them all; each one fetches and checksums its upstream tarball into
+`~/projects/ae350_linux_user_level/<pkg>/`, builds with the soft-atomic musl toolchain,
+checks the result is static and free of lr/sc/amo, reports whether it is identical to the
+file in `linux/rootfs/`, and with `INSTALL=1` replaces it). All sources are unmodified
+upstream; the recipes are the only project-specific part.
+
 - busybox (musl static, soft-atomic), `init`→busybox, `/etc/inittab` → `rcS`.
   Built from the unmodified busybox mirror at commit `371fe9f71d445d18be28c82a2a6d82115c8af19d`
   (v1.37.0.git, 2024-07-14) with `linux/busybox.config` (= `defconfig` + `CONFIG_STATIC`,
   `CONFIG_STATIC_LIBGCC`, and HWCLOCK / RDATE / TC / SHA*_HWACCEL off);
-  `scripts/build_busybox.sh` fetches that commit, builds it with the soft-atomic musl
-  toolchain, checks the result has no lr/sc/amo and (with `INSTALL=1`) copies it into
-  `linux/rootfs/bin/`. Only the build-date banner differs between rebuilds; with
-  `SOURCE_DATE_EPOCH=1781018868` the result is byte-identical to the shipped binary.
-- Privilege: **doas** (`permit persist :wheel`), users `root` / `ae350` (pw `ae350`).
-- SSH: **dropbear** (`dropbearmulti` + symlinks), stable host keys in `/etc/dropbear/`.
-  `scp`/`sftp` from a modern OpenSSH client need the SFTP subsystem: a static
-  OpenSSH `sftp-server` (built without OpenSSL/zlib, see
-  `~/projects/ae350_linux_user_level/openssh/build_sftp.sh`) sits at
-  `/usr/libexec/sftp-server`, the path dropbear execs. Legacy `scp -O` works via
-  dropbear's own `scp` too.
+  `scripts/rootfs/build_busybox.sh`. Only the build-date banner differs between rebuilds;
+  with `SOURCE_DATE_EPOCH=1781018868` the result is byte-identical to the shipped binary.
+- Privilege: **doas** (OpenDoas 6.8.2, `build_doas.sh`; `permit persist :wheel`), users
+  `root` / `ae350` (pw `ae350`).
+- SSH: **dropbear** 2022.83 (`dropbearmulti` + symlinks, `build_dropbear.sh`), stable host
+  keys in `/etc/dropbear/`. `scp`/`sftp` from a modern OpenSSH client need the SFTP
+  subsystem: a static OpenSSH 9.9p2 `sftp-server` (built without OpenSSL/zlib,
+  `build_sftp_server.sh`) sits at `/usr/libexec/sftp-server`, the path dropbear execs.
+  Legacy `scp -O` works via dropbear's own `scp` too.
 - `ping`: a **separate setuid-root copy** `/bin/ping` (the main busybox stays
   unprivileged), gated by `/etc/busybox.conf`.
-- Extra static tools cross-built into `/usr/bin`: **htop** (ncurses w/ compiled-in
-  terminfo fallbacks), **tcpdump** (+libpcap, run via `doas`), **nstat** (iproute2).
+- Extra static tools cross-built into `/usr/bin`: **htop** 3.3.0 (ncurses 6.6 w/
+  compiled-in terminfo fallbacks; `build_ncurses.sh` + `build_htop.sh`), **tcpdump** 4.99.5
+  (+libpcap 1.10.5, run via `doas`; `build_libpcap.sh` + `build_tcpdump.sh`), **nstat**
+  (iproute2 6.11.0, `build_iproute2.sh`). The shipped tcpdump is an unoptimised (-O0)
+  build and the shipped nstat was compiled by hand, so those two scripts report "DIFFERS"
+  until the rootfs is refreshed with `INSTALL=1`; the shipped `dropbearmulti` and `doas`
+  still carry debug info (the scripts strip, and match them once stripped); everything
+  else rebuilds byte-identically.
 - Desktop: **lvdesk** (LVGL 9.6 on `/dev/fb0`, `S70desktop`) and **inputd** (uinput
   bridge fed by `src/apps/desktop/host/netinput.py` over tcp/5555, `S60inputd`), plus
   **wavplay**; built with `src/apps/desktop/Makefile` (`make install` copies them here).
