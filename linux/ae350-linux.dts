@@ -140,6 +140,22 @@
 			gowin,pulses-per-rev = <2>;
 		};
 
+		/* gpio/ -- six board-control lines behind a plain data/direction
+		 * register pair (generic gpio-mmio): 0 SYS_TWI SCL (K25), 1 SDA (K26),
+		 * 2..4 the Dock's 74HC4051 TWI mux select (N19/P19/P26), 5 EEPROM
+		 * write protect (V14).  No board driver: i2c-gpio bit-bangs the bus,
+		 * i2c-mux-gpio steers the mux, nvmem/at24 own the write protect. */
+		bgpio: gpio@e8010000 {
+			compatible = "wd,mbl-gpio";
+			reg = <0xe8010000 0x4>, <0xe8010004 0x4>;
+			reg-names = "dat", "dirout";
+			gpio-controller;
+			#gpio-cells = <2>;
+			ngpios = <6>;
+			gpio-line-names = "sys-scl", "sys-sda", "twi-sel0", "twi-sel1",
+					  "twi-sel2", "eeprom-wp";
+		};
+
 		/* sdhost/ -- native 4-bit SD host with DMA for the Dock's microSD
 		 * slot J19 (CLK D23, CMD D24, DAT0..3 H23/J23/A25/B25), EXT_INT[2] =
 		 * GP2 = PLIC src 12; MMC host driver gowin-sdhost -> /dev/mmcblk0. */
@@ -156,6 +172,10 @@
 		gmac0: ethernet@e8000000 {
 			compatible = "gowin,ae350-tse";
 			reg = <0xe8000000 0x800>;
+			/* MAC from the board EEPROM (boardcfg set mac ...); the driver
+			 * defers its probe until the EEPROM is up, random if unset */
+			nvmem-cells = <&eth_mac>;
+			nvmem-cell-names = "mac-address";
 			interrupts = <4 4>;	/* EXT_INT[0] = GP0 = PLIC src 4 */
 			interrupt-parent = <&plic0>;
 			phy-mode = "rgmii-id";	/* RGMII delay supplied by the PHY */
@@ -191,6 +211,75 @@
 		watchdog@f0500000 {
 			compatible = "andestech,atcwdt200";
 			reg = <0xf0500000 0x1000>;
+		};
+	};
+
+	/* Off the soc bus: these two have no registers of their own. */
+	/* The Dock's SYS_TWI bus (2.2k pull-ups), ~100 kHz.  Flag 6 =
+	 * GPIO_OPEN_DRAIN (SINGLE_ENDED 2 | LINE_OPEN_DRAIN 4): gpiolib emulates
+	 * it on this chip by switching the direction (input = released,
+	 * output-low = driven). */
+	i2c_sys: i2c-sys {
+		compatible = "i2c-gpio";
+		sda-gpios = <&bgpio 1 6>;
+		scl-gpios = <&bgpio 0 6>;
+		i2c-gpio,delay-us = <5>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+
+	/* 8-way TWI mux (two 74HC4051, Dock sheet "TWI MUX"): 0/1 SFP0/1,
+	 * 2 EEPROM, 3 DVI-A DDC, 4 DVI-B DDC, 5 DVP camera, 6/7 MIPI RX0/1.
+	 * Each channel becomes its own i2c bus (/dev/i2c-1..); only the
+	 * EEPROM is populated here.  Idle on the EEPROM channel. */
+	i2c_mux: i2c-mux {
+		compatible = "i2c-mux-gpio";
+		i2c-parent = <&i2c_sys>;
+		mux-gpios = <&bgpio 2 0>, <&bgpio 3 0>, <&bgpio 4 0>;
+		idle-state = <2>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		i2c_eeprom: i2c@2 {
+			reg = <2>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			/* ZD24C08A U24: 1 KB, 24C08-compatible (four 256-byte
+			 * blocks at 0x50..0x53), 16-byte pages.  Hardware WP is
+			 * held high by the nvmem core and dropped only for
+			 * writes.  /sys/bus/nvmem/devices/board-eeprom0/nvmem */
+			eeprom0: eeprom@50 {
+				compatible = "atmel,24c08";
+				reg = <0x50>;
+				pagesize = <16>;
+				wp-gpios = <&bgpio 5 0>;
+				label = "board-eeprom";
+
+				/* boardcfg(8) layout: 0x100 header, 0x110 MAC,
+				 * 0x120.. key=value text (src/apps/boardcfg/) */
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					eth_mac: mac-address@110 {
+						reg = <0x110 6>;
+					};
+				};
+			};
+		};
+
+		i2c_dvi_a: i2c@3 {
+			reg = <3>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+
+		i2c_dvi_b: i2c@4 {
+			reg = <4>;
+			#address-cells = <1>;
+			#size-cells = <0>;
 		};
 	};
 };

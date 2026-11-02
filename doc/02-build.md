@@ -176,6 +176,15 @@ upstream; the recipes are the only project-specific part.
   `PATCHES/0009`, gateware Build 57+). See src/rtl/fan/README.md.
 - microSD: `S45sdcard` mounts `/dev/mmcblk0(p1)` at `/mnt/sd` (kernel #66+,
   `PATCHES/0011` gowin-sdhost, gateware Build 61+). See src/rtl/sdhost/README.md.
+- Board EEPROM: the Dock's 1 KB ZD24C08A on its `SYS_TWI` I2C bus, reached through the
+  `gpio/` register block with mainline `gpio-mmio` + `i2c-gpio` + `i2c-mux-gpio` + `at24`
+  (defconfig: `I2C_GPIO`, `I2C_MUX_GPIO`, `GPIO_GENERIC_PLATFORM`, `EEPROM_AT24`,
+  `I2C_CHARDEV`; kernel #73+, gateware Build 66+). Busybox `i2cdetect`/`i2cdump` are in,
+  the EEPROM is `/sys/bus/nvmem/devices/board-eeprom0/nvmem`. See src/rtl/gpio/README.md.
+  **boardcfg** (`src/apps/boardcfg/`, `/usr/sbin/boardcfg`, `S35boardcfg`, kernel #74+)
+  keeps settings in it: `boardcfg set mac|hostname|tz|<any> VALUE`, restored at boot by the
+  daemon; the kernel reads the MAC itself from the EEPROM's nvmem cell (DT `eth_mac`,
+  `gw-tse` defers its probe until the EEPROM is up). See src/apps/boardcfg/README.md.
 
 ## 5. Program the board
 

@@ -947,7 +947,8 @@ void panel_about(lv_obj_t *parent)
  * nothing else survives a reboot. The clock is set with clock_settime(). */
 #define ZONEINFO  "/usr/share/zoneinfo"
 #define TZ_NAME   "/etc/timezone"             /* name of the zone in /etc/localtime */
-#define TZ_SAVE   "/mnt/sd/ae350/timezone"    /* persisted copy (SD card) */
+#define TZ_SAVE   "/mnt/sd/ae350/timezone"    /* persisted copy (SD card, legacy) */
+#define BOARDCFG  "/usr/sbin/boardcfg"        /* board EEPROM settings daemon/CLI */
 
 static char **s_zones;
 static int s_nzones;
@@ -1009,14 +1010,22 @@ int datetime_set_zone(const char *zone)
     write_text(TZ_NAME, zone);
     setenv("TZ", zone, 1);     /* musl re-reads the zone when the TZ string changes */
     tzset();
-    if (sd_mounted()) { mkdir("/mnt/sd/ae350", 0755); write_text(TZ_SAVE, zone); }
+    /* persist: the board EEPROM through boardcfg(8) when it is there (the
+     * daemon restores it at boot, S35boardcfg), else the SD card */
+    if (access(BOARDCFG, X_OK) == 0) {
+        char cmd[400];
+        snprintf(cmd, sizeof(cmd), BOARDCFG " set tz '%s' >/dev/null 2>&1", zone);
+        system(cmd);
+    } else if (sd_mounted()) { mkdir("/mnt/sd/ae350", 0755); write_text(TZ_SAVE, zone); }
     return 0;
 }
 
-/* at start-up: the zone saved on the SD card, if any */
+/* at start-up: the zone saved on the SD card, if any -- only when boardcfg is
+ * not managing it (then /etc/timezone is already what the EEPROM says) */
 void datetime_restore(void)
 {
     char z[128];
+    if (access(BOARDCFG, X_OK) == 0) return;
     if (sysinfo_read_file(TZ_SAVE, z, sizeof(z)) <= 0) return;
     z[strcspn(z, "\n")] = 0;
     if (z[0] && !strstr(z, "..")) datetime_set_zone(z);
@@ -1239,7 +1248,9 @@ void panel_datetime(lv_obj_t *parent)
     d->status = lv_label_create(right);
     lv_label_set_long_mode(d->status, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(d->status, LV_PCT(100));
-    lv_label_set_text(d->status, "The rootfs is an initramfs: the zone is kept only on an SD card (/mnt/sd/ae350/timezone), the clock is lost at reboot.");
+    lv_label_set_text(d->status, access(BOARDCFG, X_OK) == 0
+        ? "The zone is kept in the board EEPROM (boardcfg); the clock itself is lost at reboot (no battery RTC)."
+        : "The rootfs is an initramfs: the zone is kept only on an SD card (/mnt/sd/ae350/timezone), the clock is lost at reboot.");
     lv_obj_set_style_text_opa(d->status, LV_OPA_70, 0);
 
     lv_timer_t *t = lv_timer_create(dt_now_tick, 1000, d);

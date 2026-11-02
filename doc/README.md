@@ -21,7 +21,7 @@ graph LR
     DDRC["DDR3 PHY<br/>(hard, 400 MHz)"]
     DMA["eth_dma engine"]
     MAC["Gowin TSE MAC<br/>(RGMII)"]
-    PER["video · audio · sdhost<br/>sensor · fan<br/>(EXTS @ 0xE800xxxx)"]
+    PER["video · audio · sdhost<br/>sensor · fan · gpio<br/>(EXTS @ 0xE80xxxxx)"]
   end
   FLASH[("SPI NOR 16 MB<br/>bitstream + boot")]
   DDR[("DDR3 1 GB")]
@@ -54,7 +54,7 @@ graph LR
 
 Per-block references live next to the RTL: `src/rtl/ddr_bridge/README.md` (bridge
 protocol, perf counters, MODE register), `video/`, `audio/`, `sdhost/`, `sensor/`,
-`fan/` and `ddr3_memory_interface_1g/` READMEs (register maps, pins, Linux drivers),
+`fan/`, `gpio/` and `ddr3_memory_interface_1g/` READMEs (register maps, pins, Linux drivers),
 `src/apps/desktop/README.md` (LVGL desktop + network input) and
 `src/firmware/README.md`. The top-level `BUILD.md` / `BOOT.md` are the command-level
 recipes, `CACHE_ISSUES.md` the original atomics investigation, `ETH_DMA_DESIGN.md` the
@@ -68,5 +68,5 @@ DMA engine's design notes, `PATCHES/README.md` the patch-by-patch rationale.
 - **The defining constraint:** no coherence manager ⇒ hardware atomics (`amo`/`lr-sc`) hang on a DDR cache miss ⇒ the **entire stack is built single-hart "soft-atomic"** (kernel + OpenSBI + musl). See [06-key-findings.md](06-key-findings.md).
 - **Memory:** 1 GB DDR3 through the custom `src/rtl/ddr_bridge/` (256-bit datapath, one BL8 = one cache line, overlapped reads); ~23× the stock Gowin bridge, which capped everything at ~6 MB/s. The A25's page-table walker is not cache-coherent, hence kernel patch 0005.
 - **Networking:** custom `eth_dma` descriptor-ring DMA (64-bit INCR16 bursts) on the SoC's EXTM/EXTS external-AHB ports + the Gowin TSE MAC. 1 Gbps link; TCP ≈65 Mbit/s RX / ≈40 TX, UDP RX lossless to 80 Mbit/s.
-- **Peripherals on EXTS:** LCD scan-out `0xE8001000`, audio `0xE8002000` (PLIC 11), ADC sensors `0xE8004000`, fan `0xE8008000`, SD host `0xE8020000` (PLIC 12); eth_dma `0xE8000000` (PLIC 4); DDR perf counters on the external APB `0xF8000000`.
+- **Peripherals on EXTS:** LCD scan-out `0xE8001000`, audio `0xE8002000` (PLIC 11), ADC sensors `0xE8004000`, fan `0xE8008000`, board GPIO (Dock I2C bus / EEPROM) `0xE8010000`, SD host `0xE8020000` (PLIC 12); eth_dma `0xE8000000` (PLIC 4); DDR perf counters on the external APB `0xF8000000`.
 - **Rootfs:** static musl binaries only (busybox, dropbear, doas, htop, tcpdump, LVGL desktop); every one rebuilt by `scripts/rootfs/`.

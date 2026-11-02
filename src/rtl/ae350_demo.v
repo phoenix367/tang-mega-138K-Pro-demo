@@ -70,6 +70,12 @@ module ae350_demo_top
     inout  SD_CMD,
     inout  [3:0] SD_DAT,
     input  SD_DET,
+    // Board control lines (gpio_core @ 0xE8010000, Linux gpio-mmio + i2c-gpio):
+    // the Dock's SYS_TWI bus, its 8-way TWI mux select, the EEPROM write protect
+    inout  SYS_SCL,
+    inout  SYS_SDA,
+    inout  [2:0] TWI_SEL,
+    inout  EEPROM_WP,
     output [1:0] DBG            // EXTM probe: {hreadyout, hsel} (W21/P21 are JTAG)
 );
 
@@ -217,19 +223,22 @@ assign eth_hresp[1]         = 1'b0;
 
 // EXTS register window: 0xE8000000 gw_eth_dma CSRs, 0xE8001000 LCD video core,
 // 0xE8002000 audio core, 0xE8004000 temperature/voltage sensor core,
-// 0xE8008000 fan PWM/tacho, 0xE8020000 microSD host (native 4-bit, DMA).
+// 0xE8008000 fan PWM/tacho, 0xE8010000 board GPIO (SYS_TWI bit-bang, TWI mux,
+// EEPROM WP), 0xE8020000 microSD host (native 4-bit, DMA).
 // All slaves are zero-wait; the data phase is muxed by the select registered
 // at the accepted address phase.
 wire        exts_sd  = EXTS_HADDR[17];
-wire        exts_fan = EXTS_HADDR[15] & ~EXTS_HADDR[17];
-wire        exts_sen = EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[17];
-wire        exts_aud = EXTS_HADDR[13] & ~EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[17];
-wire        exts_vid = EXTS_HADDR[12] & ~EXTS_HADDR[13] & ~EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[17];
-reg         exts_vid_d, exts_aud_d, exts_sen_d, exts_fan_d, exts_sd_d;
-wire [31:0] eth_s_hrdata, vid_s_hrdata, aud_s_hrdata, sen_s_hrdata, fan_s_hrdata, sd_s_hrdata;
+wire        exts_gpo = EXTS_HADDR[16] & ~EXTS_HADDR[17];
+wire        exts_fan = EXTS_HADDR[15] & ~EXTS_HADDR[16] & ~EXTS_HADDR[17];
+wire        exts_sen = EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[16] & ~EXTS_HADDR[17];
+wire        exts_aud = EXTS_HADDR[13] & ~EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[16] & ~EXTS_HADDR[17];
+wire        exts_vid = EXTS_HADDR[12] & ~EXTS_HADDR[13] & ~EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[16] & ~EXTS_HADDR[17];
+reg         exts_vid_d, exts_aud_d, exts_sen_d, exts_fan_d, exts_gpo_d, exts_sd_d;
+wire [31:0] eth_s_hrdata, vid_s_hrdata, aud_s_hrdata, sen_s_hrdata, fan_s_hrdata, gpo_s_hrdata, sd_s_hrdata;
 wire        eth_s_hready, vid_s_hready, eth_s_hresp, vid_s_hresp;
 wire        aud_s_hready, aud_s_hresp, intr_audio, sen_s_hready, sen_s_hresp;
-wire        fan_s_hready, fan_s_hresp, sd_s_hready, sd_s_hresp;
+wire        fan_s_hready, fan_s_hresp, gpo_s_hready, gpo_s_hresp, sd_s_hready, sd_s_hresp;
+wire [5:0]  gpo_i, gpo_o, gpo_oe;
 wire        sd_m_busy, sd_m_hwrite, sd_m_hready, sd_m_hresp;
 wire [31:0] sd_m_haddr;
 wire [1:0]  sd_m_htrans;
@@ -244,9 +253,9 @@ wire        sd_cmd_o, sd_cmd_oe, sd_dat_oe, sd_dat_oe_hi, intr_sd;
 wire [3:0]  sd_dat_o;
 always @(posedge EXTS_HCLK or negedge EXTS_HRSTN)
     if (!EXTS_HRSTN) begin
-        exts_vid_d <= 1'b0; exts_aud_d <= 1'b0; exts_sen_d <= 1'b0; exts_fan_d <= 1'b0; exts_sd_d <= 1'b0;
+        exts_vid_d <= 1'b0; exts_aud_d <= 1'b0; exts_sen_d <= 1'b0; exts_fan_d <= 1'b0; exts_gpo_d <= 1'b0; exts_sd_d <= 1'b0;
     end else if (EXTS_HSEL && EXTS_HTRANS[1] && EXTS_HREADY) begin
-        exts_vid_d <= exts_vid; exts_aud_d <= exts_aud; exts_sen_d <= exts_sen; exts_fan_d <= exts_fan; exts_sd_d <= exts_sd;
+        exts_vid_d <= exts_vid; exts_aud_d <= exts_aud; exts_sen_d <= exts_sen; exts_fan_d <= exts_fan; exts_gpo_d <= exts_gpo; exts_sd_d <= exts_sd;
     end
 // Read data goes to the SoC through a register, with one wait state per read:
 // the slaves' read muxes sit all over the die and the combinational route to
@@ -255,8 +264,8 @@ always @(posedge EXTS_HCLK or negedge EXTS_HRSTN)
 // hold their read data while HREADY is low (their address registers advance
 // only on an accepted address phase), so the register captures it in the
 // first data-phase cycle and presents it in the second.
-wire [31:0] exts_hrdata_mux = exts_sd_d ? sd_s_hrdata : exts_fan_d ? fan_s_hrdata : exts_sen_d ? sen_s_hrdata : exts_aud_d ? aud_s_hrdata : exts_vid_d ? vid_s_hrdata : eth_s_hrdata;
-wire        exts_slv_hready = exts_sd_d ? sd_s_hready : exts_fan_d ? fan_s_hready : exts_sen_d ? sen_s_hready : exts_aud_d ? aud_s_hready : exts_vid_d ? vid_s_hready : eth_s_hready;
+wire [31:0] exts_hrdata_mux = exts_sd_d ? sd_s_hrdata : exts_gpo_d ? gpo_s_hrdata : exts_fan_d ? fan_s_hrdata : exts_sen_d ? sen_s_hrdata : exts_aud_d ? aud_s_hrdata : exts_vid_d ? vid_s_hrdata : eth_s_hrdata;
+wire        exts_slv_hready = exts_sd_d ? sd_s_hready : exts_gpo_d ? gpo_s_hready : exts_fan_d ? fan_s_hready : exts_sen_d ? sen_s_hready : exts_aud_d ? aud_s_hready : exts_vid_d ? vid_s_hready : eth_s_hready;
 reg  [31:0] exts_hrdata_q;
 reg         exts_rd_wait;                       // first data-phase cycle of a read
 always @(posedge EXTS_HCLK or negedge EXTS_HRSTN)
@@ -268,7 +277,7 @@ always @(posedge EXTS_HCLK or negedge EXTS_HRSTN)
     end
 assign EXTS_HRDATA  = exts_hrdata_q;
 assign EXTS_HREADY  = exts_slv_hready & ~exts_rd_wait;
-assign eth_hresp[0] = exts_sd_d ? sd_s_hresp  : exts_fan_d ? fan_s_hresp  : exts_sen_d ? sen_s_hresp  : exts_aud_d ? aud_s_hresp  : exts_vid_d ? vid_s_hresp  : eth_s_hresp;
+assign eth_hresp[0] = exts_sd_d ? sd_s_hresp  : exts_gpo_d ? gpo_s_hresp  : exts_fan_d ? fan_s_hresp  : exts_sen_d ? sen_s_hresp  : exts_aud_d ? aud_s_hresp  : exts_vid_d ? vid_s_hresp  : eth_s_hresp;
 
 assign eth_rstn = EXTS_HRSTN;
 
@@ -555,7 +564,7 @@ gw_eth_dma_core u_gw_eth_dma_core
     .s_haddr(EXTS_HADDR),
     .s_htrans(EXTS_HTRANS),
     .s_hwrite(EXTS_HWRITE),
-    .s_hsel(EXTS_HSEL & ~exts_vid & ~exts_aud & ~exts_sen & ~exts_fan & ~exts_sd),
+    .s_hsel(EXTS_HSEL & ~exts_vid & ~exts_aud & ~exts_sen & ~exts_fan & ~exts_gpo & ~exts_sd),
     .s_hready_in(EXTS_HREADY),
     .s_hwdata(EXTS_HWDATA),
     .s_hrdata(eth_s_hrdata),
@@ -658,6 +667,25 @@ fan_core #(.BUS_MHZ(50)) u_fan_core
     .s_hrdata(fan_s_hrdata), .s_hready(fan_s_hready), .s_hresp(fan_s_hresp),
     .fan_pwm(FAN_PWM), .fan_tach(FAN_TACH)
 );
+
+// Board control GPIO: registers on EXTS @ 0xE8010000.  Six open-drain-capable
+// lines for the Dock's SYS_TWI I2C bus (K25/K26, bit-banged by Linux
+// i2c-gpio), the 74HC4051 TWI mux select (N19/P19/P26, i2c-mux-gpio; channel
+// 2 = the 1 KB ZD24C08A EEPROM) and the EEPROM write protect (V14).  Reset:
+// all inputs, so the I2C lines rest on the Dock's pull-ups.
+gpio_core #(.N(6)) u_gpio_core
+(
+    .hclk(EXTS_HCLK), .hresetn(EXTS_HRSTN),
+    .s_haddr(EXTS_HADDR), .s_htrans(EXTS_HTRANS), .s_hwrite(EXTS_HWRITE),
+    .s_hsel(EXTS_HSEL & exts_gpo), .s_hready_in(EXTS_HREADY), .s_hwdata(EXTS_HWDATA),
+    .s_hrdata(gpo_s_hrdata), .s_hready(gpo_s_hready), .s_hresp(gpo_s_hresp),
+    .gpio_i(gpo_i), .gpio_o(gpo_o), .gpio_oe(gpo_oe)
+);
+assign gpo_i     = {EEPROM_WP, TWI_SEL, SYS_SDA, SYS_SCL};
+assign SYS_SCL   = gpo_oe[0] ? gpo_o[0] : 1'bz;
+assign SYS_SDA   = gpo_oe[1] ? gpo_o[1] : 1'bz;
+assign TWI_SEL   = {gpo_oe[4] ? gpo_o[4] : 1'bz, gpo_oe[3] ? gpo_o[3] : 1'bz, gpo_oe[2] ? gpo_o[2] : 1'bz};
+assign EEPROM_WP = gpo_oe[5] ? gpo_o[5] : 1'bz;
 
 // microSD host: native SD bus (1/4-bit) with CRC engines and a 64-bit DMA
 // master (arbiter master 2) on EXTS @ 0xE8020000, Dock slot J19.  Interrupt

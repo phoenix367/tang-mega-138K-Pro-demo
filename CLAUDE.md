@@ -71,6 +71,17 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    fan's PWM pin, rev 4071f switches its 5 V through a P-MOSFET (inverted: DT
    `gowin,pwm-inverted`). Linux hwmon `PATCHES/0009` (`gowin-fan`: pwm1, fan1_input),
    fan curve `S80fan`. See src/rtl/fan/README.md.
+   **Board GPIO / EEPROM:** `src/rtl/gpio/` = six-line data/direction register on EXTS @
+   `0xE8010000` (`HADDR[16]`) for the Dock's `SYS_TWI` I2C bus (K25/K26), its 8-way 74HC4051
+   TWI mux select (N19/P19/P26) and the write protect (V14) of the Dock's 1 KB ZD24C08A
+   EEPROM (mux channel 2, I2C 0x50..0x53). Linux side is all mainline, no board driver:
+   `gpio-mmio` (`wd,mbl-gpio`) + `i2c-gpio` + `i2c-mux-gpio` + `at24`/nvmem
+   (`/sys/bus/nvmem/devices/board-eeprom0/nvmem`); Build 66 + kernel #73. See src/rtl/gpio/README.md.
+   `src/apps/boardcfg/` (`/usr/sbin/boardcfg`, daemon from `S35boardcfg`, kernel #74+) keeps
+   settings there (`boardcfg set mac|hostname|tz|<any> VALUE`; layout 0x100 header, 0x110 MAC,
+   0x120 key=value text) and restores them at boot; the eth0 MAC is also read by the kernel
+   through the DT nvmem cell `eth_mac` (`gw-tse` defers probe until the EEPROM is up). The
+   desktop's Date & Time panel persists the zone through `boardcfg set tz`.
    **microSD:** `src/rtl/sdhost/` = native 4-bit SD host with CRC engines and a 64-bit DMA
    master (arbiter master 2) on EXTS @ `0xE8020000` (`HADDR[17]`), IRQ EXT_INT[2] =
    PLIC 12, for the Dock slot J19 (CLK D23, CMD D24, DAT0..3 H23/J23/A25/B25, detect

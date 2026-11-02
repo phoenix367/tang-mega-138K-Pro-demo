@@ -49,7 +49,7 @@ sequenceDiagram
   Note over K: single-hart, soft-atomic,<br/>CONFIG_SMP=n
   K->>K: PLIC, 8250 UART, PMU, eth0 (gw-tse), fb0, ALSA, mmc, hwmon,<br/>unpack initramfs
   K->>US: Run /init  (→ busybox init → /etc/inittab)
-  US->>US: rcS: mount, busybox --install, setuid ping/doas,<br/>S40network (eth0 192.168.200.2), S45sdcard (/mnt/sd),<br/>S50ssh (dropbear), S60inputd, S70desktop (lvdesk on VT1), S80fan
+  US->>US: rcS: mount, busybox --install, setuid ping/doas,<br/>S35boardcfg (EEPROM settings), S40network (eth0 192.168.200.2),<br/>S45sdcard (/mnt/sd), S50ssh (dropbear), S60inputd, S70desktop (lvdesk on VT1), S80fan
   US->>US: getty on UART2 → login (ae350 / ae350)
 ```
 
@@ -113,6 +113,7 @@ stateDiagram-v2
 
 | Script | Service |
 |---|---|
+| `S35boardcfg` | `boardcfg -d`: restores hostname / time zone / eth0 MAC from the Dock EEPROM, then watches `/etc/board.conf` to write changes back (`src/apps/boardcfg/`) |
 | `S40network` | static `eth0`, `lo` |
 | `S45sdcard` | mounts `/dev/mmcblk0(p1)` on `/mnt/sd` when a card is present |
 | `S50ssh` | dropbear on port 22 with the baked-in host keys |

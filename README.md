@@ -23,10 +23,11 @@ atomic read-modify-write with interrupt-disabled plain loads and stores. See
 | microSD (4-bit SD host) | `sdhost/` | `gowin-sdhost` mmc_host | `/dev/mmcblk0`, ~6 MB/s read / 3 MB/s write, mounted at `/mnt/sd` |
 | Die temperature, supply rails | `sensor/` | hwmon `gowin-adc` | the GW5AST's two hard ADC cores |
 | 4-pin fan | `fan/` | hwmon `gowin-fan` + `S80fan` curve | PWM + tacho on header M1 |
+| Board EEPROM (1 KB, I2C) | `gpio/` | `gpio-mmio` + `i2c-gpio` + `i2c-mux-gpio` + `at24`; `boardcfg` daemon (`src/apps/boardcfg/`) | the Dock's `SYS_TWI` bus and 8-way mux; persistent MAC (read by the kernel at boot), hostname, time zone, serial: `boardcfg set KEY VALUE` |
 | Keyboard / mouse | — | `inputd` → `/dev/uinput` | sent from the PC over TCP (`src/apps/desktop/host/netinput.py`) |
 | Console | — | UART2, 115200 | header pin B19; `scripts/uart_console.py` |
 
-Current state in flash: gateware **Build 65**, kernel **#72** (2026-11-02).
+Current state in flash: gateware **Build 66**, kernel **#74** (2026-11-02).
 
 ## The desktop
 

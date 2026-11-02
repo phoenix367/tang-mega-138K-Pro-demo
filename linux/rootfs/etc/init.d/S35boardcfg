@@ -1,0 +1,25 @@
+#!/bin/busybox sh
+# /etc/init.d/S35boardcfg -- board settings from the Dock's EEPROM.
+# `boardcfg -d` first restores /etc/board.conf from the EEPROM and applies it
+# (hostname, time zone, eth0 MAC) before returning, then stays in the
+# background watching /etc/board.conf for changes to write back.  Runs before
+# S40network so the settings are in place when eth0 comes up.  (The kernel
+# already reads the MAC itself from the EEPROM's nvmem cell at probe time.)
+
+case "$1" in
+	start)
+		[ -e /sys/bus/nvmem/devices/board-eeprom0/nvmem ] || { echo "boardcfg: no EEPROM (board-eeprom0), settings not persistent"; exit 0; }
+		/usr/sbin/boardcfg -d
+		;;
+	stop)
+		[ -f /run/boardcfg.pid ] && kill "$(cat /run/boardcfg.pid)" 2>/dev/null
+		;;
+	restart|reload)
+		"$0" stop
+		"$0" start
+		;;
+	*)
+		echo "usage: $0 {start|stop|restart}"
+		exit 1
+		;;
+esac

@@ -5,8 +5,8 @@
 The active design (`ae350_demo_top`, top file `src/rtl/ae350_demo.v`) instantiates the
 Gowin-provided **AE350 hard SoC** and surrounds it with fabric IP: the custom
 `ddr_bridge` in front of the hard DDR3 PHY, the Triple-Speed Ethernet MAC with the
-custom `eth_dma` engine, the LCD scan-out, audio, microSD, sensor and fan cores on
-the SoC's external AHB slave port, and three PLLs. The diagram shows the memory and
+custom `eth_dma` engine, the LCD scan-out, audio, microSD, sensor, fan and board-GPIO
+(Dock I2C bus + EEPROM) cores on the SoC's external AHB slave port, and three PLLs. The diagram shows the memory and
 network paths; the other peripherals hang off the same EXTS/EXTM ports (section 2).
 
 ```mermaid
@@ -36,7 +36,7 @@ graph TB
     VID["video (LCD scan-out)"]
     AUD["audio (PT8211 + DMA)"]
     SDH["sdhost (4-bit SD + DMA)"]
-    SEN["sensor / fan"]
+    SEN["sensor / fan / gpio"]
   end
 
   FLASH[("SPI NOR W25Q128<br/>16 MB")]
@@ -107,6 +107,7 @@ Key integration facts (`src/rtl/ae350_demo.v`):
 | **Audio PT8211 (EXTS)** | `0xE800_2000` | 256 B | `src/rtl/audio/`, FIFO + DMA fetch engine; IRQ EXT_INT[1] = PLIC 11 |
 | **ADC sensors (EXTS)** | `0xE800_4000` | 256 B | `src/rtl/sensor/`, die temperature + supply rails (`HADDR[14]`) |
 | **Fan (EXTS)** | `0xE800_8000` | 256 B | `src/rtl/fan/`, PWM + tacho (`HADDR[15]`) |
+| **Board GPIO (EXTS)** | `0xE801_0000` | 16 B | `src/rtl/gpio/`, data/direction pair for the Dock I2C bus, TWI mux, EEPROM WP (`HADDR[16]`) |
 | **SD host (EXTS)** | `0xE802_0000` | 256 B | `src/rtl/sdhost/`, 4-bit SD + DMA (`HADDR[17]`); IRQ EXT_INT[2] = PLIC 12 |
 | SMU | `0xF010_0000` | — | system management (HSM / reset) |
 | UART2 | `0xF030_0000` | — | console (header pin B19 @ 115200) |
@@ -202,6 +203,7 @@ src/rtl/
   sdhost/                 4-bit SD host + DMA (README)
   sensor/                 hard-ADC scan sequencer (README)
   fan/                    PWM + tacho (README)
+  gpio/                   board control lines: Dock I2C bus + mux, EEPROM WP (README)
   key_debounce.v, pll_init.v  reset debounce, PLL bring-up
   led_blink.*             disabled sample design
 src/firmware/             bare-metal AE350 test firmware + DMA self-test

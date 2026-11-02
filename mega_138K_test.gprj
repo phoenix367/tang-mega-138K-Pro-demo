@@ -26,6 +26,7 @@
         <File path="src/rtl/sensor/rtl/sensor_core.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/sensor/rtl/sensor_adc.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/fan/rtl/fan_core.v" type="file.verilog" enable="1"/>
+        <File path="src/rtl/gpio/rtl/gpio_core.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/sdhost/rtl/sdhost_core.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/audio/rtl/ahb_arbiter4.v" type="file.verilog" enable="1"/>
         <File path="src/rtl/eth_dma/rtl/csr.v" type="file.verilog" enable="1"/>
