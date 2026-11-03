@@ -219,7 +219,7 @@ lvdesk / inputd / wavplay come from `src/apps/desktop` (`make install`).
 | Flash offset | XIP addr | Contents |
 |--------------|----------|----------|
 | `0x000000` | — | FPGA bitstream (`.fs`) — for power-cycle autoboot |
-| `0x600000` | `0x80000000` | U-Boot (XIP) + appended DTB @ `+0xf0000` |
+| `0x600000` | `0x80000000` | U-Boot (XIP) + appended DTB @ `+0xf0000` + boot splash BMP @ `+0x100000` (flash `0x700000`, see BOOT.md) |
 | `0x800000` | `0x80200000` | `fw_payload_lzma.bin` (OpenSBI + kernel + DTB, LZMA; 8 MB region) |
 
 ```sh

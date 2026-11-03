@@ -81,6 +81,11 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    autoboot is keyed (fork defconfig `AUTOBOOT_KEYED`, stop string `uboot`, no `AUTOBOOT_FLUSH_STDIN`):
    a floating or stuck-low RX used to stop it like a keypress and the board sat at the prompt
    whenever the USB-UART adapter was unplugged or unpowered.
+   **Boot splash:** the U-Boot fork has a `gowin_lcd` video driver (`drivers/video/gowin_lcd.c`, DT
+   `lcd@e8001000` with `framebuffer = <0x0e000000>`) and shows `src/splash/splash.bmp` (made by
+   `src/splash/make_splash.py`, appended to the XIP image at +0x100000 = flash 0x700000 by
+   `scripts/build_uboot.sh`, `CONFIG_PREBOOT="bmp display ${splashimage} m m"`, env `splashimage=0x80100000`); the Linux DT reserves that 768 KB
+   (`reserved-memory/splash@e000000`, no-map) so the picture stays until gowin-lcdfb probes.
    `src/apps/boardcfg/` (`/usr/sbin/boardcfg`, daemon from `S35boardcfg`, kernel #74+) keeps
    settings there (`boardcfg set mac|hostname|tz|net|ip|gateway|dns|<any> VALUE`; layout 0x100 header,
    0x110 MAC, 0x120 key=value text) and restores them at boot; `S40network` reads the `net`

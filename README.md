@@ -26,6 +26,7 @@ atomic read-modify-write with interrupt-disabled plain loads and stores. See
 | Board EEPROM (1 KB, I2C) | `gpio/` | `gpio-mmio` + `i2c-gpio` + `i2c-mux-gpio` + `at24`; `boardcfg` daemon (`src/apps/boardcfg/`) | the Dock's `SYS_TWI` bus and 8-way mux; persistent MAC (read by the kernel at boot), hostname, time zone, serial, network (static IP/gateway/DNS or DHCP): `boardcfg set KEY VALUE` |
 | Keyboard / mouse | — | `inputd` → `/dev/uinput` | sent from the PC over TCP (`src/apps/desktop/host/netinput.py`) |
 | Console | — | UART2, 115200 | header pin B19; `scripts/uart_console.py` |
+| Boot splash | `video/` | U-Boot `gowin_lcd` driver (fork) | `src/splash/splash.bmp` on the LCD from U-Boot until the kernel's fbdev driver starts |
 
 Current state in flash: gateware **Build 67**, kernel **#75**, keyed-autoboot U-Boot (2026-11-03).
 

@@ -55,4 +55,14 @@ echo ">> Assembling combined image: u-boot.bin + DTB @ offset $FDT_OFFSET"
 cp u-boot.bin "$OUT"
 truncate -s "$FDT_OFFSET" "$OUT"
 cat "$DTB" >> "$OUT"
-echo ">> $OUT  ($(stat -c%s "$OUT") bytes)  [u-boot @0, DTB @ $(printf 0x%x "$FDT_OFFSET")]"
+# boot splash (src/splash/splash.bmp, see src/splash/make_splash.py) at image offset
+# 0x100000 = flash 0x700000 = XIP 0x80100000 (U-Boot env splashimage)
+SPLASH="${UBOOT_SPLASH:-$REPO/src/splash/splash.bmp}"
+SPLASH_OFFSET=1048576
+if [ -f "$SPLASH" ]; then
+    [ "$(stat -c%s "$OUT")" -le "$SPLASH_OFFSET" ] || { echo "ERROR: u-boot+DTB overrun the splash offset" >&2; exit 1; }
+    truncate -s "$SPLASH_OFFSET" "$OUT"
+    cat "$SPLASH" >> "$OUT"
+    echo ">> appended splash $SPLASH @ $(printf 0x%x "$SPLASH_OFFSET")"
+fi
+echo ">> $OUT  ($(stat -c%s "$OUT") bytes)  [u-boot @0, DTB @ $(printf 0x%x "$FDT_OFFSET")${SPLASH:+, splash @ 0x100000}]"

@@ -21,6 +21,20 @@
 		serial0 = &serial0;
 	};
 
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		/* U-Boot's splash framebuffer (gowin_lcd.c, DT "framebuffer" = 224 MB,
+		 * 800x480 RGB565): the scan-out core keeps showing it until gowin-lcdfb
+		 * takes the panel over, so the kernel must not hand these pages out. */
+		splash_fb: splash@e000000 {
+			reg = <0x0e000000 0xc0000>;
+			no-map;
+		};
+	};
+
 	chosen {
 		/* no_hash_pointers: this SoC has no HW RNG, so the kernel's %p
 		 * pointer-hash key never seeds and /proc/net/* prints "(ptrval)",
