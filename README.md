@@ -18,16 +18,16 @@ atomic read-modify-write with interrupt-disabled plain loads and stores. See
 |---|---|---|---|
 | 1 GB DDR3-800, 32-bit bus | `ddr_bridge/` + Gowin DDR3 PHY | — | line-buffered AHB→DDR3 bridge, ~23× the stock bridge; video read port; perf counters in `ddr_perf.v` |
 | Gigabit Ethernet | `eth_dma/` + Gowin TSE MAC | `gw_tse` (PATCHES / kernel fork) | descriptor-ring DMA with 64-bit INCR bursts; TCP ≈65 Mbit/s RX, ≈40 TX; ssh/scp/sftp via dropbear |
-| 5" 800×480 RGB LCD | `video/` | `gowin-lcdfb` fbdev | scans the framebuffer straight from DDR3; fbcon + LVGL 9.6 desktop (`src/apps/desktop/`: system monitor, files, audio, network, console, date & time with tzdata, settings) |
+| 5" 800×480 RGB LCD | `video/` | `gowin-lcdfb` fbdev | scans the framebuffer straight from DDR3; fbcon + LVGL 9.6 desktop (`src/apps/desktop/`: system monitor, files, audio, network with an EEPROM-backed configuration dialog, console, date & time with tzdata, settings) |
 | Audio (PT8211 DAC) | `audio/` | ALSA `gowin-pt8211` | own DMA fetch engine, 2048-frame FIFO |
 | microSD (4-bit SD host) | `sdhost/` | `gowin-sdhost` mmc_host | `/dev/mmcblk0`, ~6 MB/s read / 3 MB/s write, mounted at `/mnt/sd` |
 | Die temperature, supply rails | `sensor/` | hwmon `gowin-adc` | the GW5AST's two hard ADC cores |
 | 4-pin fan | `fan/` | hwmon `gowin-fan` + `S80fan` curve | PWM + tacho on header M1 |
-| Board EEPROM (1 KB, I2C) | `gpio/` | `gpio-mmio` + `i2c-gpio` + `i2c-mux-gpio` + `at24`; `boardcfg` daemon (`src/apps/boardcfg/`) | the Dock's `SYS_TWI` bus and 8-way mux; persistent MAC (read by the kernel at boot), hostname, time zone, serial: `boardcfg set KEY VALUE` |
+| Board EEPROM (1 KB, I2C) | `gpio/` | `gpio-mmio` + `i2c-gpio` + `i2c-mux-gpio` + `at24`; `boardcfg` daemon (`src/apps/boardcfg/`) | the Dock's `SYS_TWI` bus and 8-way mux; persistent MAC (read by the kernel at boot), hostname, time zone, serial, network (static IP/gateway/DNS or DHCP): `boardcfg set KEY VALUE` |
 | Keyboard / mouse | — | `inputd` → `/dev/uinput` | sent from the PC over TCP (`src/apps/desktop/host/netinput.py`) |
 | Console | — | UART2, 115200 | header pin B19; `scripts/uart_console.py` |
 
-Current state in flash: gateware **Build 66**, kernel **#74** (2026-11-02).
+Current state in flash: gateware **Build 67**, kernel **#75**, keyed-autoboot U-Boot (2026-11-03).
 
 ## The desktop
 
@@ -40,6 +40,10 @@ rpm, free memory and the clock. Screens captured from the board's framebuffer:
 | System: CPU load, memory, on-die sensors, fan | Date & Time: clock and tzdata time zone |
 |---|---|
 | ![System panel](doc/images/desktop-system.png) | ![Date & Time panel](doc/images/desktop-datetime.png) |
+
+| Network: static/DHCP, address, gateway, DNS, hostname and MAC, kept in the board EEPROM |
+|---|
+| ![Network configuration dialog](doc/images/desktop-network.png) |
 
 ## Repository layout
 

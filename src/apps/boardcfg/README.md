@@ -25,6 +25,10 @@ boardcfg -d                  load, then stay in the background as the daemon
 | `mac` | eth0 hardware address (`SIOCSIFHWADDR`, interface bounced if up) | also read by the **kernel** at boot: the DT gives `gw-tse` an nvmem cell `mac-address@110` in the EEPROM and the driver defers its probe until the EEPROM is up, so eth0 has the stored address before userspace runs. Unset = random address at every boot (the previous behaviour) |
 | `hostname` | `sethostname()` + `/etc/hostname` | letters, digits, `-` |
 | `tz` | copies `/usr/share/zoneinfo/<tz>` to `/etc/localtime`, writes `/etc/timezone` | the desktop's Date & Time panel saves through `boardcfg set tz` (the SD-card copy is only used when boardcfg is absent) |
+| `net` | `dhcp` or `static` (default `static`) | applied by `/etc/init.d/S40network`, see below |
+| `ip` | `A.B.C.D` or `A.B.C.D/N` (default `192.168.200.2/24`) | static mode address; a bare address means `/24` |
+| `gateway` | `A.B.C.D` | static mode default route; unset = none (DHCP brings its own) |
+| `dns` | `"A.B.C.D [A.B.C.D ...]"`, up to three | static mode `/etc/resolv.conf`; unset = the gateway, else `192.168.200.1` |
 | anything else | stored and restored verbatim | `serial`, ... up to 64 keys, key ≤ 31 and value ≤ 127 chars, 736 bytes of text in all |
 
 Typical first-time setup over ssh/UART:
@@ -33,15 +37,42 @@ Typical first-time setup over ssh/UART:
 boardcfg set mac 02:ae:35:00:00:01     # locally administered unicast
 boardcfg set hostname tang-mega
 boardcfg set serial TM138K-0001
+boardcfg set gateway 192.168.200.1     # or: boardcfg set net dhcp
+boardcfg set dns "192.168.200.1 8.8.8.8"
 boardcfg show -e
 reboot                                  # eth0 now comes up with the stored MAC
 ```
+
+### Network keys
+
+`S40network` configures `lo` and `eth0` from these keys at boot (after
+`S35boardcfg` has restored them) and writes the one-line summary of what it did
+to `/run/network.state`. The daemon rebuilds that line from the settings after
+every change; when it differs (or the MAC was changed, which drops the routes
+and any lease) it runs `S40network restart`, so `boardcfg set ip ...` or
+`boardcfg set net dhcp` takes effect at once. An ssh session on the old address
+is lost at that point, as expected; the UART console is not.
+
+- **static**: `ifconfig eth0 ip netmask ...`, `route add default gw`, resolv.conf
+  from `dns` (or the gateway, or the shipped `192.168.200.1`), `options timeout:1
+  attempts:1` so reverse lookups on a serverless link fail fast.
+The desktop's Network panel has a **Configure** button that edits the same keys
+(plus hostname and MAC) in a dialog and applies them through `boardcfg set`.
+
+- **dhcp**: busybox `udhcpc -i eth0 -b -R -x hostname:$(hostname)` with
+  `/usr/share/udhcpc/default.script` (address, default route(s), resolv.conf with
+  the lease's `search`/`nameserver`, a `net: eth0 ...` line in the kernel log).
+  It tries four times at two-second intervals in the foreground, then keeps
+  retrying every five seconds in the background, so a board without a DHCP
+  server simply has no address until one appears. `S40network stop` releases the
+  lease (`-R`).
 
 ## The daemon
 
 `boardcfg -d` first does `load` synchronously (EEPROM → `/etc/board.conf`, apply),
 so by the time `S35boardcfg` returns the hostname, zone and MAC are set, before
-`S40network` brings eth0 up. It then forks and watches `/etc` with inotify for
+`S40network` brings eth0 up with the stored network keys (`/run/network.state`
+does not exist yet at that point, so `load` itself never touches the network). It then forks and watches `/etc` with inotify for
 `board.conf` being rewritten (by `boardcfg set`, an editor, or the desktop),
 debounces 300 ms, validates, applies the changed settings and rewrites the
 EEPROM block only when its content differs (verified by read-back). `SIGHUP`

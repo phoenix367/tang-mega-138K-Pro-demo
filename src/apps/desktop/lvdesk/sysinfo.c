@@ -90,19 +90,21 @@ int sysinfo_fan_set(int pwm)
 
 void sysinfo_sample(sysinfo_t *si)
 {
-    static unsigned long long p_busy, p_total;
     char buf[512];
 
-    /* CPU: first line of /proc/stat */
+    /* CPU: first line of /proc/stat, against this sampler's previous reading
+     * (the status bar and an open panel each sample once a second: a shared
+     * "previous" would make one of them measure a few ticks and read 0/100%) */
     if (sysinfo_read_file("/proc/stat", buf, sizeof(buf)) > 0) {
         unsigned long long v[8] = {0};
         sscanf(buf, "cpu %llu %llu %llu %llu %llu %llu %llu %llu", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6], &v[7]);
         unsigned long long total = 0;
         for (int i = 0; i < 8; i++) total += v[i];
         unsigned long long busy = total - v[3] - v[4];
-        if (total > p_total)
-            si->cpu_pct = (int)((busy - p_busy) * 100 / (total - p_total));
-        p_busy = busy; p_total = total;
+        if (total >= si->p_total + 10) {    /* at least 100 ms of ticks for a meaningful ratio */
+            si->cpu_pct = (int)((busy - si->p_busy) * 100 / (total - si->p_total));
+            si->p_busy = busy; si->p_total = total;
+        }
     }
     if (sysinfo_read_file("/proc/meminfo", buf, sizeof(buf)) > 0) {
         char *p = strstr(buf, "MemTotal:");
@@ -161,6 +163,11 @@ void sysinfo_sample(sysinfo_t *si)
         snprintf(ifr.ifr_name, IFNAMSIZ, "eth0");
         if (!ioctl(s, SIOCGIFADDR, &ifr))
             inet_ntop(AF_INET, &((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr, si->ip, sizeof(si->ip));
+        si->prefix = 0;
+        if (si->ip[0] && !ioctl(s, SIOCGIFNETMASK, &ifr)) {
+            uint32_t m = ntohl(((struct sockaddr_in *)&ifr.ifr_netmask)->sin_addr.s_addr);
+            while (m & 0x80000000u) { si->prefix++; m <<= 1; }
+        }
         close(s);
     }
 }

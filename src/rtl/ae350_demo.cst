@@ -21,7 +21,7 @@ IO_LOC "KEY[2]" G15;        //S2
 IO_LOC "UART2_TXD" B19;
 IO_PORT "UART2_TXD" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
 IO_LOC "UART2_RXD" A17;
-IO_PORT "UART2_RXD" IO_TYPE=LVCMOS33 PULL_MODE=NONE BANK_VCCIO=3.3;
+IO_PORT "UART2_RXD" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;   // idle-high when the adapter is unplugged (a floating RX stopped U-Boot autoboot)
 
 // (SD pins removed -- SD support dropped from the design.)
 

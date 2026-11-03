@@ -45,6 +45,8 @@ typedef struct {
     int link_speed;                /* Mbit/s, -1 = down/unknown */
     int carrier;                   /* /sys/class/net/eth0/carrier: 1 = cable + link, 0 = no link, -1 = n/a */
     char ip[20], mac[20], operstate[12];
+    int prefix;                    /* IPv4 prefix length of eth0's address, 0 = none */
+    unsigned long long p_busy, p_total;   /* this sampler's previous /proc/stat reading */
     unsigned long long rx_bytes, tx_bytes;
     int fan_rpm, fan_pwm, fan_present, fan_fault;   /* gowin-fan hwmon (-1 / 0 if absent) */
 } sysinfo_t;

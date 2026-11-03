@@ -182,7 +182,7 @@ upstream; the recipes are the only project-specific part.
   `I2C_CHARDEV`; kernel #73+, gateware Build 66+). Busybox `i2cdetect`/`i2cdump` are in,
   the EEPROM is `/sys/bus/nvmem/devices/board-eeprom0/nvmem`. See src/rtl/gpio/README.md.
   **boardcfg** (`src/apps/boardcfg/`, `/usr/sbin/boardcfg`, `S35boardcfg`, kernel #74+)
-  keeps settings in it: `boardcfg set mac|hostname|tz|<any> VALUE`, restored at boot by the
+  keeps settings in it: `boardcfg set mac|hostname|tz|net|ip|gateway|dns|<any> VALUE`, restored at boot by the
   daemon; the kernel reads the MAC itself from the EEPROM's nvmem cell (DT `eth_mac`,
   `gw-tse` defers its probe until the EEPROM is up). See src/apps/boardcfg/README.md.
 

@@ -77,11 +77,19 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    EEPROM (mux channel 2, I2C 0x50..0x53). Linux side is all mainline, no board driver:
    `gpio-mmio` (`wd,mbl-gpio`) + `i2c-gpio` + `i2c-mux-gpio` + `at24`/nvmem
    (`/sys/bus/nvmem/devices/board-eeprom0/nvmem`); Build 66 + kernel #73. See src/rtl/gpio/README.md.
+   **Console:** UART2 on header pins B19 (TX) / A17 (RX, `PULL_MODE=UP` since Build 67). U-Boot's
+   autoboot is keyed (fork defconfig `AUTOBOOT_KEYED`, stop string `uboot`, no `AUTOBOOT_FLUSH_STDIN`):
+   a floating or stuck-low RX used to stop it like a keypress and the board sat at the prompt
+   whenever the USB-UART adapter was unplugged or unpowered.
    `src/apps/boardcfg/` (`/usr/sbin/boardcfg`, daemon from `S35boardcfg`, kernel #74+) keeps
-   settings there (`boardcfg set mac|hostname|tz|<any> VALUE`; layout 0x100 header, 0x110 MAC,
-   0x120 key=value text) and restores them at boot; the eth0 MAC is also read by the kernel
+   settings there (`boardcfg set mac|hostname|tz|net|ip|gateway|dns|<any> VALUE`; layout 0x100 header,
+   0x110 MAC, 0x120 key=value text) and restores them at boot; `S40network` reads the `net`
+   (dhcp|static), `ip`, `gateway`, `dns` keys from `/etc/board.conf` (static 192.168.200.2/24 by
+   default, DHCP via busybox udhcpc + `/usr/share/udhcpc/default.script`) and the daemon re-runs it
+   when they change (`/run/network.state` = what is configured); the eth0 MAC is also read by the kernel
    through the DT nvmem cell `eth_mac` (`gw-tse` defers probe until the EEPROM is up). The
-   desktop's Date & Time panel persists the zone through `boardcfg set tz`.
+   desktop's Date & Time panel persists the zone through `boardcfg set tz`, and its Network panel's
+   Configure dialog edits net/ip/gateway/dns/hostname/mac the same way.
    **microSD:** `src/rtl/sdhost/` = native 4-bit SD host with CRC engines and a 64-bit DMA
    master (arbiter master 2) on EXTS @ `0xE8020000` (`HADDR[17]`), IRQ EXT_INT[2] =
    PLIC 12, for the Dock slot J19 (CLK D23, CMD D24, DAT0..3 H23/J23/A25/B25, detect

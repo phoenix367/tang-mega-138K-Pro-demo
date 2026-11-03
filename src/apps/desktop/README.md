@@ -63,7 +63,10 @@ PC: host/netinput.py  --tcp 5555-->  board: inputd  --/dev/uinput-->  /dev/input
     Mount/Unmount button and an "SD card" quick-access entry),
     **Audio** (WAV list from `/home/ae350`, `/tmp`; plays via a `wavplay` child
     process; "Test tone" writes and plays a 440/880 Hz stereo file), **Network**
-    (RX/TX kbit/s chart, IP/MAC/link), **Console** (runs a shell command as root,
+    (RX/TX kbit/s chart, mode/IP/gateway/MAC/link; **Configure** opens a dialog for
+    static IP/prefix, gateway, DNS, DHCP, hostname and MAC that is validated like
+    `boardcfg` does and saved with `boardcfg set`, so the daemon writes the EEPROM and
+    re-runs `S40network` within a second), **Console** (runs a shell command as root,
     streams the output from a pty, Stop button; quick buttons for
     dmesg/ps/free/df/ping/…), **Settings** (dark/light theme, FPS overlay, restart
     desktop, reboot/poweroff with confirmation), **Date & Time** (calendar + hour/minute

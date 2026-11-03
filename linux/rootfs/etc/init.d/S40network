@@ -1,21 +1,74 @@
 #!/bin/busybox sh
-# /etc/init.d/S40network -- loopback + Ethernet.
-# Static IP for now; for DHCP replace the eth0 line with: udhcpc -i eth0 -b
+# /etc/init.d/S40network -- loopback + Ethernet, configured from the board
+# settings in /etc/board.conf (restored from the Dock EEPROM by S35boardcfg,
+# changed with `boardcfg set KEY VALUE`):
+#
+#   net=dhcp|static     default static
+#   ip=A.B.C.D[/N]      static address, default 192.168.200.2/24
+#   gateway=A.B.C.D     default route (static mode only; DHCP brings its own)
+#   dns=A.B.C.D ...     resolvers (static mode); default: the gateway, else
+#                       192.168.200.1 as shipped in /etc/resolv.conf
+#
+# What was configured is recorded in /run/network.state; the boardcfg daemon
+# compares it with the settings and runs `S40network restart` when they
+# change, so a `boardcfg set` takes effect at once.
+
+CONF=/etc/board.conf
+STATE=/run/network.state
+PIDFILE=/run/udhcpc.eth0.pid
+IF=eth0
+
+cfg() { [ -f "$CONF" ] && sed -n "s/^$1=//p" "$CONF" | tail -n 1; }
+
+# prefix length -> dotted netmask
+mask() {
+	local n=$1 m="" i
+	for i in 1 2 3 4; do
+		if [ "$n" -ge 8 ]; then m="$m.255"; n=$((n - 8))
+		else m="$m.$((256 - (1 << (8 - n))))"; n=0; fi
+	done
+	echo "${m#.}"
+}
+
+start() {
+	ifconfig lo up
+	NET=$(cfg net); IP=$(cfg ip); GW=$(cfg gateway); DNS=$(cfg dns)
+	: "${NET:=static}"; : "${IP:=192.168.200.2/24}"
+	case "$IP" in */*) ;; *) IP="$IP/24" ;; esac
+	if [ "$NET" = dhcp ]; then
+		# a few tries in the foreground (the link needs ~1 s to come up), then
+		# keep trying in the background; -R releases the lease on stop
+		ifconfig "$IF" up
+		udhcpc -i "$IF" -p "$PIDFILE" -x hostname:"$(hostname)" -t 4 -T 2 -A 5 -b -R
+		echo "net: lo=127.0.0.1  $IF=dhcp"
+	else
+		ifconfig "$IF" "${IP%/*}" netmask "$(mask "${IP#*/}")" up
+		[ -n "$GW" ] && route add default gw "$GW" dev "$IF"
+		{
+			echo "# written by /etc/init.d/S40network (static mode; dns=... in /etc/board.conf)"
+			for s in ${DNS:-${GW:-192.168.200.1}}; do echo "nameserver ${s%,}"; done
+			echo "options timeout:1 attempts:1"
+		} > /etc/resolv.conf
+		echo "net: lo=127.0.0.1  $IF=$IP${GW:+  gw=$GW}"
+	fi
+	echo "net=$NET ip=$IP gateway=$GW dns=$DNS" > "$STATE"
+}
+
+stop() {
+	if [ -f "$PIDFILE" ]; then
+		kill "$(cat "$PIDFILE")" 2>/dev/null
+		rm -f "$PIDFILE"
+	fi
+	ifconfig "$IF" 0.0.0.0 2>/dev/null
+	ifconfig "$IF" down
+	ifconfig lo down
+	rm -f "$STATE"
+}
 
 case "$1" in
-	start)
-		ifconfig lo up
-		ifconfig eth0 192.168.200.2 netmask 255.255.255.0 up
-		echo "net: lo=127.0.0.1  eth0=192.168.200.2/24"
-		;;
-	stop)
-		ifconfig eth0 down
-		ifconfig lo down
-		;;
-	restart|reload)
-		"$0" stop
-		"$0" start
-		;;
+	start)   start ;;
+	stop)    stop ;;
+	restart|reload) stop; start ;;
 	*)
 		echo "usage: $0 {start|stop|restart}"
 		exit 1

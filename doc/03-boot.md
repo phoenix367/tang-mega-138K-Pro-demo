@@ -49,7 +49,7 @@ sequenceDiagram
   Note over K: single-hart, soft-atomic,<br/>CONFIG_SMP=n
   K->>K: PLIC, 8250 UART, PMU, eth0 (gw-tse), fb0, ALSA, mmc, hwmon,<br/>unpack initramfs
   K->>US: Run /init  (→ busybox init → /etc/inittab)
-  US->>US: rcS: mount, busybox --install, setuid ping/doas,<br/>S35boardcfg (EEPROM settings), S40network (eth0 192.168.200.2),<br/>S45sdcard (/mnt/sd), S50ssh (dropbear), S60inputd, S70desktop (lvdesk on VT1), S80fan
+  US->>US: rcS: mount, busybox --install, setuid ping/doas,<br/>S35boardcfg (EEPROM settings), S40network (eth0 static/DHCP per EEPROM),<br/>S45sdcard (/mnt/sd), S50ssh (dropbear), S60inputd, S70desktop (lvdesk on VT1), S80fan
   US->>US: getty on UART2 → login (ae350 / ae350)
 ```
 
@@ -98,11 +98,15 @@ stateDiagram-v2
 ## 5. Console & network defaults
 
 - Console: UART2 `serial@f0300000`, header pin **B19 @ 115200** (DT serial
-  `clock-frequency=50000000`). Read with a USB-TTL adapter / logic analyzer on the
+  `clock-frequency=50000000`). RX (A17) is pulled up in the gateware and U-Boot's autoboot is
+  keyed (type `uboot` to stop), so the board boots with the adapter unplugged or unpowered. Read with a USB-TTL adapter / logic analyzer on the
   pin — the on-board FT2232 channel is unreliable as a user UART.
 - Boot args include **`no_hash_pointers`** (no HW RNG → `%pK` would otherwise print
   `(ptrval)` and break `netstat`/`ss`).
-- `eth0` = `192.168.200.2/24` (static, `S40network`); host side `192.168.200.1`.
+- `eth0` = `192.168.200.2/24` by default (static, `S40network`); host side `192.168.200.1`.
+  The address, mode and resolvers are board settings in the EEPROM: `boardcfg set net dhcp`,
+  `boardcfg set ip 10.0.0.5/24`, `boardcfg set gateway ...`, `boardcfg set dns "..."`
+  (applied immediately and at every boot; see src/apps/boardcfg/README.md).
 - SSH: `ssh ae350@192.168.200.2` (pw `ae350`), then `doas` for root. `scp`/`sftp`
   work through the static OpenSSH `sftp-server` that dropbear execs.
 - The rootfs is an **initramfs**: nothing written on the board survives a reboot.
@@ -113,8 +117,8 @@ stateDiagram-v2
 
 | Script | Service |
 |---|---|
-| `S35boardcfg` | `boardcfg -d`: restores hostname / time zone / eth0 MAC from the Dock EEPROM, then watches `/etc/board.conf` to write changes back (`src/apps/boardcfg/`) |
-| `S40network` | static `eth0`, `lo` |
+| `S35boardcfg` | `boardcfg -d`: restores hostname / time zone / eth0 MAC / network settings from the Dock EEPROM, then watches `/etc/board.conf` to write changes back and re-runs `S40network` when the network keys change (`src/apps/boardcfg/`) |
+| `S40network` | `lo` + `eth0` from the `net`/`ip`/`gateway`/`dns` keys in `/etc/board.conf`: static (default `192.168.200.2/24`) or busybox `udhcpc` (`/usr/share/udhcpc/default.script`); records what it did in `/run/network.state` |
 | `S45sdcard` | mounts `/dev/mmcblk0(p1)` on `/mnt/sd` when a card is present |
 | `S50ssh` | dropbear on port 22 with the baked-in host keys |
 | `S60inputd` | `inputd`: keyboard/mouse events from the PC over TCP 5555 → `/dev/uinput` |

@@ -1,0 +1,44 @@
+#!/bin/busybox sh
+# /usr/share/udhcpc/default.script -- busybox udhcpc event handler, called by
+# the client started from /etc/init.d/S40network when net=dhcp.  Configures
+# $interface from the lease and writes /etc/resolv.conf.  Messages go to the
+# kernel log (the client runs in the background).
+
+[ -n "$1" ] || exit 1
+RESOLV=/etc/resolv.conf
+
+log() { echo "net: $*" > /dev/kmsg 2>/dev/null || echo "net: $*"; }
+
+case "$1" in
+	deconfig)
+		ifconfig "$interface" 0.0.0.0
+		;;
+	bound|renew)
+		ifconfig "$interface" "$ip" netmask "${subnet:-255.255.255.0}" ${broadcast:+broadcast "$broadcast"}
+		if [ -n "$router" ]; then
+			while route del default gw 0.0.0.0 dev "$interface" 2>/dev/null; do :; done
+			metric=0
+			for r in $router; do
+				route add default gw "$r" dev "$interface" metric $metric
+				metric=$((metric + 1))
+			done
+		fi
+		{
+			echo "# written by udhcpc (lease on $interface)"
+			[ -n "$domain" ] && echo "search $domain"
+			for s in $dns; do echo "nameserver $s"; done
+			echo "options timeout:2 attempts:2"
+		} > "$RESOLV.tmp" && mv "$RESOLV.tmp" "$RESOLV"
+		rm -f "/run/udhcpc.$interface.nolease"
+		[ "$1" = bound ] && log "$interface $ip/${mask:-24}${router:+ gw $router}${dns:+ dns $dns} (dhcp lease ${lease}s)"
+		;;
+	leasefail)
+		# once per outage, not every retry round (the kernel log is the LCD console)
+		[ -e "/run/udhcpc.$interface.nolease" ] || log "$interface: no DHCP lease yet, retrying in the background"
+		touch "/run/udhcpc.$interface.nolease"
+		;;
+	nak)
+		log "$interface: DHCP NAK from ${serverid:-?}"
+		;;
+esac
+exit 0

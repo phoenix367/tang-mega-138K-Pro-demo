@@ -3,6 +3,8 @@
  * their objects go (LV_EVENT_DELETE), so leaving a panel is just lv_obj_clean. */
 #define _GNU_SOURCE
 #include "lvdesk.h"
+#include <arpa/inet.h>
+#include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -504,18 +506,62 @@ void panel_files(lv_obj_t *parent)
 /* ====================================================================== */
 /* Network                                                                 */
 /* ====================================================================== */
+#define BOARDCFG       "/usr/sbin/boardcfg"   /* board EEPROM settings daemon/CLI */
+#define BOARDCFG_CONF  "/etc/board.conf"      /* what it keeps: key=value lines */
+#define NET_DEFAULT_IP "192.168.200.2/24"     /* S40network's default when no ip key */
+
 typedef struct {
-    lv_obj_t *chart, *ip, *mac, *link, *rx, *tx;
+    lv_obj_t *chart, *ip, *mac, *link, *rx, *tx, *mode, *gw;
     lv_chart_series_t *rx_ser, *tx_ser;
     unsigned long long p_rx, p_tx;
     uint32_t p_tick;
     sysinfo_t si;
 } net_t;
 
+/* one value from /etc/board.conf ("" when absent) */
+static void conf_get(const char *key, char *out, int cap)
+{
+    out[0] = 0;
+    FILE *f = fopen(BOARDCFG_CONF, "r");
+    if (!f) return;
+    char line[256];
+    size_t kl = strlen(key);
+    while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, key, kl) || line[kl] != '=') continue;
+        snprintf(out, cap, "%s", line + kl + 1);
+        out[strcspn(out, "\r\n")] = 0;
+    }
+    fclose(f);
+}
+
+/* eth0's default gateway from /proc/net/route, "" when none */
+static void net_gateway(char *out, int cap)
+{
+    out[0] = 0;
+    FILE *f = fopen("/proc/net/route", "r");
+    if (!f) return;
+    char line[256], ifn[32];
+    unsigned dst, gw, flags;
+    while (fgets(line, sizeof(line), f)) {
+        if (sscanf(line, "%31s %x %x %x", ifn, &dst, &gw, &flags) != 4 || dst || !(flags & 2)) continue;
+        if (strcmp(ifn, "eth0")) continue;
+        struct in_addr a = { .s_addr = gw };
+        inet_ntop(AF_INET, &a, out, cap);
+        break;
+    }
+    fclose(f);
+}
+
 static void net_tick(lv_timer_t *t)
 {
     net_t *n = lv_timer_get_user_data(t);
     sysinfo_sample(&n->si);
+    char v[64];
+    conf_get("net", v, sizeof(v));
+    if (access(BOARDCFG, X_OK)) lv_label_set_text(n->mode, "static (no boardcfg)");
+    else lv_label_set_text(n->mode, !strcmp(v, "dhcp") ? "DHCP (udhcpc)" : "static IP");
+    net_gateway(v, sizeof(v));
+    lv_label_set_text(n->gw, v[0] ? v : "none");
     uint32_t now = lv_tick_get(), dt = n->p_tick ? now - n->p_tick : 1000;
     if (n->p_tick && dt) {
         /* kbit/s */
@@ -534,7 +580,8 @@ static void net_tick(lv_timer_t *t)
         lv_label_set_text_fmt(n->tx, "%llu MB total,  %d kbit/s", n->si.tx_bytes >> 20, txk);
     }
     n->p_rx = n->si.rx_bytes; n->p_tx = n->si.tx_bytes; n->p_tick = now;
-    lv_label_set_text_fmt(n->ip, "%s / 24", n->si.ip[0] ? n->si.ip : "none");
+    if (n->si.ip[0]) lv_label_set_text_fmt(n->ip, "%s/%d", n->si.ip, n->si.prefix);
+    else lv_label_set_text(n->ip, "none");
     lv_label_set_text(n->mac, n->si.mac);
     if (n->si.carrier == 0) lv_label_set_text(n->link, "no carrier (cable unplugged)");
     else if (n->si.link_speed > 0) lv_label_set_text_fmt(n->link, "%s, %d Mbit/s", n->si.operstate, n->si.link_speed);
@@ -542,6 +589,221 @@ static void net_tick(lv_timer_t *t)
 }
 
 static void net_free(lv_event_t *e) { free(lv_event_get_user_data(e)); }
+
+/* ---- "Configure" dialog: the network keys of boardcfg(8) ----------------
+ * Mode / IP / gateway / DNS / hostname / MAC are edited here, checked the
+ * same way boardcfg does, then written with `boardcfg set|unset`; the daemon
+ * stores them in the EEPROM and re-runs S40network, so eth0 changes within a
+ * second. An empty field means "unset" (S40network's default applies). */
+typedef struct {
+    lv_obj_t *mb, *mode, *ip, *gw, *dns, *host, *mac, *status;
+} netcfg_t;
+
+static int ipv4_ok(const char *s, size_t n)
+{
+    char b[16];
+    struct in_addr a;
+    if (n == 0 || n >= sizeof(b)) return 0;
+    memcpy(b, s, n); b[n] = 0;
+    return inet_pton(AF_INET, b, &a) == 1 && a.s_addr != 0;
+}
+
+static int cidr_ok(const char *s)
+{
+    const char *sl = strchr(s, '/');
+    if (!ipv4_ok(s, sl ? (size_t)(sl - s) : strlen(s))) return 0;
+    if (!sl) return 1;
+    char *e;
+    long n = strtol(sl + 1, &e, 10);
+    return e != sl + 1 && !*e && n >= 1 && n <= 32;
+}
+
+static int dns_ok(const char *s)
+{
+    int n = 0;
+    while (*s) {
+        while (*s == ' ' || *s == ',') s++;
+        if (!*s) break;
+        size_t l = strcspn(s, " ,");
+        if (!ipv4_ok(s, l) || ++n > 3) return 0;
+        s += l;
+    }
+    return n > 0;
+}
+
+static int mac_ok(const char *s)
+{
+    unsigned v[6];
+    char tail;
+    if (sscanf(s, "%x:%x:%x:%x:%x:%x%c", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &tail) != 6) return 0;
+    int zero = 1;
+    for (int i = 0; i < 6; i++) { if (v[i] > 255) return 0; if (v[i]) zero = 0; }
+    return !zero && !(v[0] & 1);
+}
+
+static int host_ok(const char *s)
+{
+    if (!*s || strlen(s) > 63) return 0;
+    for (; *s; s++) if (!isalnum((unsigned char)*s) && *s != '-') return 0;
+    return 1;
+}
+
+/* trimmed text of a textarea */
+static const char *ta_text(lv_obj_t *ta, char *buf, int cap)
+{
+    snprintf(buf, cap, "%s", lv_textarea_get_text(ta));
+    char *s = buf;
+    while (*s == ' ') s++;
+    char *e = s + strlen(s);
+    while (e > s && e[-1] == ' ') *--e = 0;
+    return s;
+}
+
+/* boardcfg set KEY VAL (unset when VAL is empty); the value was validated to
+ * contain only [0-9A-Za-z.:/ ,-] so single quotes are safe */
+static int netcfg_put(const char *key, const char *val, char *err, int cap)
+{
+    char cmd[300], out[256] = "";
+    if (*val) snprintf(cmd, sizeof(cmd), BOARDCFG " set %s '%s' 2>&1", key, val);
+    else snprintf(cmd, sizeof(cmd), BOARDCFG " unset %s 2>&1", key);
+    int n = sysinfo_run(cmd, out, sizeof(out));
+    if (n > 0 && strstr(out, "boardcfg:")) {       /* it only talks on errors */
+        snprintf(err, cap, "%s", out);
+        err[strcspn(err, "\n")] = 0;
+        return -1;
+    }
+    return 0;
+}
+
+static void netcfg_fail(netcfg_t *c, const char *msg)
+{
+    lv_label_set_text(c->status, msg);
+    lv_obj_set_style_text_color(c->status, lv_palette_main(LV_PALETTE_RED), 0);
+}
+
+static void netcfg_apply(lv_event_t *e)
+{
+    netcfg_t *c = lv_event_get_user_data(e);
+    char bip[128], bgw[128], bdns[128], bhost[128], bmac[128];
+    int dhcp = lv_dropdown_get_selected(c->mode) == 1;
+    const char *ip = ta_text(c->ip, bip, sizeof(bip)), *gw = ta_text(c->gw, bgw, sizeof(bgw));
+    const char *dns = ta_text(c->dns, bdns, sizeof(bdns)), *host = ta_text(c->host, bhost, sizeof(bhost));
+    const char *mac = ta_text(c->mac, bmac, sizeof(bmac));
+    const char *all[] = { ip, gw, dns, host, mac };
+    for (unsigned i = 0; i < 5; i++)
+        for (const char *p = all[i]; *p; p++)
+            if (!isalnum((unsigned char)*p) && !strchr(".:/ ,-", *p)) { netcfg_fail(c, "unexpected character in a field"); return; }
+    if (!dhcp && *ip && !cidr_ok(ip)) { netcfg_fail(c, "IP address: A.B.C.D or A.B.C.D/N"); return; }
+    if (!dhcp && *gw && !ipv4_ok(gw, strlen(gw))) { netcfg_fail(c, "gateway: an IPv4 address"); return; }
+    if (!dhcp && *dns && !dns_ok(dns)) { netcfg_fail(c, "DNS: one to three IPv4 addresses, space separated"); return; }
+    if (*host && !host_ok(host)) { netcfg_fail(c, "hostname: letters, digits and '-' (1..63)"); return; }
+    if (*mac && !mac_ok(mac)) { netcfg_fail(c, "MAC: unicast xx:xx:xx:xx:xx:xx"); return; }
+
+    char err[256];
+    /* several `set`s inside the daemon's 300 ms debounce = one EEPROM write and
+     * one network restart */
+    if (netcfg_put("net", dhcp ? "dhcp" : "", err, sizeof(err)) ||
+        netcfg_put("ip", dhcp ? "" : ip, err, sizeof(err)) ||
+        netcfg_put("gateway", dhcp ? "" : gw, err, sizeof(err)) ||
+        netcfg_put("dns", dhcp ? "" : dns, err, sizeof(err)) ||
+        netcfg_put("hostname", host, err, sizeof(err)) ||
+        netcfg_put("mac", mac, err, sizeof(err))) { netcfg_fail(c, err); return; }
+    lv_msgbox_close_async(c->mb);          /* we are inside one of its children's events */
+    desk_msgbox("Network", dhcp ? "Saved to the board EEPROM. eth0 is now asking for a DHCP lease."
+                                : "Saved to the board EEPROM. eth0 is being reconfigured.");
+}
+
+/* the static-only fields follow the mode */
+static void netcfg_sync_mode(netcfg_t *c)
+{
+    int dhcp = lv_dropdown_get_selected(c->mode) == 1;
+    lv_obj_t *f[] = { c->ip, c->gw, c->dns };
+    for (int i = 0; i < 3; i++) {
+        if (dhcp) lv_obj_add_state(f[i], LV_STATE_DISABLED);
+        else lv_obj_remove_state(f[i], LV_STATE_DISABLED);
+    }
+}
+
+static void netcfg_mode(lv_event_t *e) { netcfg_sync_mode(lv_event_get_user_data(e)); }
+
+static void netcfg_free(lv_event_t *e) { free(lv_event_get_user_data(e)); }
+
+static lv_obj_t *netcfg_field(lv_obj_t *parent, const char *label, const char *val, const char *hint, netcfg_t *c)
+{
+    lv_obj_t *r = lv_obj_create(parent);
+    lv_obj_remove_style_all(r);
+    lv_obj_set_size(r, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(r, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_t *l = lv_label_create(r);
+    lv_label_set_text(l, label);
+    lv_obj_set_width(l, 150);
+    lv_obj_set_style_text_opa(l, LV_OPA_70, 0);
+    lv_obj_t *ta = lv_textarea_create(r);
+    lv_obj_set_flex_grow(ta, 1);
+    lv_textarea_set_one_line(ta, true);
+    lv_textarea_set_max_length(ta, 100);
+    lv_textarea_set_text(ta, val);
+    lv_textarea_set_placeholder_text(ta, hint);
+    lv_obj_set_style_pad_ver(ta, 6, 0);
+    lv_obj_add_event_cb(ta, netcfg_apply, LV_EVENT_READY, c);      /* Enter = Apply */
+    return ta;
+}
+
+static void net_configure(lv_event_t *e)
+{
+    (void)e;
+    if (access(BOARDCFG, X_OK)) { desk_msgbox("Network", "boardcfg is not installed: settings cannot be kept."); return; }
+    netcfg_t *c = calloc(1, sizeof(*c));
+    char net[32], ip[128], gw[128], dns[128], host[128], mac[128];
+    conf_get("net", net, sizeof(net));
+    conf_get("ip", ip, sizeof(ip));
+    conf_get("gateway", gw, sizeof(gw));
+    conf_get("dns", dns, sizeof(dns));
+    conf_get("hostname", host, sizeof(host));
+    conf_get("mac", mac, sizeof(mac));
+
+    c->mb = lv_msgbox_create(NULL);
+    lv_msgbox_add_title(c->mb, "eth0 configuration (kept in the board EEPROM)");
+    lv_msgbox_add_close_button(c->mb);
+    lv_obj_set_width(c->mb, 560);
+    lv_obj_add_event_cb(c->mb, netcfg_free, LV_EVENT_DELETE, c);
+    lv_obj_t *body = lv_msgbox_get_content(c->mb);
+    lv_obj_set_flex_flow(body, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(body, 6, 0);
+
+    lv_obj_t *r = lv_obj_create(body);
+    lv_obj_remove_style_all(r);
+    lv_obj_set_size(r, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(r, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(r, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_t *l = lv_label_create(r);
+    lv_label_set_text(l, "Mode");
+    lv_obj_set_width(l, 150);
+    lv_obj_set_style_text_opa(l, LV_OPA_70, 0);
+    c->mode = lv_dropdown_create(r);
+    lv_dropdown_set_options_static(c->mode, "Static IP\nDHCP (udhcpc)");
+    lv_dropdown_set_selected(c->mode, !strcmp(net, "dhcp") ? 1 : 0);
+    lv_obj_set_flex_grow(c->mode, 1);
+    lv_obj_add_event_cb(c->mode, netcfg_mode, LV_EVENT_VALUE_CHANGED, c);
+
+    c->ip   = netcfg_field(body, "IP address / prefix", ip, "empty = " NET_DEFAULT_IP, c);
+    c->gw   = netcfg_field(body, "Gateway", gw, "empty = no default route", c);
+    c->dns  = netcfg_field(body, "DNS servers", dns, "empty = the gateway; up to three, space separated", c);
+    c->host = netcfg_field(body, "Hostname", host, "ae350", c);
+    c->mac  = netcfg_field(body, "MAC address", mac, "empty = random at every boot", c);
+    c->status = lv_label_create(body);
+    lv_label_set_text(c->status, "Empty fields fall back to the defaults. Applying reconfigures eth0 at once\n(an ssh session on the old address is dropped).");
+    lv_obj_set_style_text_font(c->status, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_opa(c->status, LV_OPA_70, 0);
+    lv_label_set_long_mode(c->status, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(c->status, LV_PCT(100));
+
+    lv_obj_t *b = lv_msgbox_add_footer_button(c->mb, "Apply");
+    lv_obj_add_event_cb(b, netcfg_apply, LV_EVENT_CLICKED, c);
+    netcfg_sync_mode(c);
+    lv_group_focus_obj(c->ip);
+}
 
 void panel_network(lv_obj_t *parent)
 {
@@ -566,16 +828,24 @@ void panel_network(lv_obj_t *parent)
 
     lv_obj_t *right = desk_card(parent, "Gowin TSE MAC, RTL8211F PHY");
     lv_obj_set_size(right, LV_PCT(41), LV_PCT(100));
+    kv_row(right, "Mode", &n->mode);
     kv_row(right, "IPv4", &n->ip);
+    kv_row(right, "Gateway", &n->gw);
     kv_row(right, "MAC", &n->mac);
     kv_row(right, "Link", &n->link);
     lv_obj_t *l = lv_label_create(right); lv_label_set_text(l, "Received"); lv_obj_set_style_text_opa(l, LV_OPA_70, 0);
     n->rx = lv_label_create(right);
     l = lv_label_create(right); lv_label_set_text(l, "Sent"); lv_obj_set_style_text_opa(l, LV_OPA_70, 0);
     n->tx = lv_label_create(right);
+    lv_obj_t *b = lv_button_create(right);
+    lv_obj_add_event_cb(b, net_configure, LV_EVENT_CLICKED, NULL);
+    lv_label_set_text(lv_label_create(b), LV_SYMBOL_SETTINGS " Configure");
     l = lv_label_create(right);
-    lv_label_set_text(l, "\nInput bridge: inputd on tcp/5555\nPC side: desktop/host/netinput.py");
+    lv_label_set_text(l, "Input bridge: inputd on tcp/5555, PC side: desktop/host/netinput.py");
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_opa(l, LV_OPA_70, 0);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(l, LV_PCT(100));
 
     lv_timer_t *t = lv_timer_create(net_tick, 1000, n);
     lv_obj_add_event_cb(parent, timer_del_on_delete, LV_EVENT_DELETE, t);
@@ -948,7 +1218,6 @@ void panel_about(lv_obj_t *parent)
 #define ZONEINFO  "/usr/share/zoneinfo"
 #define TZ_NAME   "/etc/timezone"             /* name of the zone in /etc/localtime */
 #define TZ_SAVE   "/mnt/sd/ae350/timezone"    /* persisted copy (SD card, legacy) */
-#define BOARDCFG  "/usr/sbin/boardcfg"        /* board EEPROM settings daemon/CLI */
 
 static char **s_zones;
 static int s_nzones;

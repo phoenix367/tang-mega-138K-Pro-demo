@@ -17,8 +17,12 @@
  *
  * Keys the daemon applies: mac (eth0, also read by the kernel at boot through
  * the nvmem cell in the device tree), hostname, tz (zone name under
- * /usr/share/zoneinfo -> /etc/localtime + /etc/timezone).  Any other key is
- * stored and restored verbatim (serial, ...).
+ * /usr/share/zoneinfo -> /etc/localtime + /etc/timezone), and the network
+ * settings net (dhcp|static), ip (A.B.C.D[/N]), gateway, dns ("A.B.C.D ...").
+ * The network keys are applied by /etc/init.d/S40network, which reads them
+ * from /etc/board.conf and records what it configured in /run/network.state;
+ * when they change (or the MAC changes) the daemon restarts that script.
+ * Any other key is stored and restored verbatim (serial, ...).
  *
  * EEPROM layout (offsets in the 1 KB part; 0x000..0x0FF is left to the
  * vendor, byte 0 reads 0x89 from the factory):
@@ -47,6 +51,8 @@
 #include <sys/inotify.h>
 #include <net/if.h>
 #include <net/if_arp.h>
+#include <arpa/inet.h>
+#include <sys/wait.h>
 
 /* paths can be overridden with -D for a host-side test against a 1 KB file */
 #ifndef NVMEM
@@ -62,7 +68,12 @@
 #ifndef ZONEINFO
 #define ZONEINFO "/usr/share/zoneinfo"
 #endif
+#ifndef NETSTATE
+#define NETSTATE  "/run/network.state"     /* written by S40network: what it configured */
+#define NETSCRIPT "/etc/init.d/S40network"
+#endif
 #define IFNAME   "eth0"
+#define DEFAULT_IP "192.168.200.2/24"      /* keep in sync with S40network */
 
 #define BASE      0x100
 #define END       0x400
@@ -191,9 +202,54 @@ static int parse_mac(const char *s, uint8_t mac[6])
     return 0;
 }
 
+static int parse_ipv4(const char *s, size_t n)
+{
+    char buf[16];
+    struct in_addr a;
+    if (n == 0 || n >= sizeof(buf)) return -1;
+    memcpy(buf, s, n);
+    buf[n] = 0;
+    return inet_pton(AF_INET, buf, &a) == 1 && a.s_addr != 0 ? 0 : -1;
+}
+
+/* "A.B.C.D" or "A.B.C.D/N" */
+static int parse_cidr(const char *s)
+{
+    const char *sl = strchr(s, '/');
+    if (parse_ipv4(s, sl ? (size_t)(sl - s) : strlen(s))) return -1;
+    if (sl) {
+        char *end;
+        long n = strtol(sl + 1, &end, 10);
+        if (end == sl + 1 || *end || n < 1 || n > 32) return -1;
+    }
+    return 0;
+}
+
+/* one to three IPv4 addresses separated by spaces or commas */
+static int parse_dns(const char *s)
+{
+    int n = 0;
+    while (*s) {
+        while (*s == ' ' || *s == ',') s++;
+        if (!*s) break;
+        size_t len = strcspn(s, " ,");
+        if (parse_ipv4(s, len) || ++n > 3) return -1;
+        s += len;
+    }
+    return n ? 0 : -1;
+}
+
 static int validate(const char *key, const char *val)
 {
-    if (!strcmp(key, "mac")) {
+    if (!strcmp(key, "net")) {
+        if (strcmp(val, "dhcp") && strcmp(val, "static")) { logmsg("net must be dhcp or static"); return -1; }
+    } else if (!strcmp(key, "ip")) {
+        if (parse_cidr(val)) { logmsg("ip must be A.B.C.D or A.B.C.D/N"); return -1; }
+    } else if (!strcmp(key, "gateway")) {
+        if (parse_ipv4(val, strlen(val))) { logmsg("gateway must be an IPv4 address"); return -1; }
+    } else if (!strcmp(key, "dns")) {
+        if (parse_dns(val)) { logmsg("dns: one to three IPv4 addresses, space separated"); return -1; }
+    } else if (!strcmp(key, "mac")) {
         uint8_t m[6];
         if (parse_mac(val, m)) { logmsg("mac must be a unicast xx:xx:xx:xx:xx:xx"); return -1; }
     } else if (!strcmp(key, "hostname")) {
@@ -242,7 +298,8 @@ static int conf_write(cfg_t *c)
     if (!f) return -1;
     fputs("# /etc/board.conf -- board settings kept in the Dock's EEPROM by boardcfg(8).\n"
           "# Change with `boardcfg set KEY VALUE`; this file is rewritten from the\n"
-          "# EEPROM at boot.  Applied keys: mac (eth0), hostname, tz.\n", f);
+          "# EEPROM at boot.  Applied keys: mac (eth0), hostname, tz,\n"
+          "# net (dhcp|static), ip (A.B.C.D/N), gateway, dns (\"A.B.C.D ...\").\n", f);
     fputs(text, f);
     if (fclose(f)) { unlink(tmp); return -1; }
     chmod(tmp, 0644);
@@ -251,13 +308,15 @@ static int conf_write(cfg_t *c)
 
 /* ---- the EEPROM --------------------------------------------------------- */
 
-static int eeprom_read(uint8_t *img)
+/* the EEPROM is bit-banged (i2c-gpio busy-waits): ~1 ms of CPU per byte, so
+ * read only what is needed */
+static int eeprom_read(uint8_t *img, size_t len)
 {
     int fd = open(NVMEM, O_RDONLY);
     if (fd < 0) { logmsg("cannot open %s: %s", NVMEM, strerror(errno)); return -1; }
-    ssize_t n = pread(fd, img, REGION, BASE);
+    ssize_t n = pread(fd, img, len, BASE);
     close(fd);
-    if (n != REGION) { logmsg("short read from %s", NVMEM); return -1; }
+    if (n != (ssize_t)len) { logmsg("short read from %s", NVMEM); return -1; }
     return 0;
 }
 
@@ -324,10 +383,10 @@ static int eeprom_store(const cfg_t *c)
     uint8_t cur[REGION], img[REGION];
     int n = image_encode(c, img);
     if (n < 0) return -1;
-    if (eeprom_read(cur)) return -1;
+    if (eeprom_read(cur, n)) return -1;
     if (!memcmp(cur, img, n)) return 0;
     if (eeprom_write(img, n)) return -1;
-    if (eeprom_read(cur) || memcmp(cur, img, n)) { logmsg("EEPROM verify failed"); return -1; }
+    if (eeprom_read(cur, n) || memcmp(cur, img, n)) { logmsg("EEPROM verify failed"); return -1; }
     logmsg("EEPROM updated (%d bytes)", n);
     return 0;
 }
@@ -356,7 +415,43 @@ static int apply_mac(const char *s)
     else logmsg(IFNAME " address %s", s);
     if (was_up) { fl.ifr_flags |= IFF_UP; ioctl(fd, SIOCSIFFLAGS, &fl); }
     close(fd);
-    return rc;
+    return rc ? -1 : 1;                     /* 1 = changed (routes/lease need a redo) */
+}
+
+/* the one-line summary S40network writes to NETSTATE after configuring eth0;
+ * built here the same way so the two can be compared */
+static void net_state(const cfg_t *c, char *out, size_t cap)
+{
+    const char *net = cfg_get(c, "net"), *ip = cfg_get(c, "ip");
+    const char *gw = cfg_get(c, "gateway"), *dns = cfg_get(c, "dns");
+    if (!net) net = "static";
+    if (!ip) ip = DEFAULT_IP;
+    snprintf(out, cap, "net=%s ip=%s%s gateway=%s dns=%s\n",
+             net, ip, strchr(ip, '/') ? "" : "/24", gw ? gw : "", dns ? dns : "");
+}
+
+/* network keys: S40network applies them (and records what it did); here we
+ * only restart it when the recorded state differs from the settings.  Before
+ * S40network has run (boot: boardcfg -d precedes it) there is nothing to do. */
+static int apply_net(const cfg_t *c, int force)
+{
+    char want[512], have[512];
+    net_state(c, want, sizeof(want));
+    if (read_file(NETSTATE, have, sizeof(have)) < 0) return 0;   /* network not started yet */
+    if (!force && !strcmp(want, have)) return 0;
+    logmsg("network settings changed, restarting " IFNAME);
+    pid_t pid = fork();
+    if (pid < 0) return -1;
+    if (pid == 0) {
+        int devnull = open("/dev/null", O_RDWR);
+        if (devnull >= 0) { dup2(devnull, 1); dup2(devnull, 2); }
+        execl(NETSCRIPT, NETSCRIPT, "restart", (char *)NULL);
+        _exit(127);
+    }
+    int st = 0;
+    waitpid(pid, &st, 0);
+    if (!WIFEXITED(st) || WEXITSTATUS(st)) { logmsg(NETSCRIPT " restart failed"); return -1; }
+    return 0;
 }
 
 static int apply_hostname(const char *h)
@@ -397,9 +492,11 @@ static int apply_tz(const char *zone)
 static void apply_all(const cfg_t *c)
 {
     const char *v;
-    if ((v = cfg_get(c, "mac")))      apply_mac(v);
+    int mac_changed = 0;
+    if ((v = cfg_get(c, "mac")))      mac_changed = apply_mac(v) > 0;
     if ((v = cfg_get(c, "hostname"))) apply_hostname(v);
     if ((v = cfg_get(c, "tz")))       apply_tz(v);
+    apply_net(c, mac_changed);              /* a new MAC also needs a fresh lease / routes */
 }
 
 /* ---- operations --------------------------------------------------------- */
@@ -409,7 +506,7 @@ static int op_load(void)
 {
     uint8_t img[REGION];
     cfg_t c;
-    if (eeprom_read(img)) return -1;
+    if (eeprom_read(img, REGION)) return -1;
     if (image_decode(img, &c) == 0) {
         if (conf_write(&c)) logmsg("cannot write " CONF ": %s", strerror(errno));
         logmsg("%d setting(s) restored from the EEPROM", c.n);
@@ -474,7 +571,7 @@ static int op_show(int from_eeprom)
     }
     uint8_t img[REGION];
     cfg_t c;
-    if (eeprom_read(img)) return -1;
+    if (eeprom_read(img, REGION)) return -1;
     if (image_decode(img, &c)) { printf("EEPROM: no valid settings block\n"); return 1; }
     char text[4096];
     cfg_text(&c, text, sizeof(text), 1);
