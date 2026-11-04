@@ -62,7 +62,8 @@ PC: host/netinput.py  --tcp 5555-->  board: inputd  --/dev/uinput-->  /dev/input
     status row shows the microSD card as a mountable resource with a
     Mount/Unmount button and an "SD card" quick-access entry),
     **Audio** (WAV list from `/home/ae350`, `/tmp`; plays via a `wavplay` child
-    process; "Test tone" writes and plays a 440/880 Hz stereo file), **Network**
+    process; "Test tone" writes and plays a 440/880 Hz stereo file), **Files** also plays `.avi`/`.mp4`/`.mkv`/`.mp3`/`.m4a` through `vidplay` (`src/apps/vidplay/`): the child owns
+    the framebuffer, the desktop swallows its own flushes meanwhile and any key or click ends it), **Network**
     (RX/TX kbit/s chart, mode/IP/gateway/MAC/link; **Configure** opens a dialog for
     static IP/prefix, gateway, DNS, DHCP, hostname and MAC that is validated like
     `boardcfg` does and saved with `boardcfg set`, so the daemon writes the EEPROM and

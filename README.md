@@ -26,9 +26,11 @@ atomic read-modify-write with interrupt-disabled plain loads and stores. See
 | Board EEPROM (1 KB, I2C) | `gpio/` | `gpio-mmio` + `i2c-gpio` + `i2c-mux-gpio` + `at24`; `boardcfg` daemon (`src/apps/boardcfg/`) | the Dock's `SYS_TWI` bus and 8-way mux; persistent MAC (read by the kernel at boot), hostname, time zone, serial, network (static IP/gateway/DNS or DHCP): `boardcfg set KEY VALUE` |
 | Keyboard / mouse | — | `inputd` → `/dev/uinput` | sent from the PC over TCP (`src/apps/desktop/host/netinput.py`) |
 | Console | — | UART2, 115200 | header pin B19; `scripts/uart_console.py` |
+| Video playback | `video/` YUV 4:2:0 scan-out mode | `vidplay` (`src/apps/vidplay/`, trimmed static FFmpeg 7.1.1), gowin-lcdfb YUV buffers | MJPEG/H.264 + MP3/AAC from the Files panel; decoders write straight into scan-out buffers the core converts itself (no CPU colour conversion since Build 68 / kernel #77): MJPEG 480×270 and 640×360 play at 25 fps with audio, 800×480 at ~20 fps. H.264 is memory-latency bound on this SoC (no L2, ~1.4 µs per cache miss): ~12 fps at 480×270 |
+| Hardware JPEG decoder | `idct/` @0xE8040000, EXTM master 4 | `gowin-idct` misc driver (`PATCHES/0013`), `vidplay` `jpeg_hw.c` / `idct_hw.c` | MJPEG frames decoded by the gateware: Huffman decoding, dequantisation, IDCT, frame assembly into the YUV planes (Build 70); the CPU only parses headers, ~1 ms per 800×480 frame. Build 69 had the IDCT only |
 | Boot splash | `video/` | U-Boot `gowin_lcd` driver (fork) | `src/splash/splash.bmp` on the LCD from U-Boot until the kernel's fbdev driver starts |
 
-Current state in flash: gateware **Build 67**, kernel **#75**, keyed-autoboot U-Boot (2026-11-03).
+Current state in flash: gateware **Build 70**, kernel **#82**, keyed-autoboot U-Boot (2026-11-04).
 
 ## The desktop
 

@@ -224,20 +224,28 @@ assign eth_hresp[1]         = 1'b0;
 // EXTS register window: 0xE8000000 gw_eth_dma CSRs, 0xE8001000 LCD video core,
 // 0xE8002000 audio core, 0xE8004000 temperature/voltage sensor core,
 // 0xE8008000 fan PWM/tacho, 0xE8010000 board GPIO (SYS_TWI bit-bang, TWI mux,
-// EEPROM WP), 0xE8020000 microSD host (native 4-bit, DMA).
+// EEPROM WP), 0xE8020000 microSD host (native 4-bit, DMA), 0xE8040000 IDCT core.
 // All slaves are zero-wait; the data phase is muxed by the select registered
 // at the accepted address phase.
-wire        exts_sd  = EXTS_HADDR[17];
-wire        exts_gpo = EXTS_HADDR[16] & ~EXTS_HADDR[17];
-wire        exts_fan = EXTS_HADDR[15] & ~EXTS_HADDR[16] & ~EXTS_HADDR[17];
-wire        exts_sen = EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[16] & ~EXTS_HADDR[17];
-wire        exts_aud = EXTS_HADDR[13] & ~EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[16] & ~EXTS_HADDR[17];
-wire        exts_vid = EXTS_HADDR[12] & ~EXTS_HADDR[13] & ~EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[16] & ~EXTS_HADDR[17];
-reg         exts_vid_d, exts_aud_d, exts_sen_d, exts_fan_d, exts_gpo_d, exts_sd_d;
-wire [31:0] eth_s_hrdata, vid_s_hrdata, aud_s_hrdata, sen_s_hrdata, fan_s_hrdata, gpo_s_hrdata, sd_s_hrdata;
+wire        exts_hi  = EXTS_HADDR[18];
+wire        exts_idc = EXTS_HADDR[18];
+wire        exts_sd  = EXTS_HADDR[17] & ~exts_hi;
+wire        exts_gpo = EXTS_HADDR[16] & ~EXTS_HADDR[17] & ~exts_hi;
+wire        exts_fan = EXTS_HADDR[15] & ~EXTS_HADDR[16] & ~EXTS_HADDR[17] & ~exts_hi;
+wire        exts_sen = EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[16] & ~EXTS_HADDR[17] & ~exts_hi;
+wire        exts_aud = EXTS_HADDR[13] & ~EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[16] & ~EXTS_HADDR[17] & ~exts_hi;
+wire        exts_vid = EXTS_HADDR[12] & ~EXTS_HADDR[13] & ~EXTS_HADDR[14] & ~EXTS_HADDR[15] & ~EXTS_HADDR[16] & ~EXTS_HADDR[17] & ~exts_hi;
+reg         exts_vid_d, exts_aud_d, exts_sen_d, exts_fan_d, exts_gpo_d, exts_sd_d, exts_idc_d;
+wire [31:0] eth_s_hrdata, vid_s_hrdata, aud_s_hrdata, sen_s_hrdata, fan_s_hrdata, gpo_s_hrdata, sd_s_hrdata, idc_s_hrdata;
 wire        eth_s_hready, vid_s_hready, eth_s_hresp, vid_s_hresp;
 wire        aud_s_hready, aud_s_hresp, intr_audio, sen_s_hready, sen_s_hresp;
 wire        fan_s_hready, fan_s_hresp, gpo_s_hready, gpo_s_hresp, sd_s_hready, sd_s_hresp;
+wire        idc_s_hready, idc_s_hresp, intr_idct;
+wire        id_m_busy, id_m_hwrite, id_m_hready, id_m_hresp;   // IDCT core (arbiter master 4)
+wire [31:0] id_m_haddr;
+wire [1:0]  id_m_htrans;
+wire [2:0]  id_m_hsize, id_m_hburst;
+wire [63:0] id_m_hwdata, id_m_hrdata;
 wire [5:0]  gpo_i, gpo_o, gpo_oe;
 wire        sd_m_busy, sd_m_hwrite, sd_m_hready, sd_m_hresp;
 wire [31:0] sd_m_haddr;
@@ -253,9 +261,9 @@ wire        sd_cmd_o, sd_cmd_oe, sd_dat_oe, sd_dat_oe_hi, intr_sd;
 wire [3:0]  sd_dat_o;
 always @(posedge EXTS_HCLK or negedge EXTS_HRSTN)
     if (!EXTS_HRSTN) begin
-        exts_vid_d <= 1'b0; exts_aud_d <= 1'b0; exts_sen_d <= 1'b0; exts_fan_d <= 1'b0; exts_gpo_d <= 1'b0; exts_sd_d <= 1'b0;
+        exts_vid_d <= 1'b0; exts_aud_d <= 1'b0; exts_sen_d <= 1'b0; exts_fan_d <= 1'b0; exts_gpo_d <= 1'b0; exts_sd_d <= 1'b0; exts_idc_d <= 1'b0;
     end else if (EXTS_HSEL && EXTS_HTRANS[1] && EXTS_HREADY) begin
-        exts_vid_d <= exts_vid; exts_aud_d <= exts_aud; exts_sen_d <= exts_sen; exts_fan_d <= exts_fan; exts_gpo_d <= exts_gpo; exts_sd_d <= exts_sd;
+        exts_vid_d <= exts_vid; exts_aud_d <= exts_aud; exts_sen_d <= exts_sen; exts_fan_d <= exts_fan; exts_gpo_d <= exts_gpo; exts_sd_d <= exts_sd; exts_idc_d <= exts_idc;
     end
 // Read data goes to the SoC through a register, with one wait state per read:
 // the slaves' read muxes sit all over the die and the combinational route to
@@ -264,8 +272,8 @@ always @(posedge EXTS_HCLK or negedge EXTS_HRSTN)
 // hold their read data while HREADY is low (their address registers advance
 // only on an accepted address phase), so the register captures it in the
 // first data-phase cycle and presents it in the second.
-wire [31:0] exts_hrdata_mux = exts_sd_d ? sd_s_hrdata : exts_gpo_d ? gpo_s_hrdata : exts_fan_d ? fan_s_hrdata : exts_sen_d ? sen_s_hrdata : exts_aud_d ? aud_s_hrdata : exts_vid_d ? vid_s_hrdata : eth_s_hrdata;
-wire        exts_slv_hready = exts_sd_d ? sd_s_hready : exts_gpo_d ? gpo_s_hready : exts_fan_d ? fan_s_hready : exts_sen_d ? sen_s_hready : exts_aud_d ? aud_s_hready : exts_vid_d ? vid_s_hready : eth_s_hready;
+wire [31:0] exts_hrdata_mux = exts_idc_d ? idc_s_hrdata : exts_sd_d ? sd_s_hrdata : exts_gpo_d ? gpo_s_hrdata : exts_fan_d ? fan_s_hrdata : exts_sen_d ? sen_s_hrdata : exts_aud_d ? aud_s_hrdata : exts_vid_d ? vid_s_hrdata : eth_s_hrdata;
+wire        exts_slv_hready = exts_idc_d ? idc_s_hready : exts_sd_d ? sd_s_hready : exts_gpo_d ? gpo_s_hready : exts_fan_d ? fan_s_hready : exts_sen_d ? sen_s_hready : exts_aud_d ? aud_s_hready : exts_vid_d ? vid_s_hready : eth_s_hready;
 reg  [31:0] exts_hrdata_q;
 reg         exts_rd_wait;                       // first data-phase cycle of a read
 always @(posedge EXTS_HCLK or negedge EXTS_HRSTN)
@@ -277,7 +285,7 @@ always @(posedge EXTS_HCLK or negedge EXTS_HRSTN)
     end
 assign EXTS_HRDATA  = exts_hrdata_q;
 assign EXTS_HREADY  = exts_slv_hready & ~exts_rd_wait;
-assign eth_hresp[0] = exts_sd_d ? sd_s_hresp  : exts_gpo_d ? gpo_s_hresp  : exts_fan_d ? fan_s_hresp  : exts_sen_d ? sen_s_hresp  : exts_aud_d ? aud_s_hresp  : exts_vid_d ? vid_s_hresp  : eth_s_hresp;
+assign eth_hresp[0] = exts_idc_d ? idc_s_hresp : exts_sd_d ? sd_s_hresp  : exts_gpo_d ? gpo_s_hresp  : exts_fan_d ? fan_s_hresp  : exts_sen_d ? sen_s_hresp  : exts_aud_d ? aud_s_hresp  : exts_vid_d ? vid_s_hresp  : eth_s_hresp;
 
 assign eth_rstn = EXTS_HRSTN;
 
@@ -370,7 +378,7 @@ RiscV_AE350_SOC_Top u_RiscV_AE350_SOC_Top
     .TDO_OUT(TDO_OUT),
     .TDO_OE(),
     // External interrupts - Ethernet MAC IRQ on bit 0
-    .EXT_INT({13'b0, intr_sd, intr_audio, intr_ethernet}),
+    .EXT_INT({12'b0, intr_idct, intr_sd, intr_audio, intr_ethernet}),
     // External AHB slave port -> Ethernet MAC bridge (gw_ahb_ethernet_top)
     .EXTS_HRDATA(EXTS_HRDATA),
     .EXTS_HREADYIN(EXTS_HREADY),
@@ -564,7 +572,7 @@ gw_eth_dma_core u_gw_eth_dma_core
     .s_haddr(EXTS_HADDR),
     .s_htrans(EXTS_HTRANS),
     .s_hwrite(EXTS_HWRITE),
-    .s_hsel(EXTS_HSEL & ~exts_vid & ~exts_aud & ~exts_sen & ~exts_fan & ~exts_gpo & ~exts_sd),
+    .s_hsel(EXTS_HSEL & ~exts_vid & ~exts_aud & ~exts_sen & ~exts_fan & ~exts_gpo & ~exts_sd & ~exts_hi),
     .s_hready_in(EXTS_HREADY),
     .s_hwdata(EXTS_HWDATA),
     .s_hrdata(eth_s_hrdata),
@@ -591,7 +599,7 @@ gw_eth_dma_core u_gw_eth_dma_core
 // Custom 2-master AHB arbiter: full 32-bit address space, fixed priority RX>TX.
 // (The Gowin AHBBusArbiter only forwards a 0x80000000 register window -- not a
 //  DMA fabric; see eth_dma/rtl/eth_ahb_arbiter.v.)
-ahb_arbiter4 u_eth_ahb_arbiter
+ahb_arbiter5 u_eth_ahb_arbiter
 (
     .clk(EXTS_HCLK), .rstn(EXTS_HRSTN),
     .m0_busy(m0_busy), .m0_haddr(m0_haddr), .m0_htrans(m0_htrans), .m0_hwrite(m0_hwrite),
@@ -606,6 +614,9 @@ ahb_arbiter4 u_eth_ahb_arbiter
     .m3_busy(au_m_busy), .m3_haddr(au_m_haddr), .m3_htrans(au_m_htrans), .m3_hwrite(au_m_hwrite),
     .m3_hsize(au_m_hsize), .m3_hburst(au_m_hburst), .m3_hwdata(au_m_hwdata),
     .m3_hrdata(au_m_hrdata), .m3_hready(au_m_hready), .m3_hresp(au_m_hresp),
+    .m4_busy(id_m_busy), .m4_haddr(id_m_haddr), .m4_htrans(id_m_htrans), .m4_hwrite(id_m_hwrite),
+    .m4_hsize(id_m_hsize), .m4_hburst(id_m_hburst), .m4_hwdata(id_m_hwdata),
+    .m4_hrdata(id_m_hrdata), .m4_hready(id_m_hready), .m4_hresp(id_m_hresp),
     .active(arb_active), .haddr(arb_haddr), .htrans(arb_htrans), .hwrite(arb_hwrite),
     .hsize(arb_hsize), .hburst(arb_hburst), .hwdata(arb_hwdata),
     .hrdata(arb_hrdata), .hready(arb_hready), .hresp(arb_hresp)
@@ -706,6 +717,22 @@ sdhost_core #(.BUS_MHZ(50)) u_sdhost_core
 assign SD_CMD      = sd_cmd_oe ? sd_cmd_o : 1'bz;
 assign SD_DAT[0]   = sd_dat_oe ? sd_dat_o[0] : 1'bz;
 assign SD_DAT[3:1] = sd_dat_oe_hi ? sd_dat_o[3:1] : 3'bzzz;
+
+// Hardware IDCT: records (quantised 8x8 coefficient blocks) read from a DRAM
+// ring, FFmpeg-exact integer IDCT, pixels assembled in band RAMs and written
+// to the YUV planes as whole lines (arbiter master 4).  Registers on EXTS @
+// 0xE8040000, interrupt on EXT_INT[3] (PLIC source 13).  See idct/README.md.
+idct_core u_idct_core
+(
+    .hclk(EXTS_HCLK), .hresetn(EXTS_HRSTN),
+    .s_haddr(EXTS_HADDR), .s_htrans(EXTS_HTRANS), .s_hwrite(EXTS_HWRITE),
+    .s_hsel(EXTS_HSEL & exts_idc), .s_hready_in(EXTS_HREADY), .s_hwdata(EXTS_HWDATA),
+    .s_hrdata(idc_s_hrdata), .s_hready(idc_s_hready), .s_hresp(idc_s_hresp),
+    .m_busy(id_m_busy), .m_haddr(id_m_haddr), .m_htrans(id_m_htrans), .m_hwrite(id_m_hwrite),
+    .m_hsize(id_m_hsize), .m_hburst(id_m_hburst), .m_hwdata(id_m_hwdata), .m_hrdata(id_m_hrdata),
+    .m_hready(id_m_hready), .m_hresp(id_m_hresp),
+    .irq(intr_idct)
+);
 
 // 32-bit arbiter master -> 64-bit SoC EXTM slave port
 extm_bridge u_extm_bridge

@@ -183,6 +183,16 @@
 			max-frequency = <25000000>;
 		};
 
+		/* Hardware IDCT / frame assembly core (src/rtl/idct/, Build 69+):
+		 * coefficient records from a DRAM ring, pixels into YUV 4:2:0 planes.
+		 * EXT_INT[3] = GP3 = PLIC src 13; misc driver gowin-idct -> /dev/gowin-idct. */
+		idct0: idct@e8040000 {
+			compatible = "gowin,ae350-idct";
+			reg = <0xe8040000 0x100>;
+			interrupts = <13 4>;
+			interrupt-parent = <&plic0>;
+		};
+
 		gmac0: ethernet@e8000000 {
 			compatible = "gowin,ae350-tse";
 			reg = <0xe8000000 0x800>;

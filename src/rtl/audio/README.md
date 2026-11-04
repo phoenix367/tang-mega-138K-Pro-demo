@@ -12,7 +12,7 @@ comes out bit-exact, and the core proves it with a CRC.
 ```
 rtl/audio_core.v   top: 2048-frame FIFO (BSRAM) + head register, DMA fetch engine, interrupt
 rtl/audio_csr.v    AHB-lite registers on EXTS @ 0xE8002000 (bus clock, 50 MHz)
-rtl/ahb_arbiter4.v EXTM arbiter with the audio master as 4th port (RX > SD > audio > TX)
+rtl/ahb_arbiter5.v EXTM arbiter with the audio master as 4th port (RX > SD > audio > TX)
 rtl/audio_out.v    NCO bit clock, PT8211 serialiser, FRAMES / UNDERRUN / CRC
 tb/tb_audio.v      AHB master model + PT8211 receiver model, self-checking
 tb/run_tb.sh       iverilog run; prints RESULT: PASS|FAIL

@@ -213,7 +213,7 @@ graph LR
   grant** so a transfer is never preempted mid-burst. It forwards the **full 32-bit
   address** — unlike the Gowin AHBBusArbiter IP, which only forwards a fixed 1 MB
   window at `0x80000000` (that IP was tried first and abandoned for DMA). The top
-  level now instantiates its 4-master descendant `ahb_arbiter4`
+  level now instantiates its 4-master descendant `ahb_arbiter5`
   (`src/rtl/audio/rtl/`), which also carries the SD host's and the audio engine's DMA.
 - `extm_bridge` adapts the 32-bit masters to the **64-bit EXTM data** bus (write
   replicates to both lanes; read selects by `HADDR[2]`). It also drives

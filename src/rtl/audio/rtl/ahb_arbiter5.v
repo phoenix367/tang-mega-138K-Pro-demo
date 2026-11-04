@@ -1,15 +1,16 @@
 `default_nettype none
 //============================================================================
-// ahb_arbiter4.v -- 4-master AHB-lite arbiter for the EXTM port.
+// ahb_arbiter5.v -- 5-master AHB-lite arbiter for the EXTM port.
 //
 // Same scheme as eth_dma/rtl/eth_ahb_arbiter.v (registered grant held for the
-// whole command of a master, full 32-bit address, 64-bit merged bus) with a
-// masters for the SD host DMA (2) and the audio DMA (3).  Fixed priority:
-// master 0 (Ethernet RX write, cannot be back-pressured) > master 2 (SD host,
-// 64-bit, 1 KB FIFO) > master 3 (audio fetch, 64-bit, 2048-frame FIFO) >
+// whole command of a master, full 32-bit address, 64-bit merged bus) with
+// masters for the SD host DMA (2), the audio DMA (3) and the IDCT core (4).
+// Fixed priority: master 0 (Ethernet RX write, cannot be back-pressured) >
+// master 2 (SD host, 64-bit, 1 KB FIFO) > master 3 (audio fetch, 64-bit,
+// 2048-frame FIFO) > master 4 (IDCT ring reads / band flushes, 64-bit) >
 // master 1 (Ethernet TX read, 32-bit).
 //============================================================================
-module ahb_arbiter4 (
+module ahb_arbiter5 (
     input  wire        clk,
     input  wire        rstn,
     // master 0 (RX write, priority, 64-bit)
@@ -56,6 +57,17 @@ module ahb_arbiter4 (
     output wire [63:0] m3_hrdata,
     output wire        m3_hready,
     output wire        m3_hresp,
+    // master 4 (IDCT core: ring reads and band flushes, 64-bit)
+    input  wire        m4_busy,
+    input  wire [31:0] m4_haddr,
+    input  wire [1:0]  m4_htrans,
+    input  wire        m4_hwrite,
+    input  wire [2:0]  m4_hsize,
+    input  wire [2:0]  m4_hburst,
+    input  wire [63:0] m4_hwdata,
+    output wire [63:0] m4_hrdata,
+    output wire        m4_hready,
+    output wire        m4_hresp,
     // merged master -> extm_bridge -> EXTM
     output wire        active,
     output wire [31:0] haddr,
@@ -68,36 +80,39 @@ module ahb_arbiter4 (
     input  wire        hready,
     input  wire        hresp
 );
-    localparam [2:0] NONE = 3'd0, M0 = 3'd1, M1 = 3'd2, M2 = 3'd3, M3 = 3'd4;
+    localparam [2:0] NONE = 3'd0, M0 = 3'd1, M1 = 3'd2, M2 = 3'd3, M3 = 3'd4, M4 = 3'd5;
 
     reg  [2:0] grant;
     wire holding = (grant == M0 && m0_busy) || (grant == M1 && m1_busy) || (grant == M2 && m2_busy) ||
-                   (grant == M3 && m3_busy);
+                   (grant == M3 && m3_busy) || (grant == M4 && m4_busy);
 
     always @(posedge clk or negedge rstn)
         if (!rstn)         grant <= NONE;
-        else if (!holding) grant <= m0_busy ? M0 : (m2_busy ? M2 : (m3_busy ? M3 : (m1_busy ? M1 : NONE)));
+        else if (!holding) grant <= m0_busy ? M0 : (m2_busy ? M2 : (m3_busy ? M3 : (m4_busy ? M4 : (m1_busy ? M1 : NONE))));
 
     wire g0 = (grant == M0);
     wire g1 = (grant == M1);
     wire g2 = (grant == M2);
     wire g3 = (grant == M3);
+    wire g4 = (grant == M4);
 
     assign active = (grant != NONE);
-    assign haddr  = g0 ? m0_haddr  : g2 ? m2_haddr  : g3 ? m3_haddr  : m1_haddr;
-    assign htrans = g0 ? m0_htrans : g2 ? m2_htrans : g3 ? m3_htrans : (g1 ? m1_htrans : 2'b00);
-    assign hwrite = g0 ? m0_hwrite : g2 ? m2_hwrite : g3 ? m3_hwrite : m1_hwrite;
-    assign hsize  = g0 ? m0_hsize  : g2 ? m2_hsize  : g3 ? m3_hsize  : m1_hsize;
-    assign hburst = g0 ? m0_hburst : g2 ? m2_hburst : g3 ? m3_hburst : m1_hburst;
-    assign hwdata = g0 ? m0_hwdata : g2 ? m2_hwdata : g3 ? m3_hwdata : {m1_hwdata, m1_hwdata};
+    assign haddr  = g0 ? m0_haddr  : g2 ? m2_haddr  : g3 ? m3_haddr  : g4 ? m4_haddr  : m1_haddr;
+    assign htrans = g0 ? m0_htrans : g2 ? m2_htrans : g3 ? m3_htrans : g4 ? m4_htrans : (g1 ? m1_htrans : 2'b00);
+    assign hwrite = g0 ? m0_hwrite : g2 ? m2_hwrite : g3 ? m3_hwrite : g4 ? m4_hwrite : m1_hwrite;
+    assign hsize  = g0 ? m0_hsize  : g2 ? m2_hsize  : g3 ? m3_hsize  : g4 ? m4_hsize  : m1_hsize;
+    assign hburst = g0 ? m0_hburst : g2 ? m2_hburst : g3 ? m3_hburst : g4 ? m4_hburst : m1_hburst;
+    assign hwdata = g0 ? m0_hwdata : g2 ? m2_hwdata : g3 ? m3_hwdata : g4 ? m4_hwdata : {m1_hwdata, m1_hwdata};
 
     assign m0_hready = g0 ? hready : 1'b0;
     assign m1_hready = g1 ? hready : 1'b0;
     assign m2_hready = g2 ? hready : 1'b0;
     assign m3_hready = g3 ? hready : 1'b0;
+    assign m4_hready = g4 ? hready : 1'b0;
     assign m0_hrdata = hrdata;
     assign m2_hrdata = hrdata;
     assign m3_hrdata = hrdata;
+    assign m4_hrdata = hrdata;
     reg m1_lane;
     always @(posedge clk or negedge rstn)
         if (!rstn)                             m1_lane <= 1'b0;
@@ -107,5 +122,6 @@ module ahb_arbiter4 (
     assign m1_hresp  = g1 ? hresp : 1'b0;
     assign m2_hresp  = g2 ? hresp : 1'b0;
     assign m3_hresp  = g3 ? hresp : 1'b0;
+    assign m4_hresp  = g4 ? hresp : 1'b0;
 endmodule
 `default_nettype wire

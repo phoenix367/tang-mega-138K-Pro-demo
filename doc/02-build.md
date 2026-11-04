@@ -181,6 +181,14 @@ upstream; the recipes are the only project-specific part.
   (defconfig: `I2C_GPIO`, `I2C_MUX_GPIO`, `GPIO_GENERIC_PLATFORM`, `EEPROM_AT24`,
   `I2C_CHARDEV`; kernel #73+, gateware Build 66+). Busybox `i2cdetect`/`i2cdump` are in,
   the EEPROM is `/sys/bus/nvmem/devices/board-eeprom0/nvmem`. See src/rtl/gpio/README.md.
+  **vidplay** (`src/apps/vidplay/`, kernel #76+): MJPEG AVI / AAC / MP3 player on the trimmed static
+  FFmpeg built by `scripts/rootfs/build_ffmpeg.sh` (libav* + `libsoftatomic.a` in the staging
+  prefix; the libraries are compiled without the A extension and link against the soft-atomic
+  shim `scripts/rootfs/soft_atomic.c`; H.264 was dropped on 2026-11-04). With gateware Build 70+
+  the core decodes MJPEG frames entirely (`jpeg_hw.c` parses the headers, the core does entropy
+  decoding + IDCT); with Build 69 the blocks go through its IDCT (`idct_hw.c`, `/dev/gowin-idct`,
+  kernel #78+); `idct_dsp.o` is the CPU fallback, built with the Andes GCC. See
+  src/apps/vidplay/README.md for the measurements.
   **boardcfg** (`src/apps/boardcfg/`, `/usr/sbin/boardcfg`, `S35boardcfg`, kernel #74+)
   keeps settings in it: `boardcfg set mac|hostname|tz|net|ip|gateway|dns|<any> VALUE`, restored at boot by the
   daemon; the kernel reads the MAC itself from the EEPROM's nvmem cell (DT `eth_mac`,

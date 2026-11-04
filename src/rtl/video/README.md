@@ -35,9 +35,9 @@ repeating the 5-bit channels' MSB.
 
 | offset | name | |
 |---|---|---|
-| 0x00 | CTRL | [0] enable scan-out, [1] test pattern (colour bars, no fetch) |
-| 0x08 | FB_BASE | framebuffer physical address, 32 B aligned |
-| 0x0C | STRIDE | bytes per line, multiple of 32 |
+| 0x00 | CTRL | [0] enable scan-out, [1] test pattern (colour bars, no fetch), [2] YUV 4:2:0 planar framebuffer, [3] full-range (JPEG) YUV instead of BT.601 limited |
+| 0x08 | FB_BASE | framebuffer (RGB565, or the Y plane) physical address, 32 B aligned |
+| 0x0C | STRIDE | bytes per line (Y line in YUV mode), multiple of 32 |
 | 0x10 | HTIM | [15:0] active pixels (multiple of 16, ≤ 1024), [31:16] total |
 | 0x14 | HSTART | first active pixel (DE start) |
 | 0x18 | VTIM | [15:0] active lines, [31:16] total |
@@ -46,8 +46,23 @@ repeating the 5-bit channels' MSB.
 | 0x24 | UNDERRUN | active lines whose fetch was late |
 | 0x28 | CRC | zlib CRC-32 of the last frame's active pixels as sent (RGB565 LE, row by row) |
 | 0x2C | ID | 0x56494430 ("VID0") |
+| 0x30 | FB_BASE_U | U plane physical address, 32 B aligned (YUV mode) |
+| 0x34 | FB_BASE_V | V plane physical address, 32 B aligned (YUV mode) |
+| 0x38 | STRIDE_C | bytes per chroma line, multiple of 32 (YUV mode) |
 
-Change timing only while CTRL is 0. Enable/test take effect at the next frame start.
+Change timing only while CTRL is 0. Enable/test/YUV mode take effect at the next frame start.
+
+**YUV 4:2:0 mode (Build 68+).** The framebuffer is what video decoders produce: planar
+Y (FB_BASE/STRIDE), U and V (FB_BASE_U/V, STRIDE_C, half width and height). The
+fetcher reads the three planes of a line into three regions of the line RAM (the same
+1600 bytes per line as RGB565, so the DDR port load is unchanged and the scan-out's DRAM
+traffic actually drops from 2 to 1.5 bytes per pixel); the output stage picks the Y, U
+and V words of each 16-pixel group in the group's first three cycles and converts
+with fixed-point BT.601 (×256 coefficients 298/409/100/208/516, or 256/359/88/183/454
+for full range), repeating chroma samples. The CRC register still covers the RGB565
+pixels as sent, so `vidplay`'s expected-CRC check works in both modes. hactive must be
+a multiple of 32. The mode exists so a software decoder can hand its frame to the
+panel without a CPU conversion pass: on the A25 that pass cost as much as decoding.
 The pixel-clock counters are 12 bits, so totals can be at most 4095, and htotal must be
 at least 16.
 The reset values are the panel above.

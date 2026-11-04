@@ -174,7 +174,10 @@ static void mouse_read(lv_indev_t *indev, lv_indev_data_t *data)
                     }
                     break;
                 case EV_KEY:
-                    if (ev[i].code == BTN_LEFT) s_mdown = ev[i].value != 0;
+                    if (ev[i].code == BTN_LEFT) {
+                        if (ev[i].value && video_active()) { video_stop(); break; }   /* click ends a video */
+                        s_mdown = ev[i].value != 0;
+                    }
                     break;
                 }
             }
@@ -210,6 +213,7 @@ static void kbd_read(lv_indev_t *indev, lv_indev_data_t *data)
                 case KEY_CAPSLOCK: if (v == 1) s_caps ^= 1; continue;
                 default: break;
                 }
+                if (v == 1 && video_active()) { video_stop(); continue; }   /* any key ends a video */
                 if (v == 1 && s_ctrl && s_alt && c == KEY_Q) { desk_request_exit(0); continue; }
                 if (v == 1 && s_ctrl && s_alt && c == KEY_H) { desk_go_home(); continue; }
                 uint32_t key = key_translate(c);

@@ -30,7 +30,7 @@ graph TB
     DDRPHY["DDR3_Memory_Interface_Top<br/>(hard PHY, user clock 100 MHz)"]
 
     DMA["gw_eth_dma_core<br/>(RX+TX DMA, CSR, MDIO)"]
-    ARB["ahb_arbiter4<br/>eth RX, eth TX, SD, audio → 1"]
+    ARB["ahb_arbiter5<br/>eth RX, eth TX, SD, audio → 1"]
     BR["extm_bridge<br/>32 ↔ 64 data"]
     MAC["Triple_Speed_Ethernet_MAC_Top<br/>(RGMII, MDIO)"]
     VID["video (LCD scan-out)"]
@@ -81,7 +81,7 @@ Key integration facts (`src/rtl/ae350_demo.v`):
   custom DDR arbiter needed. EXTM is **32-bit address but 64-bit data**, so
   `extm_bridge.v` adapts the 32-bit DMA masters to 64-bit (write replicates to
   both lanes; read selects the lane by `HADDR[2]`).
-- Four DMA masters merge onto EXTM through `src/rtl/audio/rtl/ahb_arbiter4.v`
+- Four DMA masters merge onto EXTM through `src/rtl/audio/rtl/ahb_arbiter5.v`
   (fixed priority, registered grant = no mid-transfer preemption): eth RX-write
   `m0`, eth TX-read `m1`, the SD host's DMA `m2` and the audio fetch engine `m3`.
   It grew out of `eth_dma/rtl/eth_ahb_arbiter.v`, which replaced the Gowin
@@ -199,7 +199,7 @@ src/rtl/
   gw_ahb_ethernet*.v      MAC wrapper
   eth_dma/                the custom DMA engine: rtl/, tb/, formal/, lib/ (see 05-eth-dma.md)
   video/                  LCD scan-out core (README)
-  audio/                  PT8211 output core + DMA fetch engine, ahb_arbiter4 (README)
+  audio/                  PT8211 output core + DMA fetch engine, ahb_arbiter5 (README)
   sdhost/                 4-bit SD host + DMA (README)
   sensor/                 hard-ADC scan sequencer (README)
   fan/                    PWM + tacho (README)

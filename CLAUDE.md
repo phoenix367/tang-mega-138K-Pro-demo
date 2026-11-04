@@ -44,7 +44,15 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    framebuffer straight from DDR3 through the bridge's read-only **video port** (not
    EXTM — reading over EXTM cost the CPU ~37% of its memory bandwidth). Linux fbdev
    driver `PATCHES/0006` (software rendering, fbcon); sim `src/rtl/video/tb/run_tb.sh`,
-   hardware check `src/apps/tests/fbtest.c`. See src/rtl/video/README.md.
+   hardware check `src/apps/tests/fbtest.c`. See src/rtl/video/README.md. **YUV 4:2:0 scan-out mode** (Build 68+,
+   kernel #77+): CTRL[2] + FB_BASE_U/V + STRIDE_C make the core fetch the three planes of a line
+   into three line-RAM regions and convert in the pixel-clock stage (BT.601 or full range, CTRL[3]);
+   the framebuffer registers are latched per frame, so flips never tear. gowin-lcdfb allocates
+   `yuv_buffers` (6) panel-sized planar buffers, mmap()ed past the RGB fb as plain cached memory,
+   with ioctls in `include/uapi/linux/gowin-lcdfb.h` (YUV_INFO / YUV_SHOW = cache write-back + flip /
+   RGB / FRAMES; closing fb0 restores RGB). vidplay hands them to FFmpeg through get_buffer2, so a
+   decoded frame is already scan-out memory and showing it is one ioctl; `src/apps/tests/yuvtest`
+   checks the mode through the frame CRC against a software model.
    **Audio:** `src/rtl/audio/` = PT8211 (I2S-like DAC, E22/F24/G24, PA_EN H17) output core on
    EXTS @ `0xE8002000`, 2048-frame FIFO + threshold IRQ (EXT_INT[1] = PLIC source 11),
    NCO sample rate, frame counter + CRC for bit-exact checks, and a 64-bit DMA fetch
@@ -81,6 +89,43 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    autoboot is keyed (fork defconfig `AUTOBOOT_KEYED`, stop string `uboot`, no `AUTOBOOT_FLUSH_STDIN`):
    a floating or stuck-low RX used to stop it like a keypress and the board sat at the prompt
    whenever the USB-UART adapter was unplugged or unpowered.
+   **Video:** `src/apps/vidplay/` (`/usr/bin/vidplay`, kernel #76+) plays MP4/MKV/MP3 (H.264,
+   AAC, MP3) on the LCD + PT8211 through the trimmed static FFmpeg 7.1.1 from
+   `scripts/rootfs/build_ffmpeg.sh` (libav* in the staging prefix, compiled with -march=rv32imfdc
+   so C11 atomics become `__atomic_*_4()` calls answered by `scripts/rootfs/soft_atomic.c` =
+   `libsoftatomic.a`; no pthreads, no asm). Output goes to the core's YUV buffers (above) when the
+   gateware/kernel have the mode and the stream is yuv420p, else through `pwrite()` on /dev/fb0,
+   not the mmap (gowin-lcdfb's deferred I/O write-protects pages after each flush: a fault per
+   page per frame). Measured on the A25: 480×270 H.264 decode ~60 ms/frame, convert 12, write 5 → ~12 fps decode,
+   ~7 frames/s shown with audio (`-L` skip-loop-filter and AVDISCARD_BIDIR are faster but smear
+   the picture on normally encoded streams; only AVDISCARD_NONREF is safe). **MJPEG AVI is the
+   codec for this SoC** (intra-only, no reference-frame cache misses): decode 480×270 59 fps,
+   640×360 36 fps, 800×480 23 fps. With the YUV scan-out path (Build 68 / kernel #77) 480×270 plays
+   at 25 fps with audio and 800×480 at ~20 fps (intra-only streams skip packets, not
+   decoded frames, to stay in sync); the decoder is bound by the ~1.4 µs cache-miss latency (no L2), not by
+   arithmetic, so DSP intrinsics would not change much. **Hardware IDCT** (Build 69 / kernel #78):
+   `src/rtl/idct/` on EXTS @ `0xE8040000` (`HADDR[18]`, EXTM arbiter master 4, EXT_INT[3] = PLIC 13)
+   takes coefficient records (header word + int16 x4 words) from a DRAM ring, runs FFmpeg's integer
+   IDCT bit-exactly and writes the pixels into the YUV 4:2:0 planes as whole 16/8-line bands (the
+   block writes were 18 ms of the 40 ms frame: one write-allocate miss per 8-byte row). Linux
+   `PATCHES/0013` (`gowin-idct` misc, `/dev/gowin-idct`: ring mmap, SUBMIT = cache write-back + TAIL,
+   WAIT on the done irq; lcdfb `YUV_DMA` ioctl gives a buffer's DMA address and drops it from the
+   cache, `YUV_SHOW` `NOSYNC` skips the write-back). vidplay's `idct_hw.c` wraps `idct_put` into
+   records (`VIDPLAY_NOHWIDCT=1` = CPU path); `src/apps/tests/idcttest` checks the core against a
+   C model through a YUV buffer. Sim `src/rtl/idct/tb/run_tb.sh`. Result: 800×480 decode 42.6 → 26.4
+   ms/frame, full 25 fps with audio (640×360 29 → 19 ms). **Gateware JPEG decoding** (Build 70):
+   `src/rtl/idct/rtl/jpeg_entropy.v` takes typed ring records (header [39:36]: 1 Huffman table, 2
+   quant table, 3 scan with a parameter word + the raw entropy-coded bytes; STATUS[8] = capable)
+   and does Huffman decoding / dequant / zigzag with FFmpeg's mjpegdec semantics (DC predictor
+   1024, RST handling, int16 truncation) into the IDCT path; vidplay's `jpeg_hw.c` parses the
+   headers and bypasses FFmpeg's decoder (falls back on the first unsupported packet,
+   `VIDPLAY_NOHWJPEG=1`); `vidplay -C N` compares N frames bit for bit with FFmpeg's C decoder.
+   Player CPU per 800×480 frame 29.5 → 1.2 ms, system load during playback ~85 % → ~31 %.
+   Sim `src/rtl/idct/tb/run_jpeg_tb.sh` (real JPEGs, `jpeg_ref.py` = FFmpeg's decode ported,
+   itself checked against host ffmpeg). The desktop launches it from the Files
+   panel (`video_play_file()` in panels.c skips LVGL flushes while it runs; any key/click stops it).
+   The Andes DSP (P-ext draft) instructions DO execute on this AE350 (kadd16/smul16/kdmbb tested)
+   though misa/cpuinfo do not advertise them; only the Andes GCC (-mext-dsp) knows them.
    **Boot splash:** the U-Boot fork has a `gowin_lcd` video driver (`drivers/video/gowin_lcd.c`, DT
    `lcd@e8001000` with `framebuffer = <0x0e000000>`) and shows `src/splash/splash.bmp` (made by
    `src/splash/make_splash.py`, appended to the XIP image at +0x100000 = flash 0x700000 by

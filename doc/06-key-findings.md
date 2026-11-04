@@ -210,7 +210,7 @@ hanging) shows the Gowin AE350 build routes the DMAC master to the data-memory p
 only. The `DMA_REQ`/`DMA_ACK` pins are therefore unusable for fabric peripherals here;
 DMA for fabric cores must come from fabric masters on the EXTM port (Ethernet, SD host,
 LCD) as the design already does. The audio core got one the same day: a 64-bit read
-engine on a fourth arbiter port (`src/rtl/audio/rtl/ahb_arbiter4.v`) that fetches the ALSA
+engine on a fourth arbiter port (`src/rtl/audio/rtl/ahb_arbiter5.v`) that fetches the ALSA
 buffer as a ring up to a driver-committed byte limit, with the driver cleaning the
 cache per committed range (`src/rtl/audio/README.md`).
 

@@ -305,6 +305,68 @@ void panel_audio(lv_obj_t *parent)
 }
 
 /* ====================================================================== */
+/* Video: vidplay child process (src/apps/vidplay)                         */
+/* ====================================================================== */
+/* vidplay draws straight into /dev/fb0, so while it runs the desktop's flushes
+ * are swallowed (LVGL keeps rendering into its own buffers and keeps reading
+ * input, which is how a key or click can stop the playback); when the child
+ * exits the whole screen is invalidated and repainted. */
+#include "src/display/lv_display_private.h"      /* disp->flush_cb: no public getter */
+static pid_t s_vid_pid;
+static lv_timer_t *s_vid_timer;
+static lv_display_flush_cb_t s_vid_orig_flush;
+
+static void video_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px)
+{
+    if (s_vid_pid > 0) lv_display_flush_ready(disp);
+    else s_vid_orig_flush(disp, area, px);
+}
+
+bool video_active(void) { return s_vid_pid > 0; }
+
+static void video_done(void)
+{
+    s_vid_pid = 0;
+    if (s_vid_timer) { lv_timer_delete(s_vid_timer); s_vid_timer = NULL; }
+    lv_obj_invalidate(lv_screen_active());
+}
+
+void video_stop(void)
+{
+    if (s_vid_pid <= 0) return;
+    kill(s_vid_pid, SIGTERM);
+    waitpid(s_vid_pid, NULL, 0);
+    video_done();
+}
+
+static void video_poll(lv_timer_t *t)
+{
+    (void)t;
+    int st;
+    if (s_vid_pid > 0 && waitpid(s_vid_pid, &st, WNOHANG) == s_vid_pid) video_done();
+}
+
+void video_play_file(const char *path)
+{
+    video_stop();
+    audio_stop();
+    if (!s_vid_orig_flush) {
+        s_vid_orig_flush = g_disp->flush_cb;
+        lv_display_set_flush_cb(g_disp, video_flush);
+    }
+    pid_t p = fork();
+    if (p == 0) {
+        int log = open("/run/vidplay.log", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (log >= 0) { dup2(log, 1); dup2(log, 2); }
+        execl("/usr/bin/vidplay", "vidplay", path, (char *)NULL);   /* no -L: skipping the deblocking filter makes P-frames drift */
+        _exit(127);
+    }
+    if (p < 0) return;
+    s_vid_pid = p;
+    s_vid_timer = lv_timer_create(video_poll, 200, NULL);
+}
+
+/* ====================================================================== */
 /* Files                                                                   */
 /* ====================================================================== */
 static void file_clicked(lv_event_t *e)
@@ -318,6 +380,12 @@ static void file_clicked(lv_event_t *e)
     struct stat st;
     if (stat(path, &st)) return;
     size_t l = strlen(name);
+    if (l > 4 && (!strcasecmp(name + l - 4, ".avi") || !strcasecmp(name + l - 4, ".mp4") ||
+                  !strcasecmp(name + l - 4, ".mkv") || !strcasecmp(name + l - 4, ".mp3") ||
+                  !strcasecmp(name + l - 4, ".m4a"))) {
+        video_play_file(path);          /* takes the screen until it ends or a key/click */
+        return;
+    }
     if (l > 4 && !strcasecmp(name + l - 4, ".wav")) {
         audio_play_file(path);
         char msg[600];

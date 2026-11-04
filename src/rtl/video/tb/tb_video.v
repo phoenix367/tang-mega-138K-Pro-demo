@@ -19,7 +19,8 @@ module tb_video;
     // also runs DE from h = 0 on line 0, and DE to the end of the line on the
     // frame's last lines (no blanking after the frame's last pixel)
     parameter  HA = 64, HT = 100, HS = 20, VA = 12, VT = 20, VS = 3;
-    localparam STRIDE = 160, FB = 32'h1000;
+    parameter  YUV = 0, FULL = 1;        // YUV 4:2:0 planar framebuffer, full/limited range
+    localparam STRIDE = 160, FB = 32'h1000, FB_U = 32'h1800, FB_V = 32'h1B00, STRIDE_C = 96, FB2 = 32'h0000;
 
     reg hclk = 0; always #10 hclk = ~hclk;      // 50 MHz (registers, bridge AHB side)
     reg uclk = 0; initial begin #3.3; forever #5 uclk = ~uclk; end   // 100 MHz DDR3 user clock
@@ -97,6 +98,29 @@ module tb_video;
     function [15:0] fbpix(input integer x, input integer y);
         fbpix = {y[4:0] ^ 5'h15, x[5:0], (x[4:0] + y[4:0]) ^ 5'h0A};
     endfunction
+    // YUV planes and the model of the core's fixed-point conversion
+    function [7:0] ysamp(input integer x, input integer y); ysamp = (x * 3 + y * 5) & 255; endfunction
+    function [7:0] usamp(input integer cx, input integer cy); usamp = (cx * 7 + cy * 11 + 40) & 255; endfunction
+    function [7:0] vsamp(input integer cx, input integer cy); vsamp = (200 - cx * 5 + cy * 3) & 255; endfunction
+    function integer clamp8(input integer v);
+        integer c;
+        begin c = v >>> 8; clamp8 = v < 0 ? 0 : c > 255 ? 255 : c; end
+    endfunction
+    function [15:0] yuvpix(input integer x, input integer y);
+        integer Y, U, V, r, g, b, ky, ko, krv, kgu, kgv, kbu;
+        begin
+            Y = ysamp(x, y); U = usamp(x / 2, y / 2) - 128; V = vsamp(x / 2, y / 2) - 128;
+            ky = FULL ? 256 : 298; ko = FULL ? 128 : -4640;
+            krv = FULL ? 359 : 409; kgu = FULL ? 88 : 100; kgv = FULL ? 183 : 208; kbu = FULL ? 454 : 516;
+            r = clamp8(ky * Y + ko + krv * V);
+            g = clamp8(ky * Y + ko - kgu * U - kgv * V);
+            b = clamp8(ky * Y + ko + kbu * U);
+            yuvpix = {r[7:3], g[7:2], b[7:3]};
+        end
+    endfunction
+    function [15:0] mpix(input integer x, input integer y);
+        mpix = YUV ? yuvpix(x, y) : fbpix(x, y);
+    endfunction
     function [17:0] to666(input [15:0] p);
         to666 = {p[15:11], p[15], p[10:5], p[4:0], p[4]};
     endfunction
@@ -134,14 +158,27 @@ module tb_video;
     end
 
     integer x, y, i, errors;
-    reg [31:0]  r, crc, model_crc, frames0;
+    reg [31:0]  r, crc, model_crc, model_crc2, frames0;
+    integer     flips_old, flips_new, flips_mixed;
     reg [255:0] w;
     initial begin
         errors = 0;
         #1;     // after the DDR model's random initialisation
         // fill the framebuffer (padding words get a marker that must never show)
         for (i = 0; i < 256; i = i + 1) ddr.mem[i] = {8{32'hDEAD_BEEF}};
-        for (y = 0; y < VA; y = y + 1)
+        for (y = 0; y < VA; y = y + 1)                       // Y plane (and U/V, YUV mode)
+            for (x = 0; x < HA; x = x + 32) begin
+                for (i = 0; i < 32; i = i + 1) w[i*8 +: 8] = ysamp(x + i, y);
+                ddr.mem[(FB + y*STRIDE + x) >> 5] = w;
+            end
+        for (y = 0; y < VA / 2; y = y + 1)
+            for (x = 0; x < HA / 2; x = x + 32) begin
+                for (i = 0; i < 32; i = i + 1) w[i*8 +: 8] = usamp(x + i, y);
+                ddr.mem[(FB_U + y*STRIDE_C + x) >> 5] = w;
+                for (i = 0; i < 32; i = i + 1) w[i*8 +: 8] = vsamp(x + i, y);
+                ddr.mem[(FB_V + y*STRIDE_C + x) >> 5] = w;
+            end
+        if (!YUV) for (y = 0; y < VA; y = y + 1)
             for (x = 0; x < HA; x = x + 16) begin
                 w = {fbpix(x+15,y), fbpix(x+14,y), fbpix(x+13,y), fbpix(x+12,y),
                      fbpix(x+11,y), fbpix(x+10,y), fbpix(x+9,y),  fbpix(x+8,y),
@@ -151,7 +188,7 @@ module tb_video;
             end
         model_crc = 32'hFFFFFFFF;
         for (y = 0; y < VA; y = y + 1)
-            for (x = 0; x < HA; x = x + 1) model_crc = crc16(model_crc, fbpix(x, y));
+            for (x = 0; x < HA; x = x + 1) model_crc = crc16(model_crc, mpix(x, y));
         model_crc = ~model_crc;
 
         repeat (5) @(posedge hclk); hresetn = 1; repeat (5) @(posedge hclk);
@@ -163,7 +200,10 @@ module tb_video;
         reg_wr(8'h14, HS);
         reg_wr(8'h18, {16'(VT), 16'(VA)});
         reg_wr(8'h1C, VS);
-        reg_wr(8'h00, 32'h1);                        // enable
+        reg_wr(8'h30, FB_U);
+        reg_wr(8'h34, FB_V);
+        reg_wr(8'h38, STRIDE_C);
+        reg_wr(8'h00, 32'h1 | (YUV ? 32'h4 : 32'h0) | (FULL ? 32'h8 : 32'h0));   // enable (+ YUV mode)
 
         // let it run 4 frames; the capture of the last full frame is checked
         reg_rd(8'h20, frames0);
@@ -173,9 +213,9 @@ module tb_video;
         if (!EXPECT_UNDERRUN) begin
             for (y = 0; y < VA; y = y + 1)
                 for (x = 0; x < HA; x = x + 1)
-                    if (cap[y][x] !== to666(fbpix(x, y))) begin
+                    if (cap[y][x] !== to666(mpix(x, y))) begin
                         errors = errors + 1;
-                        if (errors < 8) $display("  pixel (%0d,%0d) got %05x exp %05x", x, y, cap[y][x], to666(fbpix(x, y)));
+                        if (errors < 8) $display("  pixel (%0d,%0d) got %05x exp %05x", x, y, cap[y][x], to666(mpix(x, y)));
                     end
             if (crc !== model_crc) begin errors = errors + 1; $display("  CRC %08x model %08x", crc, model_crc); end
         end
@@ -184,6 +224,42 @@ module tb_video;
             errors = errors + 1; $display("  underruns %0d (expected %s)", r, EXPECT_UNDERRUN ? "some" : "none");
         end
         errors = errors + shape_err + ddr_errors;
+
+        // buffer flip: a second framebuffer (inverted pattern) at FB2, FB_BASE
+        // rewritten in the middle of a frame; every frame's CRC must be that
+        // of one whole buffer, never a mix (the core latches bases per frame)
+        // (with vstart = 0 the next frame's first line is requested before the
+        // frame-end toggle that loads the new base, so one mixed frame is expected:
+        // the Linux driver uses vstart = 8, the test skips that timing)
+        if (!YUV && !EXPECT_UNDERRUN && VS != 0) begin
+            for (y = 0; y < VA; y = y + 1)
+                for (x = 0; x < HA; x = x + 16) begin
+                    for (i = 0; i < 16; i = i + 1) w[i*16 +: 16] = ~fbpix(x + i, y);
+                    ddr.mem[(FB2 + y*STRIDE + x*2) >> 5] = w;
+                end
+            model_crc2 = 32'hFFFFFFFF;
+            for (y = 0; y < VA; y = y + 1)
+                for (x = 0; x < HA; x = x + 1) model_crc2 = crc16(model_crc2, ~fbpix(x, y));
+            model_crc2 = ~model_crc2;
+            reg_rd(8'h20, frames0); r = frames0;
+            while (r == frames0) reg_rd(8'h20, r);         // just after a frame end
+            repeat (HT * 5) @(posedge pclk);                 // five lines into the frame
+            reg_wr(8'h08, FB2);
+            flips_old = 0; flips_new = 0; flips_mixed = 0;
+            for (i = 0; i < 4; i = i + 1) begin
+                frames0 = r;
+                while (r == frames0) reg_rd(8'h20, r);
+                reg_rd(8'h28, crc);
+                if (crc == model_crc) flips_old = flips_old + 1;
+                else if (crc == model_crc2) flips_new = flips_new + 1;
+                else flips_mixed = flips_mixed + 1;
+            end
+            if (flips_mixed != 0 || flips_new < 2) begin
+                errors = errors + 1;
+                $display("  flip: %0d old, %0d new, %0d mixed frames", flips_old, flips_new, flips_mixed);
+            end
+            reg_wr(8'h08, FB);
+        end
 
         // test pattern: bars, no DMA
         reg_wr(8'h00, 32'h2);
@@ -194,7 +270,9 @@ module tb_video;
         end
 
         if (errors == 0 && EXPECT_UNDERRUN) $display("RESULT: PASS (starved fetch detected as underruns, wait %0d%%)", WAIT_PCT);
-        else if (errors == 0) $display("RESULT: PASS (frame %0dx%0d pixel-exact, CRC %08x matches, no underruns, wait %0d%%)",
+        else if (errors == 0 && YUV) $display("RESULT: PASS (YUV420 %s frame %0dx%0d pixel-exact, CRC %08x matches, no underruns, wait %0d%%)",
+                                       FULL ? "full-range" : "BT.601    ", HA, VA, crc, WAIT_PCT);
+        else if (errors == 0) $display("RESULT: PASS (RGB565 frame %0dx%0d pixel-exact, CRC %08x matches, no underruns, wait %0d%%)",
                                        HA, VA, crc, WAIT_PCT);
         else             $display("RESULT: FAIL (%0d errors)", errors);
         $finish;

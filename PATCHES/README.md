@@ -96,6 +96,18 @@ git apply 0011-linux-gowin-sdhost.patch                       # in linux/ (indep
   is written back with 0004's CCTL ops before the core reads DDR:
   - damage callbacks for fbcon / write();
   - deferred I/O for mmap() writers.
+- YUV 4:2:0 scan-out (gateware Build 68+): `include/uapi/linux/gowin-lcdfb.h` defines
+  ioctls on `/dev/fb0` -- `GOWIN_LCD_IOC_YUV_INFO` (how many planar buffers the driver
+  allocated, their layout and mmap offset; `yuv_buffers=` module parameter, default 6),
+  `GOWIN_LCD_IOC_YUV_SHOW` (write a buffer back from the cache and point the core at it;
+  the core flips at the next frame boundary), `GOWIN_LCD_IOC_RGB` (back to the RGB565
+  screen, also done when the file is closed) and `GOWIN_LCD_IOC_FRAMES`. The buffers are
+  mmap()ed past the RGB framebuffer as plain cached memory, so a decoder (`src/apps/vidplay`
+  through FFmpeg's `get_buffer2`) writes frames straight into scan-out memory. The driver
+  probes for the mode by writing the core's U-base register. Kernel #78 adds
+  `GOWIN_LCD_IOC_YUV_DMA` (a buffer's DMA address for another master -- the IDCT core of
+  0013 -- with flags to write the CPU's copy back and/or drop the buffer from the cache) and the `YUV_SHOW` flag
+  `GOWIN_LCD_YUV_NOSYNC` (no write-back: a DMA master wrote the buffer).
 - **Not in the patch** (Kconfig): `CONFIG_FB=y`, `CONFIG_FB_GOWIN_LCD=y`,
   `CONFIG_FRAMEBUFFER_CONSOLE=y`, `CONFIG_LOGO=y` (+ `LOGO_LINUX_CLUT224`), and the
   `lcd@e8001000` node in `linux/ae350-linux.dts`.
@@ -154,6 +166,20 @@ with a coherence manager (or AXI exclusive-access support).
   CMD12. On the first fast read the driver tunes the clock/sampling phase (fastest of 25 MHz late, 25 MHz on-edge, 12.5 MHz, ... that passes four clean reads of block 0). Gateware: `src/rtl/sdhost/` (Build 61+). Kernel #66. The SPI route
   (0010) stays available but its core is no longer in the gateware.
 
+
+## 0013 — Linux misc driver for the gateware's hardware IDCT core
+- New `drivers/misc/gowin-idct.c` (`GOWIN_IDCT`, DT `"gowin,ae350-idct"`, node
+  `idct0: idct@e8040000`, PLIC source 13) + `include/uapi/linux/gowin-idct.h`: `/dev/gowin-idct`,
+  one opener. The driver owns the coefficient record ring (`ring_kb=`, default 2048, kernel
+  pages mmap()ed cached at offset 0); `SUBMIT` writes the new ring range back from the
+  D-cache (0004's ops) and sets the core's TAIL, `SETUP` programs the YUV plane addresses /
+  strides / size after waiting for the core to go idle, `WAIT` sleeps on the done interrupt
+  until everything submitted is in DRAM, `STATUS`/`RESET`/`INFO`. Users: `src/apps/vidplay`
+  (`idct_hw.c`, FFmpeg's `idct_put` wrapped into records) and `src/apps/tests/idcttest.c`.
+  Gateware: `src/rtl/idct/` (Build 69+). Kernel #78 (final form #81). The uapi header also
+  defines the JPEG record macros (`GOWIN_IDCT_HDR_JPEG`, `GOWIN_IDCT_SCAN_PARAM`,
+  `GOWIN_IDCT_ST_JPEG`) for the core's entropy decoder (Build 70+); the driver itself is
+  unchanged by them.
 
 ## 0012 — musl 1.2.5 soft atomics (the rootfs toolchain's `libc.a`)
 - `arch/riscv32/atomic_arch.h`: `a_cas` becomes a plain compare-and-store (no `lr.w`/`sc.w`).

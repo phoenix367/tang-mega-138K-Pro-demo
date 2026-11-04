@@ -18,7 +18,7 @@ ARCH := -march=rv32imafdc -mabi=ilp32d
 BOARD ?= 192.168.200.2
 RUSER ?= ae350
 
-BINS := atomic_test memthroughput compute_bench dsp_probe ext_probe amo_probe cctl_probe ddr_memtest fbtest wavplay amotrace dmactest
+BINS := atomic_test memthroughput compute_bench dsp_probe ext_probe amo_probe cctl_probe ddr_memtest fbtest wavplay amotrace dmactest yuvtest idcttest
 
 all: $(BINS)
 
@@ -36,6 +36,13 @@ ddr_memtest: ddr_memtest.c
 
 # LCD: CPU CRC of /dev/fb0 vs the video core's CRC of the pixels it sent
 fbtest: fbtest.c
+	$(CC) -static -O2 $(ARCH) -Wall -o $@ $<
+
+yuvtest: yuvtest.c ../vidplay/gowin-lcdfb.h
+	$(CC) -static -O2 $(ARCH) -Wall -o $@ $<
+
+# the hardware IDCT core against FFmpeg's integer IDCT in C, through a YUV buffer
+idcttest: idcttest.c ../vidplay/gowin-lcdfb.h ../vidplay/gowin-idct.h
 	$(CC) -static -O2 $(ARCH) -Wall -o $@ $<
 
 # bus trace of a cold-line LR/SC or AMO through ddr_perf (amo = hangs the CPU,
