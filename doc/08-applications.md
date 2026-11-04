@@ -18,7 +18,7 @@ what is on the SD card.
 | `boardcfg` | `src/apps/boardcfg/` | `S35boardcfg` | settings kept in the Dock EEPROM |
 | boot splash | `src/splash/` + U-Boot fork | U-Boot `preboot` | picture on the panel during boot |
 | test tools | `src/apps/tests/` | copied over by hand | hardware checks and probes (section 7) |
-| busybox, dropbear, sftp-server, doas, htop, tcpdump | `scripts/rootfs/build_*.sh` | `rcS`, `S50ssh` | the base system (see [02-build.md](02-build.md)) |
+| busybox, dropbear, sftp-server, doas, htop, tcpdump | `scripts/rootfs/build_*.sh` | `rcS`, `S40network` (udhcpc), `S41ntp` (ntpd), `S50ssh` | the base system (see [02-build.md](02-build.md)) |
 
 The services and their order are in [03-boot.md](03-boot.md#6-userspace-services-etcinitd).
 
@@ -47,7 +47,7 @@ below were taken from the board's framebuffer through `inputd`.
 - the wired-link icon and IP address ("no link" when the cable is out);
 - CPU load and the die temperature from the FPGA's ADC;
 - fan speed (red "FAN STOPPED" when the tacho gives no pulses);
-- free memory and the clock.
+- free memory, and the date and time to the minute (`4 Nov  11:57`).
 
 ### Home
 
@@ -125,13 +125,21 @@ ssh session on the old address is dropped, as the dialog warns.
 
 ### Date & Time
 
-![Date & Time panel: calendar, clock, zone](images/desktop-datetime.png)
+![Date & Time panel: calendar, clock, zone, NTP status](images/desktop-datetime.png)
 
 - **Clock:** a calendar and hour/minute rollers set the system clock.
 - **Time zone:** region and city lists from the tzdata subset in `/usr/share/zoneinfo`.
   Applying a zone saves it through `boardcfg set tz`, so it survives a reboot.
-- **No battery RTC:** the clock itself starts at 1970 after every boot until it is set
-  here, or by `date` in a shell.
+- **Internet time (NTP):** the Dock has no RTC battery, so the clock starts at 1970 after
+  every boot. `S41ntp` runs busybox `ntpd`, which sets the clock at the first server answer
+  and keeps it disciplined (see [03-boot.md](03-boot.md#5-console--network-defaults)). The
+  panel shows its state, read from `/run/ntp.state` every second:
+  - green "synchronized with *server*": stratum, offset and the time of ntpd's last report;
+  - green "clock set from *server*, refining": just after the first step;
+  - orange "waiting for *servers*": no answer yet, for example no route to the internet;
+  - grey "off": `boardcfg set ntp off`, the clock is set here by hand.
+
+  Setting the clock by hand while ntpd is synchronised only lasts until its next poll.
 
 ### About
 
@@ -263,6 +271,7 @@ boardcfg -d                    restore at boot, then watch /etc/board.conf (S35b
 | `mac` | eth0 address; the kernel also reads it at boot through a DT nvmem cell |
 | `hostname`, `tz` | host name; time zone from `/usr/share/zoneinfo` |
 | `net`, `ip`, `gateway`, `dns` | `static` (default `192.168.200.2/24`) or `dhcp`; `S40network` applies them, and the daemon re-runs it when they change |
+| `ntp` | time servers for `S41ntp` (`"HOST[:PORT] ..."`, up to four) or `off`; unset = the DHCP lease's servers, else `pool.ntp.org` |
 | anything else | stored verbatim (`serial`, ...) |
 
 EEPROM layout: a header at 0x100, the MAC at 0x110, and key=value text from 0x120.
@@ -277,7 +286,8 @@ panel save through it. Details are in `src/apps/boardcfg/README.md`.
   event records from the client into them.
 - **Frame requests.** A special record asks for a frame. The answer is the raw
   framebuffer, or only the rows that changed since the client's last frame,
-  run-length encoded: an idle screen costs 12 bytes, a clock tick ~8 KB, a full
+  run-length encoded: an idle screen costs 12 bytes, the status bar's once-a-second
+  update ~8 KB, a full
   screen 60–100 KB.
 - **`netinput.py`.** Tk only, no root and no python-evdev. Tk's X11 keycodes are Linux
   key codes + 8, so no key map is needed.

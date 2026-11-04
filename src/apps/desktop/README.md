@@ -29,7 +29,7 @@ PC: host/netinput.py  --tcp 5555-->  board: inputd  --/dev/uinput-->  /dev/input
     run-length encoded (`n < 0x80`: n+1 copies of the following RGB565 pixel;
     `n >= 0x80`: n-127 literal pixels). The board compares rows straight in its
     `/dev/fb0` mmap against a per-client copy, so an unchanged screen costs one
-    memory pass (~20 ms) and 12 bytes; the clock tick is 13 rows / 8 KB; a full
+    memory pass (~20 ms) and 12 bytes; the status bar's once-a-second update is 13 rows / 8 KB; a full
     desktop screen is 60–100 KB instead of 768 KB;
   - value 2: like 1 but every row (keyframe, used for the first frame / resync).
 - **`host/netinput.py`** — PC side, Tk only (no root, no python-evdev): a window the
@@ -43,7 +43,7 @@ PC: host/netinput.py  --tcp 5555-->  board: inputd  --/dev/uinput-->  /dev/input
 - **`lvdesk/`** — the desktop (`/etc/init.d/S70desktop`, supervised restart loop,
   log in `/run/desktop.log`):
   - `main.c` — fbdev display, VT 1 to `KD_GRAPHICS` + keyboard `K_OFF` (restored on
-    exit), status bar (clock, wired-link icon + IP or "no link" when the cable is out, CPU %, die temperature, fan rpm — red "FAN
+    exit), status bar (date and HH:MM clock, redrawn once a minute; wired-link icon + IP or "no link" when the cable is out, CPU %, die temperature, fan rpm — red "FAN
     STOPPED" when the tacho gives no pulses, free memory), home tile
     grid, panel container with Back. `-p <panel>` opens a panel at start (for
     screenshots), `-T` leaves the VT alone. Only one copy runs: `lvdesk` takes
@@ -69,13 +69,18 @@ PC: host/netinput.py  --tcp 5555-->  board: inputd  --/dev/uinput-->  /dev/input
     `boardcfg` does and saved with `boardcfg set`, so the daemon writes the EEPROM and
     re-runs `S40network` within a second), **Console** (runs a shell command as root,
     streams the output from a pty, Stop button; quick buttons for
-    dmesg/ps/free/df/ping/…), **Settings** (dark/light theme, FPS overlay, restart
-    desktop, reboot/poweroff with confirmation), **Date & Time** (calendar + hour/minute
+    dmesg/ps/free/df/ping/…), **Settings** (dark/light theme, FPS overlay, fan
+    automatic or a manual PWM duty, kernel/LVGL/input info, restart desktop,
+    reboot/poweroff with confirmation), **Date & Time** (calendar + hour/minute
     rollers set the system clock with `clock_settime`; region/city dropdowns from the
     tzdata subset in `/usr/share/zoneinfo` (`scripts/rootfs/build_tzdata.sh`) apply a
-    zone by copying it to `/etc/localtime` + `/etc/timezone`; the zone is saved to
-    `/mnt/sd/ae350/timezone` when an SD card is mounted and restored at start-up,
-    nothing else survives a reboot of the initramfs rootfs; there is no battery RTC).
+    zone by copying it to `/etc/localtime` + `/etc/timezone` and save it with
+    `boardcfg set tz`, so the boardcfg daemon restores it at boot (without boardcfg:
+    `/mnt/sd/ae350/timezone` on a mounted SD card); an "Internet time (NTP)" section
+    shows `/run/ntp.state` from `S41ntp`'s ntpd every second: synchronized (server,
+    stratum, offset), clock just set, waiting for servers, or off. There is no battery
+    RTC, so without NTP the clock starts at 1970), **About** (the board, the gateware
+    cores, the LVGL version, the repository).
 - **`lv_conf.h`** — LVGL configuration: RGB565, CLIB malloc/string, fbdev driver
   in partial mode with a 120-line draw buffer, POSIX fs on drive `A:`, file
   explorer, sysmon/perf monitor (hidden by default), Montserrat 12–32 + UNSCII,
@@ -84,8 +89,8 @@ PC: host/netinput.py  --tcp 5555-->  board: inputd  --/dev/uinput-->  /dev/input
 ## Build
 
 ```
-cd desktop && make            # inputd + build/lvdesk  (LVGL from ~/projects/ae350_linux_user_level/lvgl/lvgl-9.6.0)
-make install                  # -> linux/rootfs/usr/bin/{inputd,lvdesk,wavplay}, /etc/init.d/S60inputd,S70desktop
+cd src/apps/desktop && make  # inputd + build/lvdesk  (LVGL from ~/projects/ae350_linux_user_level/lvgl/lvgl-9.6.0)
+make install                  # -> linux/rootfs/usr/bin/{inputd,lvdesk,wavplay}, /etc/init.d/S45sdcard,S60inputd,S70desktop,S80fan
 ```
 
 Then rebuild the kernel (the initramfs is regenerated from `linux/rootfs/`) and
@@ -104,7 +109,8 @@ src/apps/desktop/host/netinput.py --snapshot lcd.ppm
 On the board: `S70desktop stop` / `start` to get the LCD back as a text console
 (`getty -L 38400 tty1 linux` then works with the network keyboard), `S60inputd`
 likewise for the bridge. `lvdesk -p system` etc. from a root shell opens a panel
-directly (after `S70desktop stop`: the running desktop holds the instance lock).
+directly (after `S70desktop stop`: the running desktop holds the instance lock); the
+name is the tile's title in any case, `lvdesk -p "date & time"`.
 
 ## Notes
 
@@ -115,7 +121,7 @@ directly (after `S70desktop stop`: the running desktop holds the instance lock).
   I/O (20 ms), so LVGL's mmap writes appear on the panel one tick later.
 - LVGL 9.6 marks `lv_file_explorer` and `lv_list` deprecated; they still work and
   are used here for brevity (`-Wno-deprecated-declarations` in the Makefile).
-- Measured over the link: idle frame 12 B / 20 ms round trip, clock tick 8 KB / 25 ms,
+- Measured over the link: idle frame 12 B / 20 ms round trip, status-bar update 8 KB / 25 ms,
   keyframe of the home screen 90 KB / 120 ms, widgets demo animating ~8 KB per
   frame at 18 fps. The 20 ms floor is the A25 comparing 768 KB of framebuffer.
 - `inputd` accepts any client on the LAN: it is a bench tool, not a service to

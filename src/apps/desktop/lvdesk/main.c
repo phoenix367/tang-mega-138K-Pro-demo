@@ -304,7 +304,11 @@ static void bar_update(lv_timer_t *t)
     time_t now = time(NULL);
     struct tm tm;
     localtime_r(&now, &tm);
-    lv_label_set_text_fmt(s_bar_clock, "%02d:%02d:%02d", tm.tm_hour, tm.tm_min, tm.tm_sec);
+    /* date and HH:MM; the label is only touched when the minute changes (no redraw per second) */
+    char mon[8], clk[32];
+    strftime(mon, sizeof(mon), "%b", &tm);
+    snprintf(clk, sizeof(clk), "%d %s  %02d:%02d", tm.tm_mday, mon, tm.tm_hour, tm.tm_min);
+    if (strcmp(clk, lv_label_get_text(s_bar_clock))) lv_label_set_text(s_bar_clock, clk);
     /* the IP stays configured when the cable is pulled: show the link, not the address */
     desk_wired_icon_set(s_bar_net_icon, s_si.carrier);
     if (s_si.carrier == 0) {
@@ -356,7 +360,7 @@ static void bar_create(lv_obj_t *scr)
     lv_obj_set_style_pad_hor(s_bar, 12, 0);
     lv_obj_set_flex_flow(s_bar, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(s_bar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(s_bar, 18, 0);
+    lv_obj_set_style_pad_column(s_bar, 14, 0);
 
     s_bar_title = bar_label(LV_SYMBOL_HOME " AE350");
     lv_obj_set_style_text_font(s_bar_title, &lv_font_montserrat_18, 0);
@@ -390,6 +394,8 @@ static void bar_create(lv_obj_t *scr)
     lv_obj_set_style_text_font(s_bar_fan, &lv_font_montserrat_16, 0);
     s_bar_mem = bar_label("");
     lv_obj_set_flex_grow(s_bar_mem, 1);
+    /* it gets what the row leaves: one line, clipped, never wrapped under the bar */
+    lv_label_set_long_mode(s_bar_mem, LV_LABEL_LONG_MODE_CLIP);
     s_bar_clock = bar_label("");
     lv_obj_set_style_text_font(s_bar_clock, &lv_font_montserrat_18, 0);
 

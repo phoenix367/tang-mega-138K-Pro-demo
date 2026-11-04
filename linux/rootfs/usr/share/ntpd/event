@@ -1,0 +1,20 @@
+#!/bin/busybox sh
+# /usr/share/ntpd/event -- busybox ntpd's event hook (ntpd -S, started by
+# /etc/init.d/S41ntp).  $1 is the event: step (the clock was set), stratum,
+# periodic (every ~11 minutes while synchronised) or unsync; ntpd passes
+# stratum, offset, freq_drift_ppm and poll_interval in the environment.
+# Writes /run/ntp.state for the desktop's Date & Time panel and the shell
+# (S41ntp status); a step also goes to the kernel log.
+
+STATE=/run/ntp.state
+servers=$(sed -n 's/.*servers=\([^ ]*\).*/\1/p' "$STATE" 2>/dev/null)
+now=$(date +%s)
+case "$1" in
+	unsync)
+		echo "state=unsynced servers=$servers since=$now" > "$STATE.tmp" ;;
+	*)
+		echo "state=synced servers=$servers stratum=$stratum offset=$offset poll=$poll_interval drift=$freq_drift_ppm last=$now event=$1" > "$STATE.tmp" ;;
+esac
+mv "$STATE.tmp" "$STATE"
+[ "$1" = step ] && echo "ntp: clock set from the network: $(date '+%Y-%m-%d %H:%M:%S %Z')" > /dev/kmsg 2>/dev/null
+exit 0

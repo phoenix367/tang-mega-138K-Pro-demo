@@ -141,7 +141,7 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    `scripts/build_uboot.sh`, `CONFIG_PREBOOT="bmp display ${splashimage} m m"`, env `splashimage=0x80100000`); the Linux DT reserves that 768 KB
    (`reserved-memory/splash@e000000`, no-map) so the picture stays until gowin-lcdfb probes.
    `src/apps/boardcfg/` (`/usr/sbin/boardcfg`, daemon from `S35boardcfg`, kernel #74+) keeps
-   settings there (`boardcfg set mac|hostname|tz|net|ip|gateway|dns|<any> VALUE`; layout 0x100 header,
+   settings there (`boardcfg set mac|hostname|tz|net|ip|gateway|dns|ntp|<any> VALUE`; layout 0x100 header,
    0x110 MAC, 0x120 key=value text) and restores them at boot; `S40network` reads the `net`
    (dhcp|static), `ip`, `gateway`, `dns` keys from `/etc/board.conf` (static 192.168.200.2/24 by
    default, DHCP via busybox udhcpc + `/usr/share/udhcpc/default.script`) and the daemon re-runs it
@@ -149,6 +149,12 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    through the DT nvmem cell `eth_mac` (`gw-tse` defers probe until the EEPROM is up). The
    desktop's Date & Time panel persists the zone through `boardcfg set tz`, and its Network panel's
    Configure dialog edits net/ip/gateway/dns/hostname/mac the same way.
+   **Time (no RTC battery):** `S41ntp` (kernel #88+) runs busybox `ntpd -n -S /usr/share/ntpd/event`
+   with the `ntp` key's servers (`off` = no ntpd), else the DHCP lease's (udhcpc `-O ntpsrv` →
+   `/run/ntp.dhcp`), else `0/1/2.pool.ntp.org`; with no internet it keeps retrying, and S40network /
+   the DHCP script `kick` it when eth0 comes up. The hook writes `/run/ntp.state` (`S41ntp status`;
+   the Date & Time panel shows it) and a `ntp: clock set from the network` kernel log line on a
+   step; the boardcfg daemon restarts S41ntp when the `ntp` key differs from `/run/ntp.key`.
    **microSD:** `src/rtl/sdhost/` = native 4-bit SD host with CRC engines and a 64-bit DMA
    master (arbiter master 2) on EXTS @ `0xE8020000` (`HADDR[17]`), IRQ EXT_INT[2] =
    PLIC 12, for the Dock slot J19 (CLK D23, CMD D24, DAT0..3 H23/J23/A25/B25, detect

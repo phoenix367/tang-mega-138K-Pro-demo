@@ -1,0 +1,93 @@
+#!/bin/busybox sh
+# /etc/init.d/S41ntp -- the system clock from the network (busybox ntpd).
+#
+# The board has no battery-backed RTC, so every boot starts at 1970.  ntpd
+# steps the clock at the first answer and then keeps it disciplined.  With no
+# route to a server it keeps retrying in the background (unresolvable names
+# are looked up again), so the clock is set as soon as the network allows.
+#
+# Servers, the first that applies:
+#   ntp=off                in /etc/board.conf (boardcfg set ntp off): no ntpd
+#   ntp=HOST[:PORT] ...    in /etc/board.conf (boardcfg set ntp "pool.ntp.org")
+#   the servers of the DHCP lease (udhcpc's script writes /run/ntp.dhcp)
+#   0.pool.ntp.org 1.pool.ntp.org 2.pool.ntp.org
+#
+# State for the desktop and the shell: /run/ntp.state (key=value), updated by
+# ntpd's event hook /usr/share/ntpd/event.  The boardcfg daemon restarts this
+# script when the ntp setting changes; S40network and the DHCP script "kick"
+# it when the network comes up, so an unsynchronised ntpd retries at once.
+
+CONF=/etc/board.conf
+PIDFILE=/run/ntpd.pid
+STATE=/run/ntp.state
+DHCP=/run/ntp.dhcp
+KEYFILE=/run/ntp.key            # the ntp setting this instance started with (boardcfg compares)
+HOOK=/usr/share/ntpd/event
+DEFAULT="0.pool.ntp.org 1.pool.ntp.org 2.pool.ntp.org"
+
+cfg() { [ -f "$CONF" ] && sed -n "s/^$1=//p" "$CONF" | tail -n 1; }
+
+servers() {
+	local s
+	s=$(cfg ntp)
+	if [ -n "$s" ]; then echo "$s"
+	elif [ -s "$DHCP" ]; then cat "$DHCP"
+	else echo "$DEFAULT"; fi
+}
+
+running() { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
+
+start() {
+	local s args=""
+	running && return 0
+	cfg ntp > "$KEYFILE"
+	s=$(servers)
+	if [ "$s" = off ]; then
+		echo "state=off" > "$STATE"
+		echo "ntp: off"
+		return 0
+	fi
+	for p in $s; do args="$args -p ${p%,}"; done
+	echo "state=waiting servers=$(echo $s | tr ' ' ',') since=$(date +%s)" > "$STATE"
+	# -n: stay in the foreground of this background job, so the pid is ours.
+	# setsid: its own session, or a restart typed in an ssh shell dies with
+	# the terminal's SIGHUP at logout (setsid execs in place: $! stays ntpd's)
+	setsid ntpd -n -S "$HOOK" $args </dev/null >/dev/null 2>&1 &
+	echo $! > "$PIDFILE"
+	echo "ntp: $s"
+}
+
+stop() {
+	if [ -f "$PIDFILE" ]; then
+		kill "$(cat "$PIDFILE")" 2>/dev/null
+		rm -f "$PIDFILE"
+	fi
+	rm -f "$STATE" "$KEYFILE"
+}
+
+case "$1" in
+	start)   start ;;
+	stop)    stop ;;
+	restart) stop; start ;;
+	kick)
+		# the network changed: a synchronised ntpd carries on, any other starts over
+		running || exit 0
+		grep -q '^state=synced' "$STATE" 2>/dev/null || { stop; start; }
+		;;
+	dhcp)
+		# udhcpc's script: $2 = the lease's NTP servers (may be empty)
+		old=$(cat "$DHCP" 2>/dev/null)
+		if [ "$2" != "$old" ]; then
+			if [ -n "$2" ]; then echo "$2" > "$DHCP"; else rm -f "$DHCP"; fi
+			[ -z "$(cfg ntp)" ] && running && { stop; start; } && exit 0
+		fi
+		"$0" kick
+		;;
+	status)
+		cat "$STATE" 2>/dev/null || echo "state=stopped"
+		;;
+	*)
+		echo "usage: $0 {start|stop|restart|kick|status}"
+		exit 1
+		;;
+esac

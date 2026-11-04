@@ -1,6 +1,6 @@
 # tests/Makefile -- build the AE350 userspace diagnostics (static rv32 musl).
 #
-#   make            build all four
+#   make            build all of them (BINS below)
 #   make verify     confirm atomic_test really emits hardware atomics
 #   make upload     scp the binaries to the board /tmp  (override BOARD/RUSER)
 #   make clean

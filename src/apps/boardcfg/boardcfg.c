@@ -22,6 +22,8 @@
  * The network keys are applied by /etc/init.d/S40network, which reads them
  * from /etc/board.conf and records what it configured in /run/network.state;
  * when they change (or the MAC changes) the daemon restarts that script.
+ * ntp (off, or up to four servers "HOST[:PORT] ...") is read by
+ * /etc/init.d/S41ntp, which the daemon restarts when the value changes.
  * Any other key is stored and restored verbatim (serial, ...).
  *
  * EEPROM layout (offsets in the 1 KB part; 0x000..0x0FF is left to the
@@ -71,6 +73,8 @@
 #ifndef NETSTATE
 #define NETSTATE  "/run/network.state"     /* written by S40network: what it configured */
 #define NETSCRIPT "/etc/init.d/S40network"
+#define NTPSCRIPT "/etc/init.d/S41ntp"
+#define NTPKEY    "/run/ntp.key"           /* written by S41ntp: the ntp setting it started with */
 #endif
 #define IFNAME   "eth0"
 #define DEFAULT_IP "192.168.200.2/24"      /* keep in sync with S40network */
@@ -256,6 +260,22 @@ static int validate(const char *key, const char *val)
         if (!*val || strlen(val) > 63) { logmsg("hostname: 1..63 characters"); return -1; }
         for (const char *p = val; *p; p++)
             if (!isalnum((unsigned char)*p) && *p != '-') { logmsg("hostname: letters, digits and '-' only"); return -1; }
+    } else if (!strcmp(key, "ntp")) {
+        /* off, or one to four servers: host names / IPv4 addresses, optional :port */
+        if (strcmp(val, "off")) {
+            int n = 0;
+            for (const char *p = val; *p; ) {
+                while (*p == ' ' || *p == ',') p++;
+                if (!*p) break;
+                size_t len = strcspn(p, " ,");
+                for (size_t i = 0; i < len; i++)
+                    if (!isalnum((unsigned char)p[i]) && !strchr(".-:", p[i])) { n = 99; break; }
+                if (len > 63) { n = 99; break; }
+                if (++n > 4) break;
+                p += len;
+            }
+            if (n < 1 || n > 4) { logmsg("ntp: off, or one to four servers (name or address, optional :port)"); return -1; }
+        }
     } else if (!strcmp(key, "tz")) {
         char path[300];
         struct stat st;
@@ -430,6 +450,23 @@ static void net_state(const cfg_t *c, char *out, size_t cap)
              net, ip, strchr(ip, '/') ? "" : "/24", gw ? gw : "", dns ? dns : "");
 }
 
+/* run an init script with one argument, output discarded; 0 when it succeeded */
+static int run_script(const char *path, const char *arg)
+{
+    pid_t pid = fork();
+    if (pid < 0) return -1;
+    if (pid == 0) {
+        int devnull = open("/dev/null", O_RDWR);
+        if (devnull >= 0) { dup2(devnull, 1); dup2(devnull, 2); }
+        execl(path, path, arg, (char *)NULL);
+        _exit(127);
+    }
+    int st = 0;
+    waitpid(pid, &st, 0);
+    if (!WIFEXITED(st) || WEXITSTATUS(st)) { logmsg("%s %s failed", path, arg); return -1; }
+    return 0;
+}
+
 /* network keys: S40network applies them (and records what it did); here we
  * only restart it when the recorded state differs from the settings.  Before
  * S40network has run (boot: boardcfg -d precedes it) there is nothing to do. */
@@ -440,18 +477,20 @@ static int apply_net(const cfg_t *c, int force)
     if (read_file(NETSTATE, have, sizeof(have)) < 0) return 0;   /* network not started yet */
     if (!force && !strcmp(want, have)) return 0;
     logmsg("network settings changed, restarting " IFNAME);
-    pid_t pid = fork();
-    if (pid < 0) return -1;
-    if (pid == 0) {
-        int devnull = open("/dev/null", O_RDWR);
-        if (devnull >= 0) { dup2(devnull, 1); dup2(devnull, 2); }
-        execl(NETSCRIPT, NETSCRIPT, "restart", (char *)NULL);
-        _exit(127);
-    }
-    int st = 0;
-    waitpid(pid, &st, 0);
-    if (!WIFEXITED(st) || WEXITSTATUS(st)) { logmsg(NETSCRIPT " restart failed"); return -1; }
-    return 0;
+    return run_script(NETSCRIPT, "restart");
+}
+
+/* the ntp key: S41ntp records the value it started with; restart it when the
+ * setting differs (before S41ntp has run, at boot, there is nothing to do) */
+static int apply_ntp(const cfg_t *c)
+{
+    const char *want = cfg_get(c, "ntp");
+    char have[256];
+    if (read_file(NTPKEY, have, sizeof(have)) < 0) return 0;     /* ntpd not started yet */
+    have[strcspn(have, "\n")] = 0;
+    if (!strcmp(have, want ? want : "")) return 0;
+    logmsg("ntp setting changed, restarting ntpd");
+    return run_script(NTPSCRIPT, "restart");
 }
 
 static int apply_hostname(const char *h)
@@ -497,6 +536,7 @@ static void apply_all(const cfg_t *c)
     if ((v = cfg_get(c, "hostname"))) apply_hostname(v);
     if ((v = cfg_get(c, "tz")))       apply_tz(v);
     apply_net(c, mac_changed);              /* a new MAC also needs a fresh lease / routes */
+    apply_ntp(c);
 }
 
 /* ---- operations --------------------------------------------------------- */

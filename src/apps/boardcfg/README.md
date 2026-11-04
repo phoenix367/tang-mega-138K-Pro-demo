@@ -29,6 +29,7 @@ boardcfg -d                  load, then stay in the background as the daemon
 | `ip` | `A.B.C.D` or `A.B.C.D/N` (default `192.168.200.2/24`) | static mode address; a bare address means `/24` |
 | `gateway` | `A.B.C.D` | static mode default route; unset = none (DHCP brings its own) |
 | `dns` | `"A.B.C.D [A.B.C.D ...]"`, up to three | static mode `/etc/resolv.conf`; unset = the gateway, else `192.168.200.1` |
+| `ntp` | `off`, or `"HOST[:PORT] ..."`, up to four servers | time servers for `/etc/init.d/S41ntp` (busybox ntpd), see below; unset = the DHCP lease's servers, else `0/1/2.pool.ntp.org` |
 | anything else | stored and restored verbatim | `serial`, ... up to 64 keys, key ≤ 31 and value ≤ 127 chars, 736 bytes of text in all |
 
 Typical first-time setup over ssh/UART:
@@ -66,6 +67,37 @@ The desktop's Network panel has a **Configure** button that edits the same keys
   retrying every five seconds in the background, so a board without a DHCP
   server simply has no address until one appears. `S40network stop` releases the
   lease (`-R`).
+
+### NTP key
+
+The Dock has no RTC battery, so the clock starts at 1970 on every boot and only
+the network can set it. `S41ntp` starts busybox `ntpd` with the first of: the
+`ntp` key, the NTP servers of the DHCP lease (udhcpc asks for option 42 and the
+script writes them to `/run/ntp.dhcp`), `0.pool.ntp.org 1.pool.ntp.org
+2.pool.ntp.org`. `ntp=off` runs no ntpd, and the clock is then set by hand (the
+desktop's Date & Time panel or `date -s`).
+
+ntpd steps the clock at the first answer and then keeps it disciplined. With no
+route to a server it keeps retrying, names are looked up again, and
+`S40network` and the DHCP script restart an unsynchronised ntpd as soon as eth0
+comes up, so the clock is set as soon as the network allows. The daemon
+restarts `S41ntp` when the `ntp` key changes (it compares with
+`/run/ntp.key`, the value the running ntpd was started with).
+
+```sh
+boardcfg set ntp "192.168.200.1"          # a server on the local link
+boardcfg set ntp "pool.ntp.org time.google.com:123"
+boardcfg set ntp off
+boardcfg unset ntp                        # back to DHCP / pool.ntp.org
+/etc/init.d/S41ntp status                 # state=waiting|synced|unsynced|off ...
+```
+
+`/run/ntp.state` is one `key=value` line written by ntpd's event hook
+`/usr/share/ntpd/event`: `state=synced servers=... stratum=... offset=... poll=...
+last=... event=step|stratum|periodic`, or `state=waiting servers=... since=...`
+before the first answer. ntpd runs the hook on a step, a stratum change, a loss
+of sync and every 11 minutes while synchronised. A step also writes
+`ntp: clock set from the network: <date>` to the kernel log.
 
 ## The daemon
 

@@ -1373,13 +1373,74 @@ void datetime_restore(void)
 }
 
 typedef struct {
-    lv_obj_t *cal, *hour, *min, *now, *region, *city, *zone_lbl, *status;
+    lv_obj_t *cal, *hour, *min, *now, *region, *city, *zone_lbl, *status, *ntp;
     lv_calendar_date_t sel;                 /* date picked on the calendar */
     char *regions;                          /* dropdown option strings */
     char *cities;
     int *city_idx;                          /* city dropdown row -> s_zones index */
     int ncity;
 } dt_t;
+
+/* the clock's source: busybox ntpd, started by /etc/init.d/S41ntp; its state
+ * (key=value words) is in /run/ntp.state, kept by ntpd's event hook */
+#define NTP_STATE "/run/ntp.state"
+static const char *kv_word(const char *s, const char *key, char *out, size_t cap)
+{
+    size_t kl = strlen(key);
+    for (const char *p = s; (p = strstr(p, key)); p++)
+        if ((p == s || p[-1] == ' ') && p[kl] == '=') {
+            size_t n = strcspn(p + kl + 1, " \n");
+            if (n >= cap) n = cap - 1;
+            memcpy(out, p + kl + 1, n);
+            out[n] = 0;
+            return out;
+        }
+    out[0] = 0;
+    return NULL;
+}
+
+static int ntp_synced(void)
+{
+    char s[512], st[32];
+    return sysinfo_read_file(NTP_STATE, s, sizeof(s)) > 0 && kv_word(s, "state", st, sizeof(st)) && !strcmp(st, "synced");
+}
+
+static void dt_ntp_status(dt_t *d)
+{
+    char s[512], st[32], srv[128], v[64], txt[256];
+    lv_palette_t col = LV_PALETTE_ORANGE;
+    if (sysinfo_read_file(NTP_STATE, s, sizeof(s)) <= 0) {
+        snprintf(txt, sizeof(txt), "ntpd is not running (/etc/init.d/S41ntp start)");
+    } else {
+        kv_word(s, "state", st, sizeof(st));
+        kv_word(s, "servers", srv, sizeof(srv));
+        for (char *c = srv; *c; c++) if (*c == ',') *c = ' ';
+        if (!strcmp(st, "off")) {
+            snprintf(txt, sizeof(txt), "off (boardcfg set ntp off): set the clock on the left");
+            col = LV_PALETTE_GREY;
+        } else if (!strcmp(st, "synced")) {
+            double off = kv_word(s, "offset", v, sizeof(v)) ? atof(v) * 1000.0 : 0;
+            time_t last = kv_word(s, "last", v, sizeof(v)) ? (time_t)atoll(v) : 0;
+            char stratum[16], when[32] = "?";
+            kv_word(s, "stratum", stratum, sizeof(stratum));
+            struct tm tm;
+            if (last && localtime_r(&last, &tm)) strftime(when, sizeof(when), "%H:%M:%S", &tm);
+            kv_word(s, "event", v, sizeof(v));
+            if (!strcmp(v, "step") || !strcmp(stratum, "16"))      /* just stepped: the offset was the step */
+                snprintf(txt, sizeof(txt), "clock set from %s at %s, refining", srv[0] ? srv : "the network", when);
+            else
+                snprintf(txt, sizeof(txt), "synchronized with %s: stratum %s, offset %+.1f ms, last update %s",
+                         srv[0] ? srv : "the network", stratum[0] ? stratum : "?", off, when);
+            col = LV_PALETTE_GREEN;
+        } else if (!strcmp(st, "unsynced")) {
+            snprintf(txt, sizeof(txt), "lost the server, retrying (%s)", srv);
+        } else {
+            snprintf(txt, sizeof(txt), "waiting for %s (no route to the internet yet?)", srv[0] ? srv : "a server");
+        }
+    }
+    lv_label_set_text(d->ntp, txt);
+    lv_obj_set_style_text_color(d->ntp, lv_palette_main(col), 0);
+}
 
 static void dt_now_tick(lv_timer_t *t)
 {
@@ -1390,6 +1451,7 @@ static void dt_now_tick(lv_timer_t *t)
     char b[96];
     strftime(b, sizeof(b), "%Y-%m-%d  %H:%M:%S  %Z (UTC%z)", &tm);
     lv_label_set_text(d->now, b);
+    dt_ntp_status(d);
 }
 
 static void dt_cal_changed(lv_event_t *e)
@@ -1421,7 +1483,8 @@ static void dt_set_clock(lv_event_t *e)
         return;
     }
     lv_calendar_set_today_date(d->cal, d->sel.year, d->sel.month, d->sel.day);
-    lv_label_set_text(d->status, "clock set (not kept over a reboot: no battery RTC)");
+    lv_label_set_text(d->status, ntp_synced() ? "clock set; NTP will correct it at its next poll"
+                                              : "clock set (not kept over a reboot: no battery RTC)");
     lv_obj_set_style_text_color(d->status, lv_palette_main(LV_PALETTE_GREEN), 0);
 }
 
@@ -1590,9 +1653,19 @@ void panel_datetime(lv_obj_t *parent)
     lv_label_set_long_mode(d->status, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(d->status, LV_PCT(100));
     lv_label_set_text(d->status, access(BOARDCFG, X_OK) == 0
-        ? "The zone is kept in the board EEPROM (boardcfg); the clock itself is lost at reboot (no battery RTC)."
-        : "The rootfs is an initramfs: the zone is kept only on an SD card (/mnt/sd/ae350/timezone), the clock is lost at reboot.");
+        ? "The zone is kept in the board EEPROM (boardcfg)."
+        : "The zone is kept only on an SD card (/mnt/sd/ae350/timezone).");
     lv_obj_set_style_text_opa(d->status, LV_OPA_70, 0);
+
+    /* internet time: no battery RTC, so the clock comes from NTP when a server answers */
+    l = lv_label_create(right);
+    lv_label_set_text(l, "Internet time (NTP)");
+    lv_obj_set_style_text_font(l, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(l, lv_palette_main(LV_PALETTE_CYAN), 0);
+    lv_obj_set_style_pad_top(l, 6, 0);
+    d->ntp = lv_label_create(right);
+    lv_label_set_long_mode(d->ntp, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(d->ntp, LV_PCT(100));
 
     lv_timer_t *t = lv_timer_create(dt_now_tick, 1000, d);
     lv_obj_add_event_cb(parent, timer_del_on_delete, LV_EVENT_DELETE, t);

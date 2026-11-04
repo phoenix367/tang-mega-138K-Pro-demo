@@ -51,7 +51,7 @@ sequenceDiagram
   Note over K: single-hart, soft-atomic,<br/>CONFIG_SMP=n
   K->>K: PLIC, 8250 UART, PMU, eth0 (gw-tse), fb0, ALSA, mmc, hwmon,<br/>unpack initramfs
   K->>US: Run /init  (→ busybox init → /etc/inittab)
-  US->>US: rcS: mount, busybox --install, setuid ping/doas,<br/>S35boardcfg (EEPROM settings), S40network (eth0 static/DHCP per EEPROM),<br/>S45sdcard (/mnt/sd), S50ssh (dropbear), S60inputd, S70desktop (lvdesk on VT1), S80fan
+  US->>US: rcS: mount, busybox --install, setuid ping/doas,<br/>S35boardcfg (EEPROM settings), S40network (eth0 static/DHCP per EEPROM),<br/>S41ntp (clock from the network), S45sdcard (/mnt/sd), S50ssh (dropbear), S60inputd, S70desktop (lvdesk on VT1), S80fan
   US->>US: getty on UART2 → login (ae350 / ae350)
 ```
 
@@ -109,6 +109,13 @@ stateDiagram-v2
   The address, mode and resolvers are board settings in the EEPROM: `boardcfg set net dhcp`,
   `boardcfg set ip 10.0.0.5/24`, `boardcfg set gateway ...`, `boardcfg set dns "..."`
   (applied immediately and at every boot; see src/apps/boardcfg/README.md).
+- The Dock has no RTC battery, so every boot starts with the clock at 1970. `S41ntp` runs
+  busybox `ntpd`, which sets the clock at the first server answer and keeps it disciplined.
+  Servers: the `ntp` board setting (`boardcfg set ntp "HOST[:PORT] ..."`, or `off`), else the
+  DHCP lease's NTP servers, else `0/1/2.pool.ntp.org`. Without a route to the internet (the
+  default static setup has no gateway) ntpd keeps retrying in the background, and the clock
+  is set as soon as a server answers. Check with `/etc/init.d/S41ntp status` or
+  `dmesg | grep ntp:`.
 - SSH: `ssh ae350@192.168.200.2` (pw `ae350`), then `doas` for root. `scp`/`sftp`
   work through the static OpenSSH `sftp-server` that dropbear execs.
 - The rootfs is an **initramfs**: nothing written on the board survives a reboot.
@@ -119,8 +126,9 @@ stateDiagram-v2
 
 | Script | Service |
 |---|---|
-| `S35boardcfg` | `boardcfg -d`: restores hostname / time zone / eth0 MAC / network settings from the Dock EEPROM, then watches `/etc/board.conf` to write changes back and re-runs `S40network` when the network keys change (`src/apps/boardcfg/`) |
-| `S40network` | `lo` + `eth0` from the `net`/`ip`/`gateway`/`dns` keys in `/etc/board.conf`: static (default `192.168.200.2/24`) or busybox `udhcpc` (`/usr/share/udhcpc/default.script`); records what it did in `/run/network.state` |
+| `S35boardcfg` | `boardcfg -d`: restores hostname / time zone / eth0 MAC / network settings from the Dock EEPROM, then watches `/etc/board.conf` to write changes back, re-runs `S40network` when the network keys change and `S41ntp` when `ntp` changes (`src/apps/boardcfg/`) |
+| `S40network` | `lo` + `eth0` from the `net`/`ip`/`gateway`/`dns` keys in `/etc/board.conf`: static (default `192.168.200.2/24`) or busybox `udhcpc` (`/usr/share/udhcpc/default.script`); records what it did in `/run/network.state`; asks `S41ntp` to retry once eth0 is up |
+| `S41ntp` | busybox `ntpd -n -S /usr/share/ntpd/event`: the system clock from the `ntp` setting, the DHCP lease's servers or `pool.ntp.org`; state in `/run/ntp.state` (`S41ntp status`, shown in the desktop's Date & Time panel), a `ntp: clock set from the network` line in the kernel log when it steps the clock |
 | `S45sdcard` | mounts `/dev/mmcblk0(p1)` on `/mnt/sd` when a card is present |
 | `S50ssh` | dropbear on port 22 with the baked-in host keys |
 | `S60inputd` | `inputd`: keyboard/mouse events from the PC over TCP 5555 → `/dev/uinput` |

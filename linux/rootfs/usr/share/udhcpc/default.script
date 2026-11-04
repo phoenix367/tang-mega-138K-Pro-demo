@@ -30,7 +30,9 @@ case "$1" in
 			echo "options timeout:2 attempts:2"
 		} > "$RESOLV.tmp" && mv "$RESOLV.tmp" "$RESOLV"
 		rm -f "/run/udhcpc.$interface.nolease"
-		[ "$1" = bound ] && log "$interface $ip/${mask:-24}${router:+ gw $router}${dns:+ dns $dns} (dhcp lease ${lease}s)"
+		[ "$1" = bound ] && log "$interface $ip/${mask:-24}${router:+ gw $router}${dns:+ dns $dns}${ntpsrv:+ ntp $ntpsrv} (dhcp lease ${lease}s)"
+		# the lease's NTP servers (option 42) for S41ntp; it also retries an unsynced ntpd now
+		[ -x /etc/init.d/S41ntp ] && /etc/init.d/S41ntp dhcp "$ntpsrv"
 		;;
 	leasefail)
 		# once per outage, not every retry round (the kernel log is the LCD console)

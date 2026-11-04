@@ -1,10 +1,27 @@
 # Userspace diagnostics (Gowin AE350 / A25, RV32 Linux)
 
-Small static rv32 programs that probe SoC behaviour from Linux userspace. Both
-bypass libc on purpose (inline asm) so they exercise the real hardware, not the
-soft-atomic musl shims.
+Small static rv32 programs, run from Linux userspace on the board. Two groups:
+
+- **Gateware checks** (below): each one drives a fabric core through its Linux
+  driver or `/dev/mem` and compares what the hardware produced with a model, through
+  the core's own CRC or by reading the result back. No need to look at the panel or
+  listen to the speaker: exit status 0 = bit-exact.
+- **CPU and memory probes** (the rest of this page): what the A25 executes and how
+  fast, and the atomics investigation. These bypass libc on purpose (inline asm) so
+  they exercise the real hardware, not the soft-atomic musl shims.
+
+They are not in the rootfs (except `wavplay`, which the desktop uses): copy them to
+the board's `/tmp`.
 
 ## Build
+
+```sh
+make                          # all of them (static, the soft-atomic musl toolchain)
+make upload                   # scp to the board's /tmp (BOARD=192.168.200.2 RUSER=ae350)
+make verify                   # atomic_test really contains hardware atomics
+```
+
+By hand, for the probes:
 
 ```sh
 TC=~/projects/riscv32-ilp32d--musl--stable-2025.08-1
@@ -22,7 +39,34 @@ $CC -static -O2                                  -o cctl_probe    cctl_probe.c
 $TC/bin/riscv32-buildroot-linux-musl-objdump -d atomic_test | grep -E 'amoadd|lr\.w|sc\.w'
 ```
 
-## Run (copy to the board first)
+## Gateware checks
+
+| Tool | Needs | Run | Passes when |
+|---|---|---|---|
+| `fbtest` | LCD core (`src/rtl/video/`), gowin-lcdfb | `fbtest bars\|grad\|noise` (mmap), `fbtest write`, `fbtest check` | the CRC-32 of the framebuffer as the CPU sees it equals the core's frame CRC (register 0xE8001028): every displayed pixel is what the CPU drew, cache write-backs included |
+| `yuvtest` | Build 68 + kernel #77 | `yuvtest [-l]` (`-l` = BT.601 limited range) | the core's frame CRC for the testbench's YUV 4:2:0 pattern equals the CPU's fixed-point conversion, and the RGB CRC is back after switching back |
+| `scaletest` | Build 71 + kernel #84 | `scaletest [-k]` (`-k` keeps the last scene up 5 s) | eight scenes (up/down/odd scaling, windows with a background, the ARGB OSD over 1:1 and scaled pictures) match the core's nearest-neighbour, conversion and blend arithmetic by frame CRC |
+| `idcttest` | Build 69 + kernel #78 (`/dev/gowin-idct`) | `idcttest [-n PASSES] [-s] [-x DX -y DY]` | random coefficient blocks of a panel-sized 4:2:0 frame, assembled by the core in a YUV buffer, equal FFmpeg's integer IDCT in C pixel for pixel; prints the core's throughput |
+| `wavplay` | audio core (`src/rtl/audio/`), ALSA `gowin-pt8211` | `wavplay [-D /dev/snd/pcmC0D0p] file.wav` | `MATCH`: the core's frame counter and CRC equal the WAV data chunk's, nothing lost or repeated (`wavgen.py OUTDIR` on the PC makes test files and prints their expected values) |
+| `ddr_memtest` | DDR3 bridge | `ddr_memtest [MB=32] [passes=1]` | no mismatches in the address / mixed-width / copy patterns; also prints the dependent-miss latency and sequential MB/s |
+| `eeprom_bitbang.sh` | Build 66 (`src/rtl/gpio/`), root | `eeprom_bitbang.sh [ADDR [COUNT]]`, `-w ADDR BYTE` | reads the Dock EEPROM by bit-banging I2C with `devmem`: the check for a new bitstream under a kernel without the i2c-gpio/at24 stack |
+
+`vidplay -C N` is the matching check for the gateware JPEG decoder (it compares N
+decoded frames with FFmpeg's C decoder), see `src/apps/vidplay/README.md`.
+
+Two tools document dead ends rather than check anything, and both can take the board
+down:
+
+- `dmactest m2m|aud [req]`: the SoC's ATCDMAC300 copies DDR to DDR (`m2m`), but every
+  other target, a fabric core's register (`aud`), the APBs or the boot flash, wedges the
+  whole SoC bus beyond the watchdog's reach, so only a JTAG reload recovers it. That is
+  why the audio, SD, Ethernet and LCD cores have their own DMA masters
+  (doc/06-key-findings.md).
+- `amotrace lrsc|amo|dump`: a bus trace (ddr_perf trace RAM) around an LR/SC or AMO on
+  a cold line; `amo` arms the watchdog so the SoC resets out of the hang, and `dump`
+  reads the trace after the reboot.
+
+## Run the probes (copy to the board first)
 
 ```sh
 scp -O atomic_test cctl_probe ae350@192.168.200.2:/tmp/
@@ -216,7 +260,6 @@ each SIGILL-guarded; Zbb and XAndesPerf are self-checked. Result on hardware:
 ### atomic_test — the headline result
 On this **no-coherence-manager** A25, userspace hardware atomics:
 
-- **Do not SIGILL** — `misa = rv32imafdc`, so `amoadd.w`/`lr.w`/`sc.w` decode fine.
 - **Do not SIGILL** — `misa = rv32imafdc`, so `amoadd.w`/`lr.w`/`sc.w` decode fine.
 - **Wedge on a cold/uncached line** — the atomic never retires; the task becomes
   **uninterruptible** (`kill -9` fails, accumulates CPU).

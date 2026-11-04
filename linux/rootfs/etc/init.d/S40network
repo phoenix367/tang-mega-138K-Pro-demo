@@ -11,7 +11,9 @@
 #
 # What was configured is recorded in /run/network.state; the boardcfg daemon
 # compares it with the settings and runs `S40network restart` when they
-# change, so a `boardcfg set` takes effect at once.
+# change, so a `boardcfg set` takes effect at once.  DHCP also asks for the
+# lease's NTP servers (S41ntp uses them); after a (re)configuration an
+# unsynchronised ntpd is kicked to try again at once.
 
 CONF=/etc/board.conf
 STATE=/run/network.state
@@ -39,7 +41,7 @@ start() {
 		# a few tries in the foreground (the link needs ~1 s to come up), then
 		# keep trying in the background; -R releases the lease on stop
 		ifconfig "$IF" up
-		udhcpc -i "$IF" -p "$PIDFILE" -x hostname:"$(hostname)" -t 4 -T 2 -A 5 -b -R
+		udhcpc -i "$IF" -p "$PIDFILE" -x hostname:"$(hostname)" -O ntpsrv -t 4 -T 2 -A 5 -b -R
 		echo "net: lo=127.0.0.1  $IF=dhcp"
 	else
 		ifconfig "$IF" "${IP%/*}" netmask "$(mask "${IP#*/}")" up
@@ -52,6 +54,7 @@ start() {
 		echo "net: lo=127.0.0.1  $IF=$IP${GW:+  gw=$GW}"
 	fi
 	echo "net=$NET ip=$IP gateway=$GW dns=$DNS" > "$STATE"
+	[ -x /etc/init.d/S41ntp ] && /etc/init.d/S41ntp kick
 }
 
 stop() {
