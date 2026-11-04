@@ -574,6 +574,7 @@ int main(int argc, char **argv)
     fflush(stdout);
 
     while (s_exit < 0) {
+        if (video_active()) { video_wait(); continue; }   /* the player gets the CPU */
         uint32_t wait = lv_timer_handler();
         if (wait > 30) wait = 30;
         if (wait < 2) wait = 2;

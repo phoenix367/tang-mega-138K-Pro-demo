@@ -156,7 +156,16 @@ upstream; the recipes are the only project-specific part.
 - `ping`: a **separate setuid-root copy** `/bin/ping` (the main busybox stays
   unprivileged), gated by `/etc/busybox.conf`.
 - Extra static tools cross-built into `/usr/bin`: **htop** 3.3.0 (ncurses 6.6 w/
-  compiled-in terminfo fallbacks; `build_ncurses.sh` + `build_htop.sh`), **tcpdump** 4.99.5
+  compiled-in terminfo fallbacks `linux`, `vt100`, `vt220`, `xterm`, `xterm-256color`,
+  `screen`; `build_ncurses.sh` + `build_htop.sh`). `/etc/profile` keeps an ssh client's
+  `xterm-256color` and maps other xterm-like terminals onto it. With 8 colours (it used to
+  force `TERM=linux`), htop draws its dim text bold black, which vanishes on a dark
+  terminal. The I/O tab's read/write rates need task I/O accounting
+  (`CONFIG_TASK_IO_ACCOUNTING`, kernel #92+). Use `doas htop` to see root's processes
+  there; the delay columns stay N/A, as htop is built without libnl. DISK READ/WRITE
+  count only what reaches a block device (the SD card): writing into `/tmp` or any other
+  RAM filesystem shows 0. The WCHAR/RCHAR columns (F2 → Columns) count every
+  `read()`/`write()`. **tcpdump** 4.99.5
   (+libpcap 1.10.5, run via `doas`; `build_libpcap.sh` + `build_tcpdump.sh`), **nstat**
   (iproute2 6.11.0, `build_iproute2.sh`). The shipped tcpdump is an unoptimised (-O0)
   build and the shipped nstat was compiled by hand, so those two scripts report "DIFFERS"

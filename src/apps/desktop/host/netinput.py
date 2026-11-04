@@ -13,7 +13,9 @@ board's framebuffer, so it works as a remote display of the LCD: the board
 sends only the rows that changed since the previous frame, run-length
 encoded (an idle screen costs a few bytes per frame; --raw sends full
 frames instead).  No root needed: events come from Tk, not from
-/dev/input, and Tk's X11 keycodes are Linux key codes + 8.
+/dev/input, and Tk's X11 keycodes are Linux key codes + 8.  When the board
+goes away (reboot, inputd restarted, cable) the window keeps the last
+picture and connects again by itself as soon as inputd answers.
 
 Protocol (big-endian): "NETINPUT1", then 8-byte records
 {u16 type, u16 code, i32 value}; type 0xFFFF code 1 asks for a frame
@@ -25,6 +27,7 @@ import argparse
 import socket
 import struct
 import sys
+import threading
 import time
 import tkinter as tk
 
@@ -41,15 +44,22 @@ BTN_LEFT, BTN_RIGHT, BTN_MIDDLE = 0x110, 0x111, 0x112
 SYN_REPORT = 0
 REQ_TYPE, REQ_FRAME = 0xFFFF, 1
 W, H = 800, 480
+IO_TIMEOUT = 5             # s: a board that stops answering is given up, not waited for
 
 
 class Link:
     def __init__(self, host, port):
-        self.s = socket.create_connection((host, port), timeout=5)
+        # the timeout stays on for every send/recv: a board that vanished without
+        # closing the connection must not freeze the window in recv() forever
+        self.s = socket.create_connection((host, port), timeout=IO_TIMEOUT)
         self.s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        self.s.settimeout(None)
+        if hasattr(socket, "TCP_USER_TIMEOUT"):    # Linux: input not acknowledged in time = gone
+            self.s.setsockopt(socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT, IO_TIMEOUT * 1000)
         self.s.sendall(b"NETINPUT1")
         self.pending = b""
+
+    def close(self):
+        self.s.close()
 
     def ev(self, t, c, v):
         self.pending += struct.pack(">HHi", t, c, v)
@@ -159,7 +169,8 @@ def rgb565_to_ppm(w, h, raw):
 class App:
     def __init__(self, args):
         self.args = args
-        self.link = Link(args.host, args.port)
+        self.link = Link(args.host, args.port)     # None while the board is away
+        self.new_link = None                       # handed over by the reconnect thread
         self.root = tk.Tk()
         self.root.title("AE350 netinput  %s" % args.host)
         self.scale = args.scale
@@ -193,6 +204,53 @@ class App:
         if args.view:
             self.root.after(100, self.refresh)
 
+    # -- connection --------------------------------------------------------
+    def send(self, *events):
+        """Events + SYN_REPORT to the board; dropped while it is away."""
+        if not self.link:
+            return
+        for e in events:
+            self.link.ev(*e)
+        try:
+            self.link.syn()
+        except OSError as ex:
+            self.lost(ex)
+
+    def lost(self, ex):
+        """The board went away: keep the window and the last picture, and
+        connect again in the background (connect() can block for seconds while
+        the board boots).  inputd releases a gone client's keys and buttons."""
+        self.link.close()
+        self.link = None
+        self.down.clear()
+        self.last = (-1, -1)
+        self.status.config(text="connection to %s:%d lost (%s), reconnecting..."
+                           % (self.args.host, self.args.port, ex))
+        cx, cy = W * self.scale // 2, H * self.scale // 2
+        self.canvas.create_rectangle(cx - 150, cy - 30, cx + 150, cy + 30, fill="#202830",
+                                     outline="#9ab", tags="lost")
+        self.canvas.create_text(cx, cy, fill="#fc6", justify="center", font=("Helvetica", 14),
+                                text="board disconnected\nreconnecting...", tags="lost")
+        threading.Thread(target=self.reconnect, daemon=True).start()
+        self.root.after(200, self.relink)
+
+    def reconnect(self):
+        """Thread: try once a second until inputd answers again."""
+        while True:
+            try:
+                self.new_link = Link(self.args.host, self.args.port)
+                return
+            except OSError:
+                time.sleep(1)
+
+    def relink(self):
+        if not self.new_link:
+            self.root.after(200, self.relink)
+            return
+        self.link, self.new_link = self.new_link, None    # new Link: the view starts with a keyframe
+        self.canvas.delete("lost")
+        self.status.config(text="reconnected to %s:%d" % (self.args.host, self.args.port))
+
     # -- pointer -----------------------------------------------------------
     def pos(self, e):
         x = max(0, min(W - 1, int(e.x / self.scale)))
@@ -204,21 +262,15 @@ class App:
         if p == self.last:
             return
         self.last = p
-        self.link.ev(EV_ABS, ABS_X, p[0])
-        self.link.ev(EV_ABS, ABS_Y, p[1])
-        self.link.syn()
+        self.send((EV_ABS, ABS_X, p[0]), (EV_ABS, ABS_Y, p[1]))
 
     def on_button(self, e, code, val):
         p = self.pos(e)
-        self.link.ev(EV_ABS, ABS_X, p[0])
-        self.link.ev(EV_ABS, ABS_Y, p[1])
-        self.link.ev(EV_KEY, code, val)
-        self.link.syn()
         (self.down.add if val else self.down.discard)(code)
+        self.send((EV_ABS, ABS_X, p[0]), (EV_ABS, ABS_Y, p[1]), (EV_KEY, code, val))
 
     def on_wheel(self, d):
-        self.link.ev(EV_REL, REL_WHEEL, d)
-        self.link.syn()
+        self.send((EV_REL, REL_WHEEL, d))
 
     # -- keyboard ----------------------------------------------------------
     def on_key(self, e, val):
@@ -227,12 +279,18 @@ class App:
             return
         if val and code in self.down:
             return                    # X autorepeat: the board repeats itself
-        self.link.ev(EV_KEY, code, val)
-        self.link.syn()
         (self.down.add if val else self.down.discard)(code)
+        self.send((EV_KEY, code, val))
 
     # -- remote view -------------------------------------------------------
     def refresh(self):
+        t0 = time.time()
+        if self.link:
+            self.update_view()
+        dt = time.time() - t0
+        self.root.after(max(10, int(1000 / self.args.view - dt * 1000)), self.refresh)
+
+    def update_view(self):
         t0 = time.time()
         try:
             if self.args.raw or not HAVE_NUMPY:
@@ -241,8 +299,8 @@ class App:
             else:
                 w, h, rows, nbytes = self.link.frame_delta()
                 bpp, raw = 16, self.link.canvas
-        except Exception as ex:
-            self.status.config(text="view error: %s" % ex)
+        except Exception as ex:       # whatever broke, the stream is out of step: start over
+            self.lost(ex)
             return
         if bpp == 16 and (rows or self.photo is None):   # nothing changed: keep the image
             ppm = rgb565_to_ppm(w, h, raw)
@@ -254,15 +312,15 @@ class App:
             self.canvas.create_image(0, 0, anchor="nw", image=self.photo, tags="fb")
         dt = time.time() - t0
         self.status.config(text="view %dx%d  %d rows changed, %d KB, %.0f ms" % (w, h, rows, nbytes // 1024, dt * 1000))
-        self.root.after(max(10, int(1000 / self.args.view - dt * 1000)), self.refresh)
 
     def quit(self):
-        for k in list(self.down):
-            self.link.ev(EV_KEY, k, 0)
-        try:
-            self.link.syn()
-        except Exception:
-            pass
+        if self.link:
+            for k in list(self.down):
+                self.link.ev(EV_KEY, k, 0)
+            try:
+                self.link.syn()
+            except OSError:
+                pass
         self.root.destroy()
 
     def run(self):
@@ -288,7 +346,7 @@ def main():
         return
     try:
         App(args).run()
-    except ConnectionError as ex:
+    except OSError as ex:                  # the first connection only: later ones are retried
         sys.exit("netinput: %s (is inputd running on the board?)" % ex)
 
 

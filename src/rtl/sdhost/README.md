@@ -83,6 +83,20 @@ driver tuned the card to 25 MHz with late sampling on the first fast read
 wire rate is the bounce-buffer copy and per-request overhead on the A25; direct
 scatter-gather DMA would be the next step if ever needed.
 
+**Slow cards (2026-11-04).** A no-name 4 GB card writes at ~200 KB/s, though its reads
+are 6 MB/s. Its identity in sysfs: `manfid` 0x000000, name `APPSD`, SD status speed
+class 4. The cost is per block, not per command: 2.5 ms per 512-byte block with requests
+capped at 4, 16 or 64 KB (`/sys/block/mmcblk0/queue/max_sectors_kb`, `/proc/diskstats`).
+Sampling STATUS during the write showed the data engine busy 99 % of the time with DAT0
+(bit 3) held low by the card, in ~1.9 ms runs, one per block. The card programs every
+block before it takes the next, and the host only waits for it (the core moves on as
+soon as DAT0 is released). A bigger bounce buffer would not help; a better card would.
+Its replacement, a 32 GB card that its status register rates Class 10 / U3 / V30, writes
+4.5 MB/s through vfat (0.11 ms per block) and reads 6.3 MB/s. With that card the A25's
+bounce-buffer copy and per-request overhead are the limit again, not the card.
+Large copies onto such a card also trigger the kernel's "task blocked for more than
+120 seconds" warnings for `sync`: that is only the writeback queue draining slowly.
+
 Note for anyone switching between the SPI and native paths: a card initialised
 in SPI mode stays in SPI mode until its power is cycled, and reloading the FPGA
 does not cut the card's supply. Re-seat the card (or power-cycle the board).

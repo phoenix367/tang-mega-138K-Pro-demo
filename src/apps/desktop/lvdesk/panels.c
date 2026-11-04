@@ -308,12 +308,13 @@ void panel_audio(lv_obj_t *parent)
 /* Video: vidplay child process (src/apps/vidplay)                         */
 /* ====================================================================== */
 /* vidplay draws straight into /dev/fb0, so while it runs the desktop's flushes
- * are swallowed (LVGL keeps rendering into its own buffers and keeps reading
- * input, which is how a key or click can stop the playback); when the child
- * exits the whole screen is invalidated and repainted. */
+ * are swallowed, and the main loop does not run LVGL at all: it sleeps in
+ * video_wait() until input arrives (a key or click stops the playback) or the
+ * child exits.  Its once-a-second status bar sampling and rendering used to
+ * delay the player's frame flips by tens of ms (~1 visible hitch per 10 s at
+ * 852x480).  When the child exits the whole screen is invalidated and repainted. */
 #include "src/display/lv_display_private.h"      /* disp->flush_cb: no public getter */
 static pid_t s_vid_pid;
-static lv_timer_t *s_vid_timer;
 static lv_display_flush_cb_t s_vid_orig_flush;
 
 static void video_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px)
@@ -327,7 +328,6 @@ bool video_active(void) { return s_vid_pid > 0; }
 static void video_done(void)
 {
     s_vid_pid = 0;
-    if (s_vid_timer) { lv_timer_delete(s_vid_timer); s_vid_timer = NULL; }
     lv_obj_invalidate(lv_screen_active());
 }
 
@@ -339,10 +339,11 @@ void video_stop(void)
     video_done();
 }
 
-static void video_poll(lv_timer_t *t)
+/* the main loop's step while the player runs, instead of lv_timer_handler() */
+void video_wait(void)
 {
-    (void)t;
     int st;
+    input_wait(200);
     if (s_vid_pid > 0 && waitpid(s_vid_pid, &st, WNOHANG) == s_vid_pid) video_done();
 }
 
@@ -363,7 +364,6 @@ void video_play_file(const char *path)
     }
     if (p < 0) return;
     s_vid_pid = p;
-    s_vid_timer = lv_timer_create(video_poll, 200, NULL);
 }
 
 /* ====================================================================== */

@@ -132,7 +132,8 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    the picture to the panel (`-1` = 1:1) and always shows a playback bar (`osd.c`: semi-transparent
    panel, opaque slider + title/time, DejaVu font from `mkfont.py`; `-O` = none). `src/apps/tests/scaletest` checks scenes
    by CRC. The desktop launches it from the Files
-   panel (`video_play_file()` in panels.c skips LVGL flushes while it runs; any key/click stops it).
+   panel (`video_play_file()` in panels.c; while it runs the desktop does no LVGL work, its main loop only
+   waits for input in `video_wait()`, and vidplay raises itself to nice -10; any key/click stops it).
    The Andes DSP (P-ext draft) instructions DO execute on this AE350 (kadd16/smul16/kdmbb tested)
    though misa/cpuinfo do not advertise them; only the Andes GCC (-mext-dsp) knows them.
    **Boot splash:** the U-Boot fork has a `gowin_lcd` video driver (`drivers/video/gowin_lcd.c`, DT

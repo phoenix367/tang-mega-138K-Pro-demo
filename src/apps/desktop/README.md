@@ -39,7 +39,11 @@ PC: host/netinput.py  --tcp 5555-->  board: inputd  --/dev/uinput-->  /dev/input
   needed). `--view [fps]` shows the board's framebuffer in the window (default
   10 fps; changed rows + RLE decoded with one numpy `repeat` per frame, `--raw`
   for full frames, no numpy = raw); `--snapshot out.ppm` saves one frame;
-  `--scale 2` doubles the window.
+  `--scale 2` doubles the window. When the board goes away (reboot, inputd
+  restarted, cable) the window keeps the last picture under a "reconnecting"
+  note and connects again by itself once inputd answers; every send/recv has a
+  5 s timeout, so a board that vanished without closing the connection is
+  noticed instead of freezing the window.
 - **`lvdesk/`** — the desktop (`/etc/init.d/S70desktop`, supervised restart loop,
   log in `/run/desktop.log`):
   - `main.c` — fbdev display, VT 1 to `KD_GRAPHICS` + keyboard `K_OFF` (restored on
@@ -63,7 +67,8 @@ PC: host/netinput.py  --tcp 5555-->  board: inputd  --/dev/uinput-->  /dev/input
     Mount/Unmount button and an "SD card" quick-access entry),
     **Audio** (WAV list from `/home/ae350`, `/tmp`; plays via a `wavplay` child
     process; "Test tone" writes and plays a 440/880 Hz stereo file), **Files** also plays `.avi`/`.mp4`/`.mkv`/`.mp3`/`.m4a` through `vidplay` (`src/apps/vidplay/`): the child owns
-    the framebuffer, the desktop swallows its own flushes meanwhile and any key or click ends it), **Network**
+    the framebuffer and the CPU: meanwhile the desktop runs no LVGL work at all, its main loop only
+    waits in `poll()` on the input devices, and any key or click ends it), **Network**
     (RX/TX kbit/s chart, mode/IP/gateway/MAC/link; **Configure** opens a dialog for
     static IP/prefix, gateway, DNS, DHCP, hostname and MAC that is validated like
     `boardcfg` does and saved with `boardcfg set`, so the daemon writes the EEPROM and

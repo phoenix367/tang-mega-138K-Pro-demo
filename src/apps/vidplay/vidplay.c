@@ -34,6 +34,7 @@
 #include <time.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <sys/time.h>
 #include <ucontext.h>
 #include <linux/fb.h>
@@ -645,6 +646,10 @@ int main(int argc, char **argv)
     if (!file && !getenv("VIDPLAY_IDCTTEST")) { fprintf(stderr, "usage: vidplay [-D pcm] [-f /dev/fbN] [-n] [-b] [-v] [-1] [-O] [-L] [-F] [-P prof] [-C frames] file\n"); return 2; }
     signal(SIGTERM, on_term);
     signal(SIGINT, on_term);
+    /* a frame flip a refresh late is a visible hitch: run ahead of background work
+     * (nice -10, as root -- the desktop starts it so; otherwise this simply fails).
+     * Not real-time: a CPU-bound decode must leave inputd room for the stop key. */
+    if (!bench) setpriority(PRIO_PROCESS, 0, -10);
     if (prof) prof_start();
     if (getenv("VIDPLAY_IDCTTEST")) { idct_selftest(); if (!file) return 0; }
     if (getenv("VIDPLAY_CIDCT")) idct_use_c = 1;

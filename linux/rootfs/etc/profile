@@ -1,6 +1,15 @@
 # /etc/profile -- login shell environment (sourced by -/bin/sh).
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin
-export TERM=linux
+# TERM: there is no terminfo database here; htop's ncurses has linux, vt100, vt220,
+# xterm, xterm-256color and screen compiled in.  An ssh client's terminal keeps 256
+# colours (forced to "linux", htop drew its dim text bold black, invisible on a dark
+# background); the serial console (getty: vt100) and the LCD get the Linux console.
+case "$TERM" in
+	xterm-256color|screen|linux) ;;
+	xterm*|*-256color|*-direct|alacritty|foot*|kitty*|wezterm|rxvt*|tmux*) TERM=xterm-256color ;;
+	*) TERM=linux ;;
+esac
+export TERM
 export PS1='\u@\h:\w\$ '
 umask 022
 

@@ -30,14 +30,16 @@ lv_obj_t *desk_fan_icon(lv_obj_t *parent, int size);
 void desk_fan_icon_set(lv_obj_t *icon, int rpm);
 
 /* panels.c: video playback (vidplay child owns the framebuffer while it runs; the
- * desktop keeps running but its flushes are skipped; any key or click stops it) */
+ * desktop does not run LVGL meanwhile, only video_wait(); any key or click stops it) */
 void video_play_file(const char *path);
 void video_stop(void);
 bool video_active(void);
+void video_wait(void);
 
 /* input.c */
 bool input_init(lv_display_t *disp);
 const char *input_status(void);
+void input_wait(int ms);              /* sleep until input or ms, then handle it (video playback) */
 
 /* sysinfo.c */
 typedef struct {

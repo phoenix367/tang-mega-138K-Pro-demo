@@ -31,7 +31,7 @@ atomic read-modify-write with interrupt-disabled plain loads and stores. See
 | Hardware JPEG decoder | `idct/` @0xE8040000, EXTM master 4 | `gowin-idct` misc driver (`PATCHES/0013`), `vidplay` `jpeg_hw.c` / `idct_hw.c` | MJPEG frames decoded by the gateware: Huffman decoding, dequantisation, IDCT, frame assembly into the YUV planes (Build 70); the CPU only parses headers, ~1 ms per 800×480 frame. Build 69 had the IDCT only |
 | Boot splash | `video/` | U-Boot `gowin_lcd` driver (fork) | `src/splash/splash.bmp` on the LCD from U-Boot until the kernel's fbdev driver starts |
 
-Current state in flash: gateware **Build 71**, kernel **#90**, keyed-autoboot U-Boot (2026-11-04).
+Current state in flash: gateware **Build 71**, kernel **#92**, keyed-autoboot U-Boot (2026-11-04).
 
 ## The desktop
 

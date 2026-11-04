@@ -3,8 +3,8 @@
  *
  * Finds /dev/input/event* devices by capability (ABS or REL X/Y = pointer,
  * KEY_A = keyboard), reads them non-blocking from LVGL's indev read
- * callbacks and keeps looking for them if none exist yet (inputd creates
- * them at boot).  The keyboard delivers printable characters (US layout,
+ * callbacks (from input_wait() while a video plays) and keeps looking for
+ * them if none exist yet (inputd creates them at boot).  The keyboard delivers printable characters (US layout,
  * shift/caps aware) plus LVGL navigation keys, which LVGL's own evdev
  * driver does not do.  Ctrl+Alt+Q asks the desktop to exit (the rc
  * supervisor restarts it).
@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/input.h>
+#include <poll.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/ioctl.h>
@@ -147,6 +148,73 @@ static void drop(int *fd)
     s_rescan_tick = lv_tick_get();
 }
 
+/* ---- reading the devices ------------------------------------------------ */
+/* everything queued on the pointer: position, wheel, button (a click ends a video) */
+static void mouse_drain(void)
+{
+    struct input_event ev[32];
+    ssize_t n;
+    while ((n = read(s_mfd, ev, sizeof(ev))) > 0) {
+        for (int i = 0; i < n / (int)sizeof(ev[0]); i++) {
+            switch (ev[i].type) {
+            case EV_ABS:
+                if (ev[i].code == ABS_X) s_mx = ev[i].value * (SCR_W - 1) / s_abs_max_x;
+                else if (ev[i].code == ABS_Y) s_my = ev[i].value * (SCR_H - 1) / s_abs_max_y;
+                break;
+            case EV_REL:
+                if (ev[i].code == REL_X) s_mx += ev[i].value;
+                else if (ev[i].code == REL_Y) s_my += ev[i].value;
+                else if (ev[i].code == REL_WHEEL) {
+                    /* wheel = scroll the object under the cursor */
+                    lv_obj_t *o = lv_indev_search_obj(lv_screen_active(), &(lv_point_t){ s_mx, s_my });
+                    while (o && !lv_obj_is_scrollable(o)) o = lv_obj_get_parent(o);
+                    if (o) lv_obj_scroll_by_bounded(o, 0, ev[i].value * 40, LV_ANIM_ON);
+                }
+                break;
+            case EV_KEY:
+                if (ev[i].code == BTN_LEFT) {
+                    if (ev[i].value && video_active()) { video_stop(); break; }   /* click ends a video */
+                    s_mdown = ev[i].value != 0;
+                }
+                break;
+            }
+        }
+    }
+    if (n < 0 && errno != EAGAIN) drop(&s_mfd);
+    if (s_mx < 0) s_mx = 0;
+    if (s_mx >= SCR_W) s_mx = SCR_W - 1;
+    if (s_my < 0) s_my = 0;
+    if (s_my >= SCR_H) s_my = SCR_H - 1;
+}
+
+/* everything queued on the keyboard: modifiers, hotkeys, keys for LVGL (any key ends a video) */
+static void kbd_drain(void)
+{
+    struct input_event ev[32];
+    ssize_t n;
+    while ((n = read(s_kfd, ev, sizeof(ev))) > 0) {
+        for (int i = 0; i < n / (int)sizeof(ev[0]); i++) {
+            if (ev[i].type != EV_KEY) continue;
+            int c = ev[i].code, v = ev[i].value;     /* 0 up, 1 down, 2 repeat */
+            switch (c) {
+            case KEY_LEFTSHIFT: case KEY_RIGHTSHIFT: s_shift = v != 0; continue;
+            case KEY_LEFTCTRL: case KEY_RIGHTCTRL: s_ctrl = v != 0; continue;
+            case KEY_LEFTALT: case KEY_RIGHTALT: s_alt = v != 0; continue;
+            case KEY_CAPSLOCK: if (v == 1) s_caps ^= 1; continue;
+            default: break;
+            }
+            if (v == 1 && video_active()) { video_stop(); continue; }   /* any key ends a video */
+            if (v == 1 && s_ctrl && s_alt && c == KEY_Q) { desk_request_exit(0); continue; }
+            if (v == 1 && s_ctrl && s_alt && c == KEY_H) { desk_go_home(); continue; }
+            uint32_t key = key_translate(c);
+            if (!key) continue;
+            if (v == 2) { kq_push(key, 0); kq_push(key, 1); }   /* repeat: release + press */
+            else kq_push(key, v);
+        }
+    }
+    if (n < 0 && errno != EAGAIN) drop(&s_kfd);
+}
+
 /* ---- LVGL read callbacks ---------------------------------------------- */
 static void mouse_read(lv_indev_t *indev, lv_indev_data_t *data)
 {
@@ -154,39 +222,7 @@ static void mouse_read(lv_indev_t *indev, lv_indev_data_t *data)
     if (s_mfd < 0) {
         if (lv_tick_elaps(s_rescan_tick) > 1000) { s_rescan_tick = lv_tick_get(); rescan(); }
     } else {
-        struct input_event ev[32];
-        ssize_t n;
-        while ((n = read(s_mfd, ev, sizeof(ev))) > 0) {
-            for (int i = 0; i < n / (int)sizeof(ev[0]); i++) {
-                switch (ev[i].type) {
-                case EV_ABS:
-                    if (ev[i].code == ABS_X) s_mx = ev[i].value * (SCR_W - 1) / s_abs_max_x;
-                    else if (ev[i].code == ABS_Y) s_my = ev[i].value * (SCR_H - 1) / s_abs_max_y;
-                    break;
-                case EV_REL:
-                    if (ev[i].code == REL_X) s_mx += ev[i].value;
-                    else if (ev[i].code == REL_Y) s_my += ev[i].value;
-                    else if (ev[i].code == REL_WHEEL) {
-                        /* wheel = scroll the object under the cursor */
-                        lv_obj_t *o = lv_indev_search_obj(lv_screen_active(), &(lv_point_t){ s_mx, s_my });
-                        while (o && !lv_obj_is_scrollable(o)) o = lv_obj_get_parent(o);
-                        if (o) lv_obj_scroll_by_bounded(o, 0, ev[i].value * 40, LV_ANIM_ON);
-                    }
-                    break;
-                case EV_KEY:
-                    if (ev[i].code == BTN_LEFT) {
-                        if (ev[i].value && video_active()) { video_stop(); break; }   /* click ends a video */
-                        s_mdown = ev[i].value != 0;
-                    }
-                    break;
-                }
-            }
-        }
-        if (n < 0 && errno != EAGAIN) drop(&s_mfd);
-        if (s_mx < 0) s_mx = 0;
-        if (s_mx >= SCR_W) s_mx = SCR_W - 1;
-        if (s_my < 0) s_my = 0;
-        if (s_my >= SCR_H) s_my = SCR_H - 1;
+        mouse_drain();
     }
     data->point.x = s_mx;
     data->point.y = s_my;
@@ -200,29 +236,7 @@ static void kbd_read(lv_indev_t *indev, lv_indev_data_t *data)
     if (s_kfd < 0) {
         if (lv_tick_elaps(s_rescan_tick) > 1000) { s_rescan_tick = lv_tick_get(); rescan(); }
     } else {
-        struct input_event ev[32];
-        ssize_t n;
-        while ((n = read(s_kfd, ev, sizeof(ev))) > 0) {
-            for (int i = 0; i < n / (int)sizeof(ev[0]); i++) {
-                if (ev[i].type != EV_KEY) continue;
-                int c = ev[i].code, v = ev[i].value;     /* 0 up, 1 down, 2 repeat */
-                switch (c) {
-                case KEY_LEFTSHIFT: case KEY_RIGHTSHIFT: s_shift = v != 0; continue;
-                case KEY_LEFTCTRL: case KEY_RIGHTCTRL: s_ctrl = v != 0; continue;
-                case KEY_LEFTALT: case KEY_RIGHTALT: s_alt = v != 0; continue;
-                case KEY_CAPSLOCK: if (v == 1) s_caps ^= 1; continue;
-                default: break;
-                }
-                if (v == 1 && video_active()) { video_stop(); continue; }   /* any key ends a video */
-                if (v == 1 && s_ctrl && s_alt && c == KEY_Q) { desk_request_exit(0); continue; }
-                if (v == 1 && s_ctrl && s_alt && c == KEY_H) { desk_go_home(); continue; }
-                uint32_t key = key_translate(c);
-                if (!key) continue;
-                if (v == 2) { kq_push(key, 0); kq_push(key, 1); }   /* repeat: release + press */
-                else kq_push(key, v);
-            }
-        }
-        if (n < 0 && errno != EAGAIN) drop(&s_kfd);
+        kbd_drain();
     }
     if (s_kq_r != s_kq_w) {
         data->key = s_kq[s_kq_r].key;
@@ -234,6 +248,17 @@ static void kbd_read(lv_indev_t *indev, lv_indev_data_t *data)
         data->key = last_key;
         data->state = LV_INDEV_STATE_RELEASED;
     }
+}
+
+/* While a video plays the desktop sleeps here instead of in LVGL's timer loop:
+ * until input arrives or `ms` pass, then the input is handled as the read
+ * callbacks would (a key or click stops the video).  No device = just sleep. */
+void input_wait(int ms)
+{
+    struct pollfd p[2] = { { .fd = s_mfd, .events = POLLIN }, { .fd = s_kfd, .events = POLLIN } };
+    if (poll(p, 2, ms) <= 0) return;           /* poll() skips the negative fds */
+    if (s_mfd >= 0 && p[0].revents) mouse_drain();
+    if (s_kfd >= 0 && p[1].revents) kbd_drain();
 }
 
 /* ---- cursor image (ARGB8888 from ASCII art) ---------------------------- */

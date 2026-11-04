@@ -188,7 +188,10 @@ origin of the scan-out buffer, in a plane layout made for the stream (32-byte st
 whole MCU rows). `GOWIN_LCD_IOC_SCALE` then fits the picture to the panel with the
 aspect kept: 480×270 and 640×360 fill 800×450, centred with black bars, and pictures
 larger than the panel shrink. The driver's buffers hold sources up to 1024×768
-(kernel #85+), and the IDCT core takes MJPEG up to 1024 wide. No CPU time goes into
+(kernel #85+), and the IDCT core takes MJPEG up to 1024 wide. Wider video falls back to
+FFmpeg's C decoder: 1280×524 takes 84 ms per frame (~9 fps shown, the rest skipped), and
+1280×720 fits no scan-out buffer at all, so it plays sound over the desktop's picture.
+852×480 is the size to encode for this panel. No CPU time goes into
 scaling, and a small clip decodes as fast as before.
 
 Checked with the music video re-encoded at 852×480, wider than the panel. `vidplay -C 300`
@@ -225,6 +228,42 @@ times a second, and redrew the whole strip, ~10 ms of cache misses, whenever the
 progress line moved a pixel.
 Fit-to-panel scaling costs no CPU: 480×270 MJPEG decodes in 1.1–1.2 ms per frame on the
 gateware path either way.
+
+## Frame timing on the panel: no hitches (2026-11-04)
+
+The panel refreshes at 52.47 Hz (19.06 ms: the 33.3 MHz pixel clock over the panel's
+total line and frame lengths). `YUV_SHOW` only points the core at a buffer; the core
+takes it over at the next frame end. So a 25 fps picture normally stays up for 2
+refreshes and every tenth one for 3, 24 fps for 2 or 3, and 30 fps for 1 or 2. A flip
+that lands within a ms or two of a frame end can move by one refresh (19 ms) either
+way. A hitch is a picture held well beyond that: the next one came late, or the
+player skipped a packet to catch up.
+
+`src/apps/tests/lcdmon` measures this at the panel. It records the buffer every
+refresh scanned out, which works because FRAMES and the FB_BASE latch change in the same
+bus cycle. With 852×480 music videos (MJPEG + AAC, gateware JPEG path) started from a
+shell while the desktop ran, there was a picture held 5–9 refreshes (95–172 ms) about
+every 10 s, often in pairs ~1.9 s apart, plus 3–10 skipped packets per clip. The
+desktop was the cause, not the decoder (the core needs 10–20 ms even for the largest
+frames). Until now lvdesk kept running LVGL while its vidplay child played: it sampled
+and rendered the status bar every second and only skipped the flush. Tora – "Eat The
+Sun", 852×480 at 25 fps, 120 s each run:
+
+| Run | Holds ≥ 5 refreshes | Longest hold | Packets skipped |
+|---|---|---|---|
+| from a shell, desktop running | 13 | 133 ms | 6 |
+| from a shell, desktop running, no playback bar (`-O`) | 14 | 152 ms | 9 |
+| from a shell, desktop stopped | 2 | 95 ms | 0 |
+| from the Files panel, before the fix | 8 | 152 ms | 1 |
+| from the Files panel, now | **0** | **57 ms** | **0** |
+
+The playback bar is not involved. The desktop now does no LVGL work while vidplay
+runs: its main loop only sleeps in `poll()` on the input devices (`video_wait()` in
+`panels.c`), so a key or click still stops the video. vidplay also raises itself to
+nice -10 when allowed, which it is as root, as the desktop starts it. Other
+background work then waits for it, for example `inputd` answering `netinput.py --view`
+frame requests (a 768 KB compare each), and the shell daemons. vidplay does not use
+SCHED_FIFO: a CPU-bound decode has to leave `inputd` room to deliver the stop key.
 
 ## MJPEG: the codec that fits this SoC
 

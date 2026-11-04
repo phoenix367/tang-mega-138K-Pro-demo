@@ -28,7 +28,9 @@ The board has no USB host, PS/2 or touch input, so the desktop is driven from th
 `src/apps/desktop/host/netinput.py` opens an 800×480 window: pointer, clicks, wheel and
 keys typed into it go to the board over TCP, and `--view` shows the panel's content in the
 same window. On the board, `inputd` feeds them into two uinput devices that `lvdesk`
-reads like a real mouse and keyboard.
+reads like a real mouse and keyboard. After a reboot from the desktop (or any lost
+connection) the window keeps the last picture and reconnects by itself once the board
+answers again.
 
 ```
 src/apps/desktop/host/netinput.py              # input only (board at 192.168.200.2)
@@ -75,7 +77,9 @@ Eight tiles open the panels; every panel has a Back button.
 - **Clicking a file:** a text file opens a preview, `.wav` plays through `wavplay`, and
   `.avi`, `.mp4`, `.mkv`, `.mp3` and `.m4a` play through `vidplay`.
 - **During playback:** the player owns the panel, and any key or click on the PC side
-  stops it.
+  stops it. Meanwhile the desktop does no work at all; it only waits for that key or
+  click. Its once-a-second status bar work used to delay frames: before, a picture was
+  held ~150 ms about every 10 s.
 - **SD card:** the status row shows the card with its size and free space, and a
   Mount/Unmount button.
 
@@ -216,6 +220,7 @@ non-reference frames.
 | MJPEG 800×480 + MP3 | gateware JPEG | 1.2 ms | 25 fps, nothing skipped |
 | MJPEG 852×480 + AAC (music video, 5 min) | gateware JPEG + scaler | 1.5 ms | 7641 of 7641 frames |
 | MJPEG 480×270 + MP3 | gateware JPEG + 1.67× upscale | 1.1 ms | 25 fps |
+| MJPEG 852×480 + AAC, from the Files panel (`lcdmon`, 120 s) | gateware JPEG + scaler | 1.9 ms | every frame on time, longest hold 57 ms |
 
 **Options and checks.**
 - `-n`: no audio, video paced by the wall clock.
