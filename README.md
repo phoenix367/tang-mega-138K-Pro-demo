@@ -26,12 +26,12 @@ atomic read-modify-write with interrupt-disabled plain loads and stores. See
 | Board EEPROM (1 KB, I2C) | `gpio/` | `gpio-mmio` + `i2c-gpio` + `i2c-mux-gpio` + `at24`; `boardcfg` daemon (`src/apps/boardcfg/`) | the Dock's `SYS_TWI` bus and 8-way mux; persistent MAC (read by the kernel at boot), hostname, time zone, serial, network (static IP/gateway/DNS or DHCP): `boardcfg set KEY VALUE` |
 | Keyboard / mouse | — | `inputd` → `/dev/uinput` | sent from the PC over TCP (`src/apps/desktop/host/netinput.py`) |
 | Console | — | UART2, 115200 | header pin B19; `scripts/uart_console.py` |
-| Video playback | `video/` YUV 4:2:0 scan-out mode | `vidplay` (`src/apps/vidplay/`, trimmed static FFmpeg 7.1.1), gowin-lcdfb YUV buffers | MJPEG/H.264 + MP3/AAC from the Files panel; decoders write straight into scan-out buffers the core converts itself (no CPU colour conversion since Build 68 / kernel #77): MJPEG 480×270 and 640×360 play at 25 fps with audio, 800×480 at ~20 fps. H.264 is memory-latency bound on this SoC (no L2, ~1.4 µs per cache miss): ~12 fps at 480×270 |
+| Video playback | `video/` YUV 4:2:0 scan-out, `idct/` JPEG decoder | `vidplay` (`src/apps/vidplay/`, trimmed static FFmpeg 7.1.1), gowin-lcdfb YUV buffers, `gowin-idct` | MJPEG + AAC/MP3 from the Files panel at 25 fps with ~1 ms of CPU per 800×480 frame: the gateware decodes the JPEG straight into a scan-out buffer that the LCD core converts, scales and overlays with the playback bar. H.264 was dropped: memory-latency bound on this SoC (no L2, ~1.4 µs per cache miss), ~12 fps at 480×270. See [doc/07-cores.md](doc/07-cores.md) |
 | Video scaler + OSD | `video/` (CTRL[4]/[5]) | gowin-lcdfb `SCALE` / `OSD` ioctls (`PATCHES/0006`), `vidplay` | nearest-neighbour scaling of the picture into a window, ARGB8888 overlay blended in hardware; vidplay fits videos to the panel and shows an info bar (Build 71 / kernel #84) |
 | Hardware JPEG decoder | `idct/` @0xE8040000, EXTM master 4 | `gowin-idct` misc driver (`PATCHES/0013`), `vidplay` `jpeg_hw.c` / `idct_hw.c` | MJPEG frames decoded by the gateware: Huffman decoding, dequantisation, IDCT, frame assembly into the YUV planes (Build 70); the CPU only parses headers, ~1 ms per 800×480 frame. Build 69 had the IDCT only |
 | Boot splash | `video/` | U-Boot `gowin_lcd` driver (fork) | `src/splash/splash.bmp` on the LCD from U-Boot until the kernel's fbdev driver starts |
 
-Current state in flash: gateware **Build 71**, kernel **#86**, keyed-autoboot U-Boot (2026-11-04).
+Current state in flash: gateware **Build 71**, kernel **#87**, keyed-autoboot U-Boot (2026-11-04).
 
 ## The desktop
 
@@ -41,13 +41,19 @@ rpm, free memory and the clock. Screens captured from the board's framebuffer:
 
 ![Home screen: eight tiles for System, Files, Audio, Network, Console, Settings, Date & Time and About](doc/images/desktop-home.png)
 
-| System: CPU load, memory, on-die sensors, fan | Date & Time: clock and tzdata time zone |
+| System: CPU load, memory, on-die sensors, fan | Network: throughput and eth0, static/DHCP settings in the EEPROM |
 |---|---|
-| ![System panel](doc/images/desktop-system.png) | ![Date & Time panel](doc/images/desktop-datetime.png) |
+| ![System panel](doc/images/desktop-system.png) | ![Network panel](doc/images/desktop-network.png) |
+| **Files: browse, play video and audio, mount the SD card** | **Date & Time: clock and tzdata time zone** |
+| ![Files panel](doc/images/desktop-files.png) | ![Date & Time panel](doc/images/desktop-datetime.png) |
 
-| Network: static/DHCP, address, gateway, DNS, hostname and MAC, kept in the board EEPROM |
-|---|
-| ![Network configuration dialog](doc/images/desktop-network.png) |
+`vidplay` with the playback bar on the LCD core's OSD layer, an 852×480 video fitted to the
+panel by the core's scaler (computed from the hardware's arithmetic; the scan-out of YUV
+buffers cannot be grabbed from the board):
+
+![vidplay](doc/images/vidplay-852x480.png)
+
+Every panel and the player are described in [doc/08-applications.md](doc/08-applications.md).
 
 ## Repository layout
 

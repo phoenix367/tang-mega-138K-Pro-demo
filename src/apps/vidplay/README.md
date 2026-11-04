@@ -7,7 +7,8 @@ built against the trimmed FFmpeg 7.1.1 from `scripts/rootfs/build_ffmpeg.sh` (de
 mjpeg/aac/mp3, demuxers avi/mov/mp3/matroska/wav, swresample; no threads, no asm, dummy
 atomics). H.264 was in until 2026-11-04 (the measurements are kept below); it is
 memory-latency bound on this SoC and was dropped once MJPEG + the YUV scan-out + the
-hardware IDCT gave full-rate playback.
+gateware JPEG decoder gave full-rate playback. `doc/08-applications.md` has the user's view
+with pictures, `doc/07-cores.md` the gateware side.
 
 Encoding for the panel (800×480; 16:9 sources become 800×450):
 ```
@@ -15,7 +16,7 @@ ffmpeg -i in.mp4 -vf scale=800:450 -c:v mjpeg -q:v 8 -pix_fmt yuvj420p -r 25 -c:
 ```
 
 ```
-vidplay [-D /dev/snd/pcmCxD0p] [-f /dev/fb0] [-n] [-b] [-v] [-1] [-o|-O] [-P prof] [-C frames] file
+vidplay [-D /dev/snd/pcmCxD0p] [-f /dev/fb0] [-n] [-b] [-v] [-1] [-O] [-P prof] [-C frames] file
    -1   no scaling: the picture 1:1, centred (default with gateware Build 71+: fit to the panel)
    -O   no playback bar (default with Build 71+: the bar is always shown)
    -n   no audio (video paced by the wall clock)
@@ -26,30 +27,46 @@ vidplay [-D /dev/snd/pcmCxD0p] [-f /dev/fb0] [-n] [-b] [-v] [-1] [-o|-O] [-P pro
         code, compare them inside the picture, report the cost per frame; exit 0 = exact
 ```
 
-- **Video path:** libavcodec decodes to YUV420P; `yuv_rows()` converts two rows at a time
-  to RGB565 with integer BT.601 tables into a cached row buffer that is `memcpy`'d into the
-  mmap'd `/dev/fb0`. The picture is drawn 1:1 and centred (black bars); frames larger than
-  800×480 are centre-cropped. No scaling: the CPU budget belongs to the decoder.
+- **Video path.** vidplay uses the fastest path the gateware and the kernel offer:
+  - **Gateware JPEG decode** (Build 70, `jpeg_hw.c`): the headers are parsed here, and
+    the tables and raw scan go to the IDCT core, which writes the frame into a scan-out
+    buffer.
+  - **FFmpeg's MJPEG decoder with the hardware IDCT** (Build 69, `idct_hw.c`).
+  - **FFmpeg alone** (`idct_dsp.c`: an Andes-DSP IDCT, bit-exact).
+
+  With gowin-lcdfb's YUV buffers (Build 68) the frame is decoded straight into scan-out
+  memory, so nothing is converted or copied. The core's scaler (Build 71) fits it to the
+  panel; `-1` gives 1:1, centred. Without YUV buffers the frame is converted to RGB565
+  with integer BT.601 tables and written to `/dev/fb0` with `pwrite()`, centred and
+  cropped.
 - **Audio path:** libswresample to S16 stereo at the stream rate, written with the raw
   ALSA ioctls (`HW_PARAMS`/`WRITEI_FRAMES`, period 2048, buffer 16384 frames) like
   `wavplay`; the PT8211 core's NCO takes any rate.
 - **Sync:** the audio clock (frames written minus `SNDRV_PCM_IOCTL_DELAY`) is the master.
-  A video frame is shown when its pts is due, dropped (not converted) when more than one
-  frame period late, and while behind the decoder skips non-reference frames
-  (`AVDISCARD_NONREF`). Without audio the wall clock paces.
+  A video frame is shown when its pts is due. While behind, an intra-only stream (MJPEG)
+  skips whole packets without decoding them; other codecs drop late frames (at most two
+  in a row) and skip non-reference frames (`AVDISCARD_NONREF`). Without audio the wall
+  clock paces.
 - **Loop:** one packet queue per stream, filled ahead (512 packets each); the audio
   stage tops the ALSA ring up completely every iteration (a video decode costs ~60 ms,
   the ring holds 340 ms); a packet the video decoder refuses (`EAGAIN`) is retried, not
   dropped (dropping it loses slices and smears the following frames).
-- **Profiling switches (environment):** `VIDPLAY_NOFB` (convert only), `VIDPLAY_NOCONV`
-  (framebuffer write only), `VIDPLAY_NOSKIP` (no decoder-side skipping), `VIDPLAY_XRUNLOG`
-  (log each ALSA underrun), `VIDPLAY_RING=frames` (ALSA buffer size, default 16384).
-- **Exit:** `SIGTERM`/`SIGINT` stop cleanly (ALSA drop, framebuffer cleared); the final
-  `VIDPLAY ...` line gives frames decoded/shown/dropped and the decode and convert cost
-  per frame.
+- **Switches (environment), for A/B tests and profiling:**
+  - `VIDPLAY_NOHWJPEG`, `VIDPLAY_NOHWIDCT`, `VIDPLAY_NOYUV`: turn off the gateware JPEG
+    path, the hardware IDCT, or the YUV buffers;
+  - `VIDPLAY_OSDFREEZE`: draw the playback bar once and never update it;
+  - `VIDPLAY_NOFB` (convert only) and `VIDPLAY_NOCONV` (framebuffer write only), for the
+    RGB path;
+  - `VIDPLAY_NOSKIP` (no catch-up skipping), `VIDPLAY_XRUNLOG` (log each ALSA underrun),
+    `VIDPLAY_RING=frames` (ALSA buffer size, default 16384), `VIDPLAY_RING_KB` (IDCT
+    record ring size).
+- **Exit:** `SIGTERM`/`SIGINT` stop cleanly: ALSA drop, the panel back to the RGB
+  desktop with the scaler and OSD off. The final `VIDPLAY ...` line gives the frames
+  decoded / shown / dropped and the decode and show cost per frame. The hardware paths
+  add their own counters.
 
-The desktop's Files panel launches it for `.mp4`/`.mkv`/`.mp3` files and pauses its own
-rendering until it exits (any key or click stops the playback).
+The desktop's Files panel launches it for `.avi`/`.mp4`/`.mkv`/`.mp3`/`.m4a` files and
+pauses its own rendering until it exits (any key or click stops the playback).
 
 ## Build
 

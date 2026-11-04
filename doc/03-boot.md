@@ -8,8 +8,8 @@ runs XIP from it via the dedicated config pins).
 ```mermaid
 graph TD
   A["0x000000 — FPGA bitstream (.fs)<br/>region reserved up to 0x600000"]
-  B["0x600000 — U-Boot (XIP, CPU 0x80000000)<br/>DTB @ 0x6F0000"]
-  C["0x800000 — gzipped OpenSBI fw_payload<br/>(OpenSBI + kernel + DTB)"]
+  B["0x600000 — U-Boot (XIP, CPU 0x80000000)<br/>DTB @ 0x6F0000, boot splash BMP @ 0x700000"]
+  C["0x800000 — LZMA OpenSBI fw_payload<br/>(OpenSBI + kernel + DTB)"]
   D["… free …"]
   A --> B --> C --> D
 ```
@@ -19,6 +19,7 @@ graph TD
 | `0x00_0000` | — (config) | FPGA bitstream; the FPGA loads this on power-up |
 | `0x60_0000` | `0x8000_0000` | U-Boot XIP image (`.text` runs in place) |
 | `0x6F_0000` | `0x800F_0000` | U-Boot DTB (`CONFIG_SYS_FDT_BASE`) |
+| `0x70_0000` | `0x8010_0000` | boot splash BMP (`src/splash/splash.bmp`, appended by `scripts/build_uboot.sh`) |
 | `0x80_0000` | — | `fw_payload_lzma.bin`, LZMA-decompressed by U-Boot into DRAM (8 MB region) |
 
 For **bare-metal** work, the firmware `.bin` replaces U-Boot at `0x60_0000`
@@ -41,6 +42,7 @@ sequenceDiagram
   FPGA->>A25: release reset → fetch @ 0x80000000
   Note over A25: harts_early_init():<br/>enable I/D cache, DC_COHEN,<br/>clear ECC/prefetch/CCTL_SUEN
   A25->>UB: run U-Boot XIP
+  Note over UB: preboot: bmp display 0x80100000 →<br/>gowin_lcd driver, splash on the LCD
   UB->>DDR: lzmadec fw_payload (flash 0x800000) → DRAM 0x0, ~9 s
   Note over UB: lzmadec 0x80200000 0 0x2000000 →<br/>OpenSBI@0x0, kernel@0x400000 (4 MB aligned)
   UB->>SBI: jump to 0x0

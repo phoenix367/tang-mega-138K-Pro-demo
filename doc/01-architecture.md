@@ -5,9 +5,11 @@
 The active design (`ae350_demo_top`, top file `src/rtl/ae350_demo.v`) instantiates the
 Gowin-provided **AE350 hard SoC** and surrounds it with fabric IP: the custom
 `ddr_bridge` in front of the hard DDR3 PHY, the Triple-Speed Ethernet MAC with the
-custom `eth_dma` engine, the LCD scan-out, audio, microSD, sensor, fan and board-GPIO
-(Dock I2C bus + EEPROM) cores on the SoC's external AHB slave port, and three PLLs. The diagram shows the memory and
-network paths; the other peripherals hang off the same EXTS/EXTM ports (section 2).
+custom `eth_dma` engine, the LCD core (RGB565 / YUV scan-out, scaler, OSD), the hardware
+JPEG decoder, audio, microSD, sensor, fan and board-GPIO (Dock I2C bus + EEPROM) cores on
+the SoC's external AHB slave port, and three PLLs. The diagram shows the memory and
+network paths; the other peripherals hang off the same EXTS/EXTM ports (section 2). The
+cores themselves are described in [07-cores.md](07-cores.md).
 
 ```mermaid
 graph TB
@@ -30,10 +32,11 @@ graph TB
     DDRPHY["DDR3_Memory_Interface_Top<br/>(hard PHY, user clock 100 MHz)"]
 
     DMA["gw_eth_dma_core<br/>(RX+TX DMA, CSR, MDIO)"]
-    ARB["ahb_arbiter5<br/>eth RX, eth TX, SD, audio → 1"]
+    ARB["ahb_arbiter5<br/>eth RX, eth TX, SD, audio, JPEG → 1"]
     BR["extm_bridge<br/>32 ↔ 64 data"]
     MAC["Triple_Speed_Ethernet_MAC_Top<br/>(RGMII, MDIO)"]
-    VID["video (LCD scan-out)"]
+    VID["video (LCD scan-out,<br/>YUV, scaler, OSD)"]
+    IDCT["idct (JPEG decoder:<br/>entropy + IDCT + bands)"]
     AUD["audio (PT8211 + DMA)"]
     SDH["sdhost (4-bit SD + DMA)"]
     SEN["sensor / fan / gpio"]
@@ -59,10 +62,12 @@ graph TB
   EXTS --> AUD
   EXTS --> SDH
   EXTS --> SEN
+  EXTS --> IDCT
   DMA -->|"m0 RX write"| ARB
   DMA -->|"m1 TX read"| ARB
   SDH -->|"m2"| ARB
   AUD -->|"m3"| ARB
+  IDCT -->|"m4"| ARB
   ARB --> BR --> EXTM --> DDRBR
   DMA <-->|"byte stream"| MAC
   DMA -->|"miim_*"| MAC
@@ -70,6 +75,7 @@ graph TB
   DMA -->|"IRQ 4"| PLIC
   AUD -->|"IRQ 11"| PLIC
   SDH -->|"IRQ 12"| PLIC
+  IDCT -->|"IRQ 13"| PLIC
 ```
 
 Key integration facts (`src/rtl/ae350_demo.v`):
@@ -81,9 +87,10 @@ Key integration facts (`src/rtl/ae350_demo.v`):
   custom DDR arbiter needed. EXTM is **32-bit address but 64-bit data**, so
   `extm_bridge.v` adapts the 32-bit DMA masters to 64-bit (write replicates to
   both lanes; read selects the lane by `HADDR[2]`).
-- Four DMA masters merge onto EXTM through `src/rtl/audio/rtl/ahb_arbiter5.v`
-  (fixed priority, registered grant = no mid-transfer preemption): eth RX-write
-  `m0`, eth TX-read `m1`, the SD host's DMA `m2` and the audio fetch engine `m3`.
+- Five DMA masters merge onto EXTM through `src/rtl/audio/rtl/ahb_arbiter5.v`
+  (fixed priority m0 > m2 > m3 > m4 > m1, registered grant = no mid-transfer
+  preemption): eth RX-write `m0`, eth TX-read `m1`, the SD host's DMA `m2`, the audio
+  fetch engine `m3` and the JPEG decoder `m4` (record reads, band writes).
   It grew out of `eth_dma/rtl/eth_ahb_arbiter.v`, which replaced the Gowin
   AHBBusArbiter IP (that one only forwards a fixed 1 MB window at `0x80000000` and
   is unsuitable for DMA). The SoC's own DMAC cannot reach fabric cores at all.
@@ -103,12 +110,13 @@ Key integration facts (`src/rtl/ae350_demo.v`):
 | PLIC | `0xE400_0000` | — | interrupt controller |
 | PLMT (mtime) | `0xE600_0000` | — | machine timer, **50 MHz** tick |
 | **eth_dma CSR (EXTS)** | `0xE800_0000` | 2 KB | DMA control/status, MDIO (see [05-eth-dma.md](05-eth-dma.md)); IRQ EXT_INT[0] = PLIC 4 |
-| **LCD scan-out (EXTS)** | `0xE800_1000` | 256 B | `src/rtl/video/`, framebuffer address/timing; reads DDR via the bridge's video port |
+| **LCD core (EXTS)** | `0xE800_1000` | 256 B | `src/rtl/video/`: RGB565 / YUV 4:2:0 scan-out, scaler, ARGB OSD, frame CRC; reads DDR via the bridge's video port |
 | **Audio PT8211 (EXTS)** | `0xE800_2000` | 256 B | `src/rtl/audio/`, FIFO + DMA fetch engine; IRQ EXT_INT[1] = PLIC 11 |
 | **ADC sensors (EXTS)** | `0xE800_4000` | 256 B | `src/rtl/sensor/`, die temperature + supply rails (`HADDR[14]`) |
 | **Fan (EXTS)** | `0xE800_8000` | 256 B | `src/rtl/fan/`, PWM + tacho (`HADDR[15]`) |
 | **Board GPIO (EXTS)** | `0xE801_0000` | 16 B | `src/rtl/gpio/`, data/direction pair for the Dock I2C bus, TWI mux, EEPROM WP (`HADDR[16]`) |
 | **SD host (EXTS)** | `0xE802_0000` | 256 B | `src/rtl/sdhost/`, 4-bit SD + DMA (`HADDR[17]`); IRQ EXT_INT[2] = PLIC 12 |
+| **JPEG decoder (EXTS)** | `0xE804_0000` | 256 B | `src/rtl/idct/`: record ring, entropy decoder, IDCT, band flushes into YUV planes (`HADDR[18]`); IRQ EXT_INT[3] = PLIC 13 |
 | SMU | `0xF010_0000` | — | system management (HSM / reset) |
 | UART2 | `0xF030_0000` | — | console (header pin B19 @ 115200) |
 | WDT (atcwdt200) | `0xF050_0000` | — | watchdog (drives reset) |
@@ -198,7 +206,8 @@ src/rtl/
   triple_speed_ethernet_mac/  Gowin TSE MAC (encrypted)
   gw_ahb_ethernet*.v      MAC wrapper
   eth_dma/                the custom DMA engine: rtl/, tb/, formal/, lib/ (see 05-eth-dma.md)
-  video/                  LCD scan-out core (README)
+  video/                  LCD core: scan-out, YUV, scaler, OSD (README, tb/run_tb.sh)
+  idct/                   hardware JPEG decoder: entropy + IDCT + frame assembly (README, tb/)
   audio/                  PT8211 output core + DMA fetch engine, ahb_arbiter5 (README)
   sdhost/                 4-bit SD host + DMA (README)
   sensor/                 hard-ADC scan sequencer (README)
@@ -207,8 +216,11 @@ src/rtl/
   key_debounce.v, pll_init.v  reset debounce, PLL bring-up
   led_blink.*             disabled sample design
 src/firmware/             bare-metal AE350 test firmware + DMA self-test
-src/apps/desktop/         LVGL desktop (lvdesk), inputd, wavplay; host/netinput.py
-src/apps/tests/           userspace hardware probes (atomics, memory, fb, audio, ...)
+src/apps/desktop/         LVGL desktop (lvdesk), inputd; host/netinput.py
+src/apps/vidplay/         video player (FFmpeg, gateware JPEG decode, scaler fit, OSD bar)
+src/apps/boardcfg/        settings daemon for the Dock EEPROM
+src/apps/tests/           hardware checks and probes (fb/YUV/scaler/IDCT CRC tests, wavplay, atomics, memory)
+src/splash/               U-Boot boot splash (make_splash.py)
 linux/                    kernel DT, busybox config, rootfs, initramfs node list
 external/                 U-Boot / OpenSBI / Linux board forks (submodules)
 PATCHES/                  the board changes as patches; scripts/rootfs/ rebuilds the rootfs

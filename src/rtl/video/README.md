@@ -119,9 +119,10 @@ line 0, so with vstart ≥ 2 every frame is entirely old or entirely new. The te
 moves the OSD in mid-frame and checks exactly that.
 
 **Bandwidth.** A full-screen OSD adds 4 bytes per pixel, 100 BL8 reads a line on top
-of the 50 of the picture. A 56-line info bar adds about 12 %, and measured on the
-board it costs the CPU nothing noticeable: a frozen bar over playback left the load
-unchanged within 0.4 %.
+of the 50 of the picture. vidplay's 64-line bar adds 6400 reads per frame (~11 MB/s,
+about 28 % on top of an 800×450 YUV picture's ~23 000). Measured on the board it costs
+the CPU nothing noticeable: a frozen bar over playback left the load unchanged within
+0.4 %.
 
 **Results (Build 71, kernel #83+).** In simulation, `tb/run_tb.sh` runs 15
 configurations pixel-exact against the model, including upscale, 2.5× downscale, odd

@@ -300,3 +300,59 @@ a PRIMARY wire is silently ignored). With that the RGMII capture slacks are back
 Also in Build 65: the bridge's five 32-bit statistics counters (`pc_hit0/dem/pf/wr/
 tagmis`) are `pipe_counter` instances. As plain `+ 1` they were 13-level LUT chains and the
 only paths in the 100 MHz domain below zero after the clock changes moved the placement.
+
+## Video decoding on the A25 (2026-11-04, Builds 68–71)
+
+The A25 has a 32 KB L1 and no L2, and a dependent cache miss costs ~1.4 µs. That, not
+arithmetic, decides what video this SoC can decode. Each step below removed whatever the
+profile said was largest.
+
+| Step | 800×480 decode, CPU per frame | What the profile said next |
+|---|---|---|
+| H.264, FFmpeg | (480×270: ~60 ms, ~12 fps) | memory-latency bound: reference-frame reads miss; dropped |
+| MJPEG, FFmpeg, RGB565 conversion on the CPU | 40 ms + ~50 ms convert/write | the colour conversion cost as much as decoding |
+| + YUV 4:2:0 scan-out (Build 68): the core converts | 40 ms | 55 % `idct_put`: 8 scattered row writes per block into a cold frame, one write-allocate miss each (~18 ms) |
+| + IDCT and band assembly in the gateware (Build 69) | 26–30 ms | Huffman 33 %, writing the records 24 %, ioctls 10 % |
+| + entropy decoding in the gateware (Build 70) | 1.2 ms | header parse + copying the scan into the ring |
+
+- **MJPEG over H.264.** Intra-only frames have no reference reads, so MJPEG decodes ~4×
+  faster per pixel. The Andes DSP instructions do execute on this A25 (`kmda`, `kadd16`, ...)
+  but are not the lever. A DSP IDCT was bit-exact and 1.2–1.5× faster on hot data, and
+  no faster in the real decode.
+- **Moving the misses does not remove them.** Staging a 16-line band in L1 and copying
+  it out sequentially was slower than writing directly: the stage evicted the decoder's
+  own working set. Only a writer outside the cache, the gateware writing whole lines, took
+  the misses away.
+- **Bit-exactness as the test oracle.** Every gateware stage reproduces FFmpeg's integer
+  arithmetic: the simple IDCT including its row DC shortcut, and `mjpegdec.c`'s DC
+  predictor, int16 truncation and RST handling. So "identical to FFmpeg" is a complete
+  test. `vidplay -C` checks that on the board over whole clips, and `jpeg_ref.py` in the
+  testbench.
+
+Gotchas from the same work:
+- **`ahb_master` write data.** `w_req` means "this beat's data was consumed". A band RAM
+  with one cycle of read latency cannot feed it directly, so the flushed lines came out one
+  word late. A small prefetch FIFO between the RAM and the master fixed it.
+- **Overlap exposes shared registers.** When the parser stopped waiting for the IDCT
+  engine (Build 70, to decode the next block meanwhile), two latent bugs appeared. The
+  engine took its band-RAM write address from the parser's position registers, which the
+  next record header overwrote. And a header cleared the coefficient buffer while the
+  engine was still reading it. The engine now latches its block's position, and headers
+  wait until the engine has read its block.
+- **GowinSyn's loop limit.** An `initial` loop over more than 2000 iterations is an error
+  (EX3934), so a RAM model with an init loop becomes a black box at depth 2048. The band
+  RAMs use a plain RAM module without initialisation.
+- **The fbdev mmap is the slow way to write frames.** gowin-lcdfb's deferred I/O
+  write-protects the pages after every flush, which means a page fault per page per
+  frame. `pwrite()` copies into the kernel buffer and writes the range back once.
+- **Read all of stderr.** A YUV show call passed the centred picture's offsets as the
+  scan-out base, which pushed the chroma window past the buffer, so the driver refused
+  every frame smaller than the panel. Playback statistics looked normal, and only the
+  per-frame error lines, cut off by `tail`, showed it.
+- **Scaling needs one read port per plane.** The YUV line RAM was shared by the three
+  planes and read once per 16-pixel group, which only works 1:1. The scaler needed one
+  RAM per plane: 32 block RAMs instead of 8.
+- **Cheap per-iteration work adds up.** vidplay's playback bar first cost ~4 % of the
+  CPU, because it formatted its time strings on every main-loop pass, ~500 times a second.
+  Freezing the bar after one draw showed the OSD layer's DDR traffic costs nothing; an
+  integer compare before any formatting brought the bar down to ~1.5 %.
