@@ -108,6 +108,14 @@ git apply 0011-linux-gowin-sdhost.patch                       # in linux/ (indep
   `GOWIN_LCD_IOC_YUV_DMA` (a buffer's DMA address for another master -- the IDCT core of
   0013 -- with flags to write the CPU's copy back and/or drop the buffer from the cache) and the `YUV_SHOW` flag
   `GOWIN_LCD_YUV_NOSYNC` (no write-back: a DMA master wrote the buffer).
+- Scaler and OSD (gateware Build 71+, kernel #83): `GOWIN_LCD_IOC_CAPS` (the core's CAPS
+  register: YUV / scaler / OSD; the OSD buffers' layout and mmap offset),
+  `GOWIN_LCD_IOC_SCALE` (source size and window; the driver computes the 16.16 steps),
+  `GOWIN_LCD_IOC_OSD` (show one of `osd_buffers`, default 2, panel-sized ARGB8888
+  buffers mmap()ed after the YUV buffers, written back from the cache, in a window).
+  RGB mode, and closing the file, turn both off. With the scaler the YUV buffers hold
+  sources up to `yuv_max_w` x `yuv_max_h` (default 1024x768, kernel #85): the caller lays
+  out its planes and YUV_SHOW checks them for the scaler's source height.
 - **Not in the patch** (Kconfig): `CONFIG_FB=y`, `CONFIG_FB_GOWIN_LCD=y`,
   `CONFIG_FRAMEBUFFER_CONSOLE=y`, `CONFIG_LOGO=y` (+ `LOGO_LINUX_CLUT224`), and the
   `lcd@e8001000` node in `linux/ae350-linux.dts`.

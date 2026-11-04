@@ -37,11 +37,18 @@ idct_hw.o: idct_hw.c idct_hw.h gowin-idct.h gowin-lcdfb.h
 jpeg_hw.o: jpeg_hw.c jpeg_hw.h idct_hw.h gowin-idct.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-vidplay.prof: vidplay.c idct_dsp.o idct_hw.o jpeg_hw.o $(STAGING)/lib/libavcodec.a
-	$(CC) $(filter-out -s,$(CFLAGS)) -o $@ $< idct_dsp.o idct_hw.o jpeg_hw.o $(filter-out -s,$(LDFLAGS)) $(WRAP) $(LIBS)
+osd.o: osd.c osd.h osd_font.h gowin-lcdfb.h
+	$(CC) $(CFLAGS) -c -o $@ $<
 
-vidplay: vidplay.c idct_hw.h jpeg_hw.h idct_dsp.o idct_hw.o jpeg_hw.o $(STAGING)/lib/libavcodec.a
-	$(CC) $(CFLAGS) -o $@ $< idct_dsp.o idct_hw.o jpeg_hw.o $(LDFLAGS) $(WRAP) $(LIBS)
+# the OSD font (needs Pillow and DejaVu; the generated header is in the repo)
+font:
+	python3 mkfont.py > osd_font.h
+
+vidplay.prof: vidplay.c idct_dsp.o idct_hw.o jpeg_hw.o osd.o $(STAGING)/lib/libavcodec.a
+	$(CC) $(filter-out -s,$(CFLAGS)) -o $@ $< idct_dsp.o idct_hw.o jpeg_hw.o osd.o $(filter-out -s,$(LDFLAGS)) $(WRAP) $(LIBS)
+
+vidplay: vidplay.c idct_hw.h jpeg_hw.h osd.h idct_dsp.o idct_hw.o jpeg_hw.o osd.o $(STAGING)/lib/libavcodec.a
+	$(CC) $(CFLAGS) -o $@ $< idct_dsp.o idct_hw.o jpeg_hw.o osd.o $(LDFLAGS) $(WRAP) $(LIBS)
 	@n=$$($(OBJDUMP) -d $@ | grep -cE '\b(amo[a-z.]+|lr\.w|sc\.w)\b' || true); \
 	 [ "$$n" = 0 ] || { echo "error: vidplay contains $$n lr/sc/amo instructions"; exit 1; }; \
 	 echo ">> vidplay: $$(stat -c %s $@) bytes, static, 0 lr/sc/amo"
@@ -50,6 +57,6 @@ install: vidplay
 	install -m 0755 vidplay $(ROOTFS)/usr/bin/vidplay
 
 clean:
-	rm -f vidplay vidplay.prof idct_dsp.o idct_hw.o jpeg_hw.o
+	rm -f vidplay vidplay.prof idct_dsp.o idct_hw.o jpeg_hw.o osd.o
 
-.PHONY: all install clean
+.PHONY: all install clean font

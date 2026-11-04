@@ -8,9 +8,9 @@ via write() or mmap()); the gateware only scans the framebuffer out.
 rtl/video_core.v    top: registers + fetch + line RAM + scan-out
 rtl/video_csr.v     AHB-lite registers on EXTS @ 0xE8001000 (bus clock, 50 MHz)
 rtl/video_fetch.v   line fetcher on the DDR bridge's video port (DDR3 user clock, 100 MHz)
-rtl/video_out.v     timing generator, RGB565 -> RGB666, frame CRC (pixel clock, 33.3 MHz)
+rtl/video_out.v     timing, scaler, YUV -> RGB, OSD blend, RGB666, frame CRC (pixel clock, 33.3 MHz)
 tb/tb_video.v       the core on the real ahb_ddr3_bridge + DDR3 user-port model
-tb/run_tb.sh        3 runs: no back-pressure, 50 %, starved (underruns must be counted)
+tb/run_tb.sh        15 runs: RGB / YUV, back-pressure, starved fetch, scaler, OSD (see below)
 ```
 
 ```
@@ -18,7 +18,8 @@ tb/run_tb.sh        3 runs: no back-pressure, 50 %, starved (underruns must be c
   CPU ──────────────► video_csr        ahb_ddr3_bridge ──video port──► video_fetch
                           │ config                (BL8 = 32 B reads)          │
                           ▼                                                   ▼
-  panel ◄── video_out ◄── line RAM: 2 lines × 64 × 256 bit (write: DDR clock, read: pclk)
+  panel ◄── video_out ◄── line RAMs, 2 lines each (write: DDR clock, read: pclk):
+                          Y/RGB 64, U 32, V 32, OSD 128 words of 256 bit
 ```
 
 ## Panel and timing
@@ -49,6 +50,19 @@ repeating the 5-bit channels' MSB.
 | 0x30 | FB_BASE_U | U plane physical address, 32 B aligned (YUV mode) |
 | 0x34 | FB_BASE_V | V plane physical address, 32 B aligned (YUV mode) |
 | 0x38 | STRIDE_C | bytes per chroma line, multiple of 32 (YUV mode) |
+| 0x3C | SRC_SIZE | scaler: [15:0] source width (YUV ≤ 2048, RGB ≤ 1024), [31:16] height |
+| 0x40 | DST_POS | [15:0] x, [31:16] y of the picture window in the active area |
+| 0x44 | DST_SIZE | [15:0] width, [31:16] height of the window |
+| 0x48 | STEP_X | source pixels per window pixel, 16.16 (`src_w * 65536 / dst_w`, < 64.0) |
+| 0x4C | STEP_Y | source lines per window line, 16.16 |
+| 0x50 | BG | RGB565 colour around the window |
+| 0x54 | OSD_BASE | first OSD pixel, ARGB8888 (little-endian `0xAARRGGBB` words), 32 B aligned |
+| 0x58 | OSD_STRIDE | bytes per OSD line, multiple of 32 |
+| 0x5C | OSD_POS | [15:0] x, [31:16] y of the OSD window |
+| 0x60 | OSD_SIZE | [15:0] width (≤ 1024), [31:16] height |
+| 0x64 | CAPS | [0] YUV, [1] scaler, [2] OSD (0 on cores before Build 71) |
+
+CTRL also has [4] scaler on and [5] OSD on (Build 71+).
 
 Change timing only while CTRL is 0. Enable/test/YUV mode take effect at the next frame start.
 
@@ -67,9 +81,61 @@ The pixel-clock counters are 12 bits, so totals can be at most 4095, and htotal 
 at least 16.
 The reset values are the panel above.
 
+## Scaler and OSD (Build 71+)
+
+**Line RAMs.** Up to Build 70 the three YUV planes of a line shared one 256-bit RAM,
+read once per 16-pixel group, which only works 1:1. The line buffer is now four
+double-buffered RAMs: Y/RGB (64 words per half: 2048 Y samples or 1024 RGB565
+pixels), U and V (32 words, 1024 samples each) and OSD (128 words, 1024 ARGB pixels).
+Each has its own read port, so every pixel reads the words that hold its own samples,
+and any scale factor works. That is 32 block RAMs instead of 8.
+
+**Scaler (CTRL[4]), nearest neighbour.** The source picture (SRC_SIZE, at FB_BASE…) is
+shown in the window DST_POS/DST_SIZE; the rest of the active area gets BG. Window line k
+shows source line `floor((k·STEP_Y + STEP_Y/2) / 65536)`, window pixel k source pixel
+`floor((k·STEP_X + STEP_X/2) / 65536)`, both clamped to the source size. That is pixel
+centres sampled, so a step of 1.0 is the identity. The vertical DDA runs in the
+next-line pipeline and the source line goes out with the fetch request. Lines outside
+the window, with no OSD on them, are not fetched at all. The horizontal DDA runs per
+pixel. The fetch reads `src_w` pixels of the needed source line, so downscaling also
+saves DDR bandwidth. With CTRL[4] = 0 the bus side sets the window to the whole active
+area, the steps to 1.0 and the source to the active size: Build 68 behaviour, bit for bit.
+
+**OSD (CTRL[5]).** An ARGB8888 layer in its own window, one OSD pixel per panel pixel,
+fetched per line after the video planes. It is blended over the picture or background
+in RGB888 as `out = (osd·a' + pic·(256 − a')) >> 8` with `a' = A + A[7]`, so A = 0 leaves
+the picture bit-exact and A = 255 shows the OSD pixel. It works in RGB and YUV mode.
+
+**Pipeline.** The pixel stages are: windows and DDA, then the four RAM addresses with
+the sample index clamped, then RAM data, then sample selection. Next come the YUV
+products, sums and the picture pixel, or RGB565 widened to RGB888, test bars or
+background. The last stages are the blend, the RGB565 pack, then the outputs and the
+CRC. The CRC is still taken over the RGB565 pixels as sent, so a test can check any
+scene against a model (`src/apps/tests/scaletest.c`).
+
+**Frame-exact changes.** Like the framebuffer bases, the scaler and OSD registers are
+latched on the bus side at each frame end. The pixel clock takes them over at the end of
+line 0, so with vstart ≥ 2 every frame is entirely old or entirely new. The testbench
+moves the OSD in mid-frame and checks exactly that.
+
+**Bandwidth.** A full-screen OSD adds 4 bytes per pixel, 100 BL8 reads a line on top
+of the 50 of the picture. A 56-line info bar adds about 12 %, and measured on the
+board it costs the CPU nothing noticeable: a frozen bar over playback left the load
+unchanged within 0.4 %.
+
+**Results (Build 71, kernel #83+).** In simulation, `tb/run_tb.sh` runs 15
+configurations pixel-exact against the model, including upscale, 2.5× downscale, odd
+factors such as 150→61, RGB-mode scaling, windows with background, the OSD alone and
+over scaled pictures, and the mid-frame OSD move. On the board, `scaletest` checks
+seven scenes by frame CRC with no underruns: up to 800×450, down to a 400×240 window,
+333×211→761×462, OSD over 1:1, the info bar over an upscaled picture, and a
+full-screen OSD over a small window. Timing: lcd_pclk 95.8 MHz (needs 33.3), the DDR
+clock domain 100.08 MHz, all clocks met. Cost: the core grew from 8 to 32 block RAMs,
+about 1k LUTs and 3 multipliers.
+
 ## How a line is fetched
 
-Early in each line period (at h = 7) `video_out` requests the line shown during the *next*
+Early in each line period (at h = 11) `video_out` requests the line shown during the *next*
 period (toggle handshake into the DDR clock). `video_fetch` reads it as `hactive/16`
 BL8 reads (32 B = 16 pixels each on the 32-bit DDR3 bus; 16 B = 8 pixels before the 1 GB
 change) into the free half of the line RAM and toggles back.

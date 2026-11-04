@@ -18,7 +18,7 @@ ARCH := -march=rv32imafdc -mabi=ilp32d
 BOARD ?= 192.168.200.2
 RUSER ?= ae350
 
-BINS := atomic_test memthroughput compute_bench dsp_probe ext_probe amo_probe cctl_probe ddr_memtest fbtest wavplay amotrace dmactest yuvtest idcttest
+BINS := atomic_test memthroughput compute_bench dsp_probe ext_probe amo_probe cctl_probe ddr_memtest fbtest wavplay amotrace dmactest yuvtest idcttest scaletest
 
 all: $(BINS)
 
@@ -39,6 +39,10 @@ fbtest: fbtest.c
 	$(CC) -static -O2 $(ARCH) -Wall -o $@ $<
 
 yuvtest: yuvtest.c ../vidplay/gowin-lcdfb.h
+	$(CC) -static -O2 $(ARCH) -Wall -o $@ $<
+
+# the LCD core's scaler and OSD layer, scene CRCs against a C model
+scaletest: scaletest.c ../vidplay/gowin-lcdfb.h
 	$(CC) -static -O2 $(ARCH) -Wall -o $@ $<
 
 # the hardware IDCT core against FFmpeg's integer IDCT in C, through a YUV buffer

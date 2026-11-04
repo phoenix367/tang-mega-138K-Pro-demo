@@ -10,6 +10,10 @@
 // framebuffer, no underruns, no DDR protocol errors, then the test pattern.
 // WAIT_PCT (iverilog -P) holds the DDR command port off that % of cycles;
 // EXPECT_UNDERRUN=1 checks that a starved fetch is detected instead.
+// SCALE=1: a SW x SH source picture in the window DX, DY, DW x DH (nearest
+// neighbour, steps as the driver computes them, background BG around it);
+// OSD=1: an ARGB8888 layer (alpha 0, 255 and in between) in OX, OY, OW x OH,
+// blended over picture and background -- every pixel against the model.
 //============================================================================
 module tb_video;
     parameter WAIT_PCT        = 0;
@@ -20,7 +24,14 @@ module tb_video;
     // frame's last lines (no blanking after the frame's last pixel)
     parameter  HA = 64, HT = 100, HS = 20, VA = 12, VT = 20, VS = 3;
     parameter  YUV = 0, FULL = 1;        // YUV 4:2:0 planar framebuffer, full/limited range
-    localparam STRIDE = 160, FB = 32'h1000, FB_U = 32'h1800, FB_V = 32'h1B00, STRIDE_C = 96, FB2 = 32'h0000;
+    parameter  SCALE = 0, SW = 64, SH = 12, DX = 0, DY = 0, DW = 64, DH = 12;    // scaler
+    parameter  OSD = 0, OX = 0, OY = 0, OW = 16, OH = 4;                       // OSD window
+    localparam [15:0] BG = 16'h3A6B;
+    localparam STRIDE = 256, FB = 32'h1000, FB_U = 32'h3000, FB_V = 32'h3800, STRIDE_C = 96, FB2 = 32'h0000;
+    localparam OSD_BASE = 32'h4000, OSD_STRIDE = 256;
+    localparam PW = SCALE ? SW : HA, PH = SCALE ? SH : VA;                      // the source picture
+    localparam [31:0] STEPX = SCALE ? (SW * 65536) / DW : 65536, STEPY = SCALE ? (SH * 65536) / DH : 65536;
+    localparam WX = SCALE ? DX : 0, WY = SCALE ? DY : 0, WW = SCALE ? DW : HA, WH = SCALE ? DH : VA;
 
     reg hclk = 0; always #10 hclk = ~hclk;      // 50 MHz (registers, bridge AHB side)
     reg uclk = 0; initial begin #3.3; forever #5 uclk = ~uclk; end   // 100 MHz DDR3 user clock
@@ -72,7 +83,7 @@ module tb_video;
         .v_rstn(vrstn), .v_req(v_req), .v_addr(v_addr[29:0]), .v_ack(v_ack),
         .v_rvalid(v_rvalid), .v_rdata(v_rdata)
     );
-    ddr3_ui_model #(.WORDS(256), .LAT_MIN(10), .LAT_MAX(40), .RDY_PCT(100 - WAIT_PCT)) ddr (
+    ddr3_ui_model #(.WORDS(1024), .LAT_MIN(10), .LAT_MAX(40), .RDY_PCT(100 - WAIT_PCT)) ddr (
         .clk(uclk), .calib_done(calib_done), .cmd_ready(cmd_ready), .cmd(cmd), .cmd_en(cmd_en),
         .addr(addr), .wr_data_rdy(wr_data_rdy), .wr_data(wr_data), .wr_data_en(wr_data_en),
         .wr_data_end(wr_data_end), .wr_data_mask(wr_data_mask), .rd_data(rd_data),
@@ -106,7 +117,7 @@ module tb_video;
         integer c;
         begin c = v >>> 8; clamp8 = v < 0 ? 0 : c > 255 ? 255 : c; end
     endfunction
-    function [15:0] yuvpix(input integer x, input integer y);
+    function [23:0] yuv888(input integer x, input integer y);
         integer Y, U, V, r, g, b, ky, ko, krv, kgu, kgv, kbu;
         begin
             Y = ysamp(x, y); U = usamp(x / 2, y / 2) - 128; V = vsamp(x / 2, y / 2) - 128;
@@ -115,11 +126,41 @@ module tb_video;
             r = clamp8(ky * Y + ko + krv * V);
             g = clamp8(ky * Y + ko - kgu * U - kgv * V);
             b = clamp8(ky * Y + ko + kbu * U);
-            yuvpix = {r[7:3], g[7:2], b[7:3]};
+            yuv888 = {r[7:0], g[7:0], b[7:0]};
         end
     endfunction
+    function [23:0] rgb888(input [15:0] p);
+        rgb888 = {p[15:11], p[15:13], p[10:5], p[10:9], p[4:0], p[4:2]};
+    endfunction
+    // the OSD layer: alpha 0, 255 and values in between, colours varying
+    function [31:0] osdpix(input integer x, input integer y);
+        reg [7:0] a, r, g, b;
+        begin
+            case (x % 4) 0: a = 0; 1: a = 255; 2: a = (x * 13 + y * 7) & 255; default: a = 128; endcase
+            r = (x * 9 + y) & 255; g = (255 - x * 5) & 255; b = (y * 20 + x) & 255;
+            osdpix = {a, r, g, b};
+        end
+    endfunction
+    integer ox_v = OX;                  // the OSD position the model uses (moved by the change test)
+    // the panel pixel (active-area coordinates): window, scaler, source, OSD blend
     function [15:0] mpix(input integer x, input integer y);
-        mpix = YUV ? yuvpix(x, y) : fbpix(x, y);
+        integer sx, sy, a, i;
+        reg [23:0] pic, o;
+        reg [31:0] op;
+        reg [16:0] c [0:2];
+        begin
+            if (x >= WX && x < WX + WW && y >= WY && y < WY + WH) begin
+                sx = ((x - WX) * STEPX + STEPX / 2) >> 16; if (sx > PW - 1) sx = PW - 1;
+                sy = ((y - WY) * STEPY + STEPY / 2) >> 16; if (sy > PH - 1) sy = PH - 1;
+                pic = YUV ? yuv888(sx, sy) : rgb888(fbpix(sx, sy));
+            end else pic = rgb888(BG);
+            if (OSD && x >= ox_v && x < ox_v + OW && y >= OY && y < OY + OH) begin
+                op = osdpix(x - ox_v, y - OY);
+                a = op[31:24] + op[31];
+            end else begin op = 0; a = 0; end
+            for (i = 0; i < 3; i = i + 1) c[i] = op[i*8 +: 8] * a + pic[i*8 +: 8] * (256 - a);
+            mpix = {c[2][15:11], c[1][15:10], c[0][15:11]};
+        end
     endfunction
     function [17:0] to666(input [15:0] p);
         to666 = {p[15:11], p[15], p[10:5], p[4:0], p[4]};
@@ -165,26 +206,31 @@ module tb_video;
         errors = 0;
         #1;     // after the DDR model's random initialisation
         // fill the framebuffer (padding words get a marker that must never show)
-        for (i = 0; i < 256; i = i + 1) ddr.mem[i] = {8{32'hDEAD_BEEF}};
-        for (y = 0; y < VA; y = y + 1)                       // Y plane (and U/V, YUV mode)
-            for (x = 0; x < HA; x = x + 32) begin
+        for (i = 0; i < 1024; i = i + 1) ddr.mem[i] = {8{32'hDEAD_BEEF}};
+        for (y = 0; y < PH; y = y + 1)                       // Y plane (and U/V, YUV mode)
+            for (x = 0; x < PW; x = x + 32) begin
                 for (i = 0; i < 32; i = i + 1) w[i*8 +: 8] = ysamp(x + i, y);
                 ddr.mem[(FB + y*STRIDE + x) >> 5] = w;
             end
-        for (y = 0; y < VA / 2; y = y + 1)
-            for (x = 0; x < HA / 2; x = x + 32) begin
+        for (y = 0; y < (PH + 1) / 2; y = y + 1)
+            for (x = 0; x < (PW + 1) / 2; x = x + 32) begin
                 for (i = 0; i < 32; i = i + 1) w[i*8 +: 8] = usamp(x + i, y);
                 ddr.mem[(FB_U + y*STRIDE_C + x) >> 5] = w;
                 for (i = 0; i < 32; i = i + 1) w[i*8 +: 8] = vsamp(x + i, y);
                 ddr.mem[(FB_V + y*STRIDE_C + x) >> 5] = w;
             end
-        if (!YUV) for (y = 0; y < VA; y = y + 1)
-            for (x = 0; x < HA; x = x + 16) begin
+        if (!YUV) for (y = 0; y < PH; y = y + 1)
+            for (x = 0; x < PW; x = x + 16) begin
                 w = {fbpix(x+15,y), fbpix(x+14,y), fbpix(x+13,y), fbpix(x+12,y),
                      fbpix(x+11,y), fbpix(x+10,y), fbpix(x+9,y),  fbpix(x+8,y),
                      fbpix(x+7,y),  fbpix(x+6,y),  fbpix(x+5,y),  fbpix(x+4,y),
                      fbpix(x+3,y),  fbpix(x+2,y),  fbpix(x+1,y),  fbpix(x,y)};
                 ddr.mem[(FB + y*STRIDE + x*2) >> 5] = w;
+            end
+        if (OSD) for (y = 0; y < OH; y = y + 1)
+            for (x = 0; x < OW; x = x + 8) begin
+                for (i = 0; i < 8; i = i + 1) w[i*32 +: 32] = osdpix(x + i, y);
+                ddr.mem[(OSD_BASE + y*OSD_STRIDE + x*4) >> 5] = w;
             end
         model_crc = 32'hFFFFFFFF;
         for (y = 0; y < VA; y = y + 1)
@@ -203,7 +249,20 @@ module tb_video;
         reg_wr(8'h30, FB_U);
         reg_wr(8'h34, FB_V);
         reg_wr(8'h38, STRIDE_C);
-        reg_wr(8'h00, 32'h1 | (YUV ? 32'h4 : 32'h0) | (FULL ? 32'h8 : 32'h0));   // enable (+ YUV mode)
+        reg_wr(8'h3C, {16'(SH), 16'(SW)});
+        reg_wr(8'h40, {16'(DY), 16'(DX)});
+        reg_wr(8'h44, {16'(DH), 16'(DW)});
+        reg_wr(8'h48, STEPX);
+        reg_wr(8'h4C, STEPY);
+        reg_wr(8'h50, BG);
+        reg_wr(8'h54, OSD_BASE);
+        reg_wr(8'h58, OSD_STRIDE);
+        reg_wr(8'h5C, {16'(OY), 16'(OX)});
+        reg_wr(8'h60, {16'(OH), 16'(OW)});
+        reg_rd(8'h64, r);
+        if (r[2:0] !== 3'b111) begin errors = errors + 1; $display("  CAPS %08x", r); end
+        reg_wr(8'h00, 32'h1 | (YUV ? 32'h4 : 32'h0) | (FULL ? 32'h8 : 32'h0) |   // enable (+ YUV mode,
+                      (SCALE ? 32'h10 : 32'h0) | (OSD ? 32'h20 : 32'h0));        //  scaler, OSD)
 
         // let it run 4 frames; the capture of the last full frame is checked
         reg_rd(8'h20, frames0);
@@ -231,7 +290,7 @@ module tb_video;
         // (with vstart = 0 the next frame's first line is requested before the
         // frame-end toggle that loads the new base, so one mixed frame is expected:
         // the Linux driver uses vstart = 8, the test skips that timing)
-        if (!YUV && !EXPECT_UNDERRUN && VS != 0) begin
+        if (!YUV && !SCALE && !OSD && !EXPECT_UNDERRUN && VS != 0) begin
             for (y = 0; y < VA; y = y + 1)
                 for (x = 0; x < HA; x = x + 16) begin
                     for (i = 0; i < 16; i = i + 1) w[i*16 +: 16] = ~fbpix(x + i, y);
@@ -261,6 +320,40 @@ module tb_video;
             reg_wr(8'h08, FB);
         end
 
+        // settings changed while running: the OSD moves two pixels right in the
+        // middle of a frame; every frame must be all old or all new (the core
+        // latches the scaler / OSD settings per frame)
+        if (OSD && !EXPECT_UNDERRUN && VS >= 2 && OX + OW + 2 <= HA) begin
+            ox_v = OX + 2;
+            model_crc2 = 32'hFFFFFFFF;
+            for (y = 0; y < VA; y = y + 1)
+                for (x = 0; x < HA; x = x + 1) model_crc2 = crc16(model_crc2, mpix(x, y));
+            model_crc2 = ~model_crc2;
+            reg_rd(8'h20, frames0); r = frames0;
+            while (r == frames0) reg_rd(8'h20, r);
+            repeat (HT * (VS + 4)) @(posedge pclk);          // into the frame's active lines
+            reg_wr(8'h5C, {16'(OY), 16'(OX + 2)});
+            flips_old = 0; flips_new = 0; flips_mixed = 0;
+            for (i = 0; i < 4; i = i + 1) begin
+                frames0 = r;
+                while (r == frames0) reg_rd(8'h20, r);
+                reg_rd(8'h28, crc);
+                if (crc == model_crc) flips_old = flips_old + 1;
+                else if (crc == model_crc2) flips_new = flips_new + 1;
+                else flips_mixed = flips_mixed + 1;
+            end
+            if (flips_mixed != 0 || flips_new < 2) begin
+                errors = errors + 1;
+                $display("  OSD move: %0d old, %0d new, %0d mixed frames", flips_old, flips_new, flips_mixed);
+            end
+            for (y = 0; y < VA; y = y + 1)                   // and the moved layer pixel-exact
+                for (x = 0; x < HA; x = x + 1)
+                    if (cap[y][x] !== to666(mpix(x, y))) begin
+                        errors = errors + 1;
+                        if (errors < 8) $display("  moved OSD: pixel (%0d,%0d) got %05x exp %05x", x, y, cap[y][x], to666(mpix(x, y)));
+                    end
+        end
+
         // test pattern: bars, no DMA
         reg_wr(8'h00, 32'h2);
         reg_rd(8'h20, frames0); r = frames0;
@@ -270,6 +363,8 @@ module tb_video;
         end
 
         if (errors == 0 && EXPECT_UNDERRUN) $display("RESULT: PASS (starved fetch detected as underruns, wait %0d%%)", WAIT_PCT);
+        else if (errors == 0 && (SCALE || OSD)) $display("RESULT: PASS (%s %0dx%0d source in %0dx%0d+%0d+%0d%s, frame %0dx%0d pixel-exact, CRC %08x matches, no underruns, wait %0d%%)",
+                                       YUV ? "YUV420" : "RGB565", PW, PH, WW, WH, WX, WY, OSD ? " + OSD" : "", HA, VA, crc, WAIT_PCT);
         else if (errors == 0 && YUV) $display("RESULT: PASS (YUV420 %s frame %0dx%0d pixel-exact, CRC %08x matches, no underruns, wait %0d%%)",
                                        FULL ? "full-range" : "BT.601    ", HA, VA, crc, WAIT_PCT);
         else if (errors == 0) $display("RESULT: PASS (RGB565 frame %0dx%0d pixel-exact, CRC %08x matches, no underruns, wait %0d%%)",

@@ -122,7 +122,16 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    `VIDPLAY_NOHWJPEG=1`); `vidplay -C N` compares N frames bit for bit with FFmpeg's C decoder.
    Player CPU per 800×480 frame 29.5 → 1.2 ms, system load during playback ~85 % → ~31 %.
    Sim `src/rtl/idct/tb/run_jpeg_tb.sh` (real JPEGs, `jpeg_ref.py` = FFmpeg's decode ported,
-   itself checked against host ffmpeg). The desktop launches it from the Files
+   itself checked against host ffmpeg). **Scaler + OSD in the LCD core** (Build 71 / kernel #83+):
+   the line buffer is four RAMs (Y/RGB, U, V, OSD; 32 BSRAM) with their own read ports, so a
+   nearest-neighbour scaler (CTRL[4]; SRC_SIZE, DST_POS/SIZE, 16.16 STEP_X/Y with pixel-centre
+   sampling, BG around the window; YUV sources up to 2048 wide) and an ARGB8888 OSD layer
+   (CTRL[5]; OSD_BASE/STRIDE/POS/SIZE, blended in RGB888, A = 0 exact) work in YUV and RGB
+   mode, latched per frame (exact for vstart >= 2); CAPS register 0x64. gowin-lcdfb ioctls
+   CAPS / SCALE / OSD with two panel-sized OSD buffers; RGB mode turns both off. vidplay fits
+   the picture to the panel (`-1` = 1:1) and always shows a playback bar (`osd.c`: semi-transparent
+   panel, opaque slider + title/time, DejaVu font from `mkfont.py`; `-O` = none). `src/apps/tests/scaletest` checks scenes
+   by CRC. The desktop launches it from the Files
    panel (`video_play_file()` in panels.c skips LVGL flushes while it runs; any key/click stops it).
    The Andes DSP (P-ext draft) instructions DO execute on this AE350 (kadd16/smul16/kdmbb tested)
    though misa/cpuinfo do not advertise them; only the Andes GCC (-mext-dsp) knows them.

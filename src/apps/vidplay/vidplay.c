@@ -40,6 +40,7 @@
 #include "gowin-lcdfb.h"             /* YUV scan-out buffers of gowin-lcdfb (gateware Build 68+) */
 #include "idct_hw.h"                 /* the hardware IDCT core (gateware Build 69+, /dev/gowin-idct) */
 #include "jpeg_hw.h"                 /* ... and its JPEG entropy decoder (Build 70+) */
+#include "osd.h"                     /* info bar on the LCD core's OSD layer (Build 71+) */
 #include <sound/asound.h>
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
@@ -233,7 +234,36 @@ static struct {
     int hw[8];                 /* the buffer's picture was written by the IDCT core (CPU cache clean) */
     int shown, prev;
     unsigned nobuf;            /* frames that got no scan-out buffer (decoded elsewhere, not shown) */
+    int scale;                 /* the core's scaler fits the picture to the panel (Build 71+): */
+    int scaled;                /*   the picture sits at the buffer's origin; window set */
+    /* the planes' layout in a buffer: the driver's panel layout, or (scaler) the stream's own,
+     * which lets a picture larger than the panel in (the driver's buffers hold up to 1024x768) */
+    struct { unsigned y_stride, c_stride, u_off, v_off, max_w, max_h; } lay;
 } yuvo = { .shown = -1, .prev = -1 };
+static int opt_scale = 1, opt_osd = 1;     /* -1: 1:1; -O: no playback bar */
+
+/* where the picture goes in a panel-sized buffer: its origin when the core scales,
+ * else centred (Y start 32-byte aligned, even row) */
+static void yuv_place(int w, int h, int *dx, int *dy)
+{
+    int W = yuvo.info.width, H = yuvo.info.height;
+    *dx = yuvo.scale ? 0 : (W - w) / 2 & ~31;
+    *dy = yuvo.scale ? 0 : (H - h) / 2 & ~1;
+}
+
+/* the scaler window: the picture fitted to the panel, aspect kept, centred */
+static void yuv_scale(int w, int h)
+{
+    unsigned W = yuvo.info.width, H = yuvo.info.height, dw, dh;
+    if ((uint64_t)W * h <= (uint64_t)H * w) { dw = W; dh = (unsigned)(((uint64_t)h * W + w / 2) / w) & ~1u; }
+    else { dh = H; dw = (unsigned)(((uint64_t)w * H + h / 2) / h) & ~1u; }
+    if (dw < 2) dw = 2;
+    if (dh < 2) dh = 2;
+    struct gowin_lcd_scale sc = { .flags = GOWIN_LCD_SCALE_ON, .src_w = w, .src_h = h,
+                                  .dst_x = (W - dw) / 2, .dst_y = (H - dh) / 2, .dst_w = dw, .dst_h = dh, .bg = 0 };
+    if (ioctl(fb.fd, GOWIN_LCD_IOC_SCALE, &sc)) { perror("scale"); yuvo.scale = 0; return; }
+    fprintf(stderr, "  scaled by the LCD core: %dx%d -> %ux%u at (%u,%u)\n", w, h, dw, dh, sc.dst_x, sc.dst_y);
+}
 
 static struct { int on; unsigned frames; } jhw;   /* MJPEG through the core's entropy decoder */
 static double now_s(void);
@@ -243,31 +273,31 @@ static void yuv_release(void *opaque, uint8_t *data) { (void)data; yuvo.free[(in
 static int yuv_get_buffer(AVCodecContext *s, AVFrame *f, int flags)
 {
     int i, w = f->width, h = f->height;
-    unsigned W = yuvo.info.width, H = yuvo.info.height;
     for (i = 0; i < (int)yuvo.info.nbuf; i++)
         if (yuvo.free[i] && i != yuvo.shown && i != yuvo.prev) break;
-    if (i == (int)yuvo.info.nbuf || w > (int)W || h > (int)H) {
+    if (i == (int)yuvo.info.nbuf || w > (int)yuvo.lay.max_w || h > (int)yuvo.lay.max_h) {
         yuvo.nobuf++;
         f->opaque = NULL;
         return avcodec_default_get_buffer2(s, f, flags);
     }
     /* the picture centred in the panel-sized buffer: Y start 32-byte aligned, even row */
-    int dx = ((int)W - w) / 2 & ~31, dy = ((int)H - h) / 2 & ~1;
+    int dx, dy;
+    yuv_place(w, h, &dx, &dy);
     uint8_t *b = yuvo.buf[i];
     f->buf[0] = av_buffer_create(b, yuvo.info.buf_size, yuv_release, (void *)(intptr_t)i, 0);
     if (!f->buf[0]) return AVERROR(ENOMEM);
     yuvo.free[i] = 0;
-    f->data[0] = b + dy * yuvo.info.y_stride + dx;
-    f->data[1] = b + yuvo.info.u_off + (dy / 2) * yuvo.info.c_stride + dx / 2;
-    f->data[2] = b + yuvo.info.v_off + (dy / 2) * yuvo.info.c_stride + dx / 2;
-    f->linesize[0] = yuvo.info.y_stride;
-    f->linesize[1] = f->linesize[2] = yuvo.info.c_stride;
+    f->data[0] = b + dy * yuvo.lay.y_stride + dx;
+    f->data[1] = b + yuvo.lay.u_off + (dy / 2) * yuvo.lay.c_stride + dx / 2;
+    f->data[2] = b + yuvo.lay.v_off + (dy / 2) * yuvo.lay.c_stride + dx / 2;
+    f->linesize[0] = yuvo.lay.y_stride;
+    f->linesize[1] = f->linesize[2] = yuvo.lay.c_stride;
     f->extended_data = f->data;
     f->opaque = (void *)(intptr_t)(i + 1);
     /* the hardware IDCT writes the planes itself (coded size: whole MCUs), else the CPU */
     int cw = s->coded_width > 0 ? (s->coded_width + 15) & ~15 : (w + 15) & ~15;
     int ch = s->coded_height > 0 ? (s->coded_height + 15) & ~15 : (h + 15) & ~15;
-    yuvo.hw[i] = dx + cw <= (int)W && dy + ch <= (int)H &&
+    yuvo.hw[i] = dx + cw <= (int)yuvo.lay.max_w && dy + ch <= (int)yuvo.lay.max_h &&
                  idct_hw_frame_begin(i, b, f->data[0], f->data[1], f->data[2], f->linesize[0], f->linesize[1],
                                      cw, ch, w, h) == 0;
     if (!yuvo.hw[i])
@@ -281,14 +311,31 @@ static void yuv_setup(AVCodecContext *vc, const AVCodecParameters *par)
     if (fb.fd < 0 || ioctl(fb.fd, GOWIN_LCD_IOC_YUV_INFO, &yuvo.info) || yuvo.info.nbuf < 3) return;
     if (par->format != AV_PIX_FMT_YUV420P && par->format != AV_PIX_FMT_YUVJ420P) return;
     if (yuvo.info.nbuf > 8) yuvo.info.nbuf = 8;
+    /* the layout: the driver's (panel) one, or with the scaler the stream's own (whole
+     * 16-line MCU rows, 32-byte strides) if it fits a buffer */
+    yuvo.lay.y_stride = yuvo.info.y_stride; yuvo.lay.c_stride = yuvo.info.c_stride;
+    yuvo.lay.u_off = yuvo.info.u_off; yuvo.lay.v_off = yuvo.info.v_off;
+    yuvo.lay.max_w = yuvo.info.width; yuvo.lay.max_h = yuvo.info.height;
+    struct gowin_lcd_caps caps;
+    if (opt_scale && par->width > 0 && par->height > 0 &&
+        !ioctl(fb.fd, GOWIN_LCD_IOC_CAPS, &caps) && (caps.caps & GOWIN_LCD_CAP_SCALE)) {
+        unsigned cw = (par->width + 15) & ~15u, ch = (par->height + 15) & ~15u;
+        unsigned ys = (cw + 31) & ~31u, cs = (cw / 2 + 31) & ~31u;
+        if ((size_t)ys * ch + 2 * (size_t)cs * (ch / 2) <= yuvo.info.buf_size) {
+            yuvo.scale = 1;
+            yuvo.lay.y_stride = ys; yuvo.lay.c_stride = cs;
+            yuvo.lay.u_off = ys * ch; yuvo.lay.v_off = ys * ch + cs * (ch / 2);
+            yuvo.lay.max_w = ys; yuvo.lay.max_h = ch;
+        }
+    }
     for (unsigned i = 0; i < yuvo.info.nbuf; i++) {
         yuvo.buf[i] = mmap(NULL, yuvo.info.buf_size, PROT_READ | PROT_WRITE, MAP_SHARED, fb.fd,
                            (off_t)yuvo.info.mmap_off + (off_t)i * yuvo.info.buf_size);
         if (yuvo.buf[i] == MAP_FAILED) { perror("mmap yuv buffer"); yuvo.info.nbuf = i; break; }
         yuvo.free[i] = 1;
         /* black bars around the picture (the whole buffer is scanned out): Y 0, U/V 128, in DRAM */
-        memset(yuvo.buf[i], 0, yuvo.info.u_off);
-        memset(yuvo.buf[i] + yuvo.info.u_off, 128, yuvo.info.buf_size - yuvo.info.u_off);
+        memset(yuvo.buf[i], 0, yuvo.lay.u_off);
+        memset(yuvo.buf[i] + yuvo.lay.u_off, 128, yuvo.info.buf_size - yuvo.lay.u_off);
         struct gowin_lcd_yuv_dma d = { .buf = i, .flags = GOWIN_LCD_YUV_DMA_WRITEBACK };
         ioctl(fb.fd, GOWIN_LCD_IOC_YUV_DMA, &d);       /* an old kernel: YUV_SHOW writes it back anyway */
     }
@@ -312,22 +359,23 @@ static int jhw_decode(AVCodecContext *vc, const AVPacket *pk, AVFrame *f)
     jpeg_frame_t jf;
     if (jpeg_hw_parse(pk->data, pk->size, &jf) || (int)jf.w != vc->width || (int)jf.h != vc->height) return -1;
     int i, w = jf.w, h = jf.h;
-    int W = yuvo.info.width, H = yuvo.info.height;
+    int W = yuvo.lay.max_w, H = yuvo.lay.max_h;       /* the buffer's room for the picture */
     for (i = 0; i < (int)yuvo.info.nbuf; i++)
         if (yuvo.free[i] && i != yuvo.shown && i != yuvo.prev) break;
     if (i == (int)yuvo.info.nbuf || w > W || h > H) return -1;
-    int dx = (W - w) / 2 & ~31, dy = (H - h) / 2 & ~1;
+    int dx, dy;
+    yuv_place(w, h, &dx, &dy);
     int cw = (w + 15) & ~15, ch = (h + 15) & ~15;
     if (dx + cw > W || dy + ch > H) return -1;
     uint8_t *b = yuvo.buf[i];
     f->buf[0] = av_buffer_create(b, yuvo.info.buf_size, yuv_release, (void *)(intptr_t)i, 0);
     if (!f->buf[0]) return -1;
     yuvo.free[i] = 0;
-    f->data[0] = b + dy * yuvo.info.y_stride + dx;
-    f->data[1] = b + yuvo.info.u_off + (dy / 2) * yuvo.info.c_stride + dx / 2;
-    f->data[2] = b + yuvo.info.v_off + (dy / 2) * yuvo.info.c_stride + dx / 2;
-    f->linesize[0] = yuvo.info.y_stride;
-    f->linesize[1] = f->linesize[2] = yuvo.info.c_stride;
+    f->data[0] = b + dy * yuvo.lay.y_stride + dx;
+    f->data[1] = b + yuvo.lay.u_off + (dy / 2) * yuvo.lay.c_stride + dx / 2;
+    f->data[2] = b + yuvo.lay.v_off + (dy / 2) * yuvo.lay.c_stride + dx / 2;
+    f->linesize[0] = yuvo.lay.y_stride;
+    f->linesize[1] = f->linesize[2] = yuvo.lay.c_stride;
     f->extended_data = f->data;
     f->width = w; f->height = h;
     f->format = AV_PIX_FMT_YUVJ420P;
@@ -402,12 +450,13 @@ static int yuv_show(const AVFrame *f)
 {
     int i = (int)(intptr_t)f->opaque - 1;
     if (yuvo.hw[i] && idct_hw_frame_done()) return -1;      /* the core's last band must have landed */
+    if (yuvo.scale && !yuvo.scaled) { yuv_scale(f->width, f->height); yuvo.scaled = 1; }
     /* the core scans the whole panel-sized buffer; the picture sits inside it at (dx, dy) */
     struct gowin_lcd_yuv_show sh = {
         .buf = i, .flags = (f->color_range == AVCOL_RANGE_JPEG ? GOWIN_LCD_YUV_FULL_RANGE : 0) |
                            (yuvo.hw[i] ? GOWIN_LCD_YUV_NOSYNC : 0),
-        .y_off = 0, .u_off = yuvo.info.u_off, .v_off = yuvo.info.v_off,
-        .y_stride = yuvo.info.y_stride, .c_stride = yuvo.info.c_stride,
+        .y_off = 0, .u_off = yuvo.lay.u_off, .v_off = yuvo.lay.v_off,
+        .y_stride = yuvo.lay.y_stride, .c_stride = yuvo.lay.c_stride,
     };
     static int dbg = -1;
     if (dbg < 0) dbg = getenv("VIDPLAY_SHOWDBG") ? 12 : 0;
@@ -588,9 +637,12 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "-F")) fast = 1;
         else if (!strcmp(argv[i], "-P") && i + 1 < argc) prof = argv[++i];
         else if (!strcmp(argv[i], "-C") && i + 1 < argc) check = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "-1")) opt_scale = 0;
+        else if (!strcmp(argv[i], "-o")) opt_osd = 1;          /* (the bar is on by default) */
+        else if (!strcmp(argv[i], "-O")) opt_osd = 0;
         else file = argv[i];
     }
-    if (!file && !getenv("VIDPLAY_IDCTTEST")) { fprintf(stderr, "usage: vidplay [-D pcm] [-f /dev/fbN] [-n] [-b] [-v] [-L] [-F] [-P prof] [-C frames] file\n"); return 2; }
+    if (!file && !getenv("VIDPLAY_IDCTTEST")) { fprintf(stderr, "usage: vidplay [-D pcm] [-f /dev/fbN] [-n] [-b] [-v] [-1] [-O] [-L] [-F] [-P prof] [-C frames] file\n"); return 2; }
     signal(SIGTERM, on_term);
     signal(SIGINT, on_term);
     if (prof) prof_start();
@@ -670,6 +722,17 @@ int main(int argc, char **argv)
     unsigned skipped = 0;                    /* packets skipped undecoded (intra-only catch-up) */
     int16_t *abuf = malloc(8192 * 2 * sizeof(int16_t));
     double t_start = now_s(), vtb = vi >= 0 ? av_q2d(ic->streams[vi]->time_base) : 0;
+    /* the info bar: title (file name without directory and extension), position, duration */
+    int osd_ok = !bench && vi >= 0 && fb.fd >= 0 && opt_osd && osd_init(fb.fd, fb.w, fb.h) == 0;
+    char title[128];
+    {
+        const char *bn = strrchr(file, '/');
+        snprintf(title, sizeof(title), "%s", bn ? bn + 1 : file);
+        char *dot = strrchr(title, '.');
+        if (dot && dot != title) *dot = 0;
+    }
+    double duration = ic->duration > 0 ? ic->duration / (double)AV_TIME_BASE : 0, shown_pts = 0;
+    int osd_frozen = 0;
     double frame_dur = vi >= 0 && ic->streams[vi]->avg_frame_rate.num ? 1.0 / av_q2d(ic->streams[vi]->avg_frame_rate) : 0.04;
     unsigned decoded = 0, shown = 0, dropped = 0, aframes = 0;
     double dec_time = 0, conv_time = 0, last_report = t_start;
@@ -770,6 +833,7 @@ int main(int argc, char **argv)
                     double t0 = now_s();
                     if (yuvo.on && pending->opaque) yuv_show(pending);
                     else if (!yuvo.on) show_frame(pending);
+                    shown_pts = pts;
                     conv_time += now_s() - t0;
                     shown++;
                     late_streak = 0;
@@ -812,6 +876,11 @@ int main(int argc, char **argv)
         if (!vc && !ac) break;
         if (!progress) usleep(2000);
 
+        if (osd_ok && !osd_frozen) {
+            osd_update(1, title, shown_pts, duration);
+            if (getenv("VIDPLAY_OSDFREEZE")) osd_frozen = 1;   /* profiling: the layer on, no redraws */
+        }
+
         if (verbose && now_s() - last_report >= 1.0) {
             last_report = now_s();
             fprintf(stderr, "  t=%.1f clock=%.2f decoded %u shown %u dropped %u, decode %.1f ms/frame, queues v%d a%d\n",
@@ -821,7 +890,8 @@ int main(int argc, char **argv)
     double total = now_s() - t_start;
     if (prof) prof_stop(prof);
     if (pcm.fd >= 0) { if (!g_stop) ioctl(pcm.fd, SNDRV_PCM_IOCTL_DRAIN); else ioctl(pcm.fd, SNDRV_PCM_IOCTL_DROP); close(pcm.fd); }
-    if (yuvo.on) ioctl(fb.fd, GOWIN_LCD_IOC_RGB);
+    if (osd_ok) osd_close();
+    if (yuvo.on || osd_ok) ioctl(fb.fd, GOWIN_LCD_IOC_RGB);
     if (fb.mem) { if (fb_drawn) memset(fb.mem, 0, fb.len); munmap(fb.mem, fb.len); }
     if (fb.fd >= 0) close(fb.fd);
     fprintf(stderr, "VIDPLAY %s: %u frames decoded in %.2f s (%.1f fps, decode %.1f ms/frame, %s %.1f ms/frame), shown %u, dropped %u%s, audio %u frames, %u xruns%s\n",
