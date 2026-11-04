@@ -1264,15 +1264,19 @@ void panel_about(lv_obj_t *parent)
     lv_obj_t *l = lv_label_create(c);
     lv_obj_set_width(l, LV_PCT(100));
     lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
-    lv_label_set_text(l,
-        "Gowin GW5AST-138B FPGA with the hard Andes AE350 RISC-V SoC (A25 core, 800 MHz)\n"
-        "running Linux 6.12 (rv32, single hart, soft atomics) from a 16 MB SPI flash.\n\n"
-        "Gateware in this project: 100 MHz AHB-to-DDR3 bridge (1 GB, 256-bit datapath),\n"
-        "gigabit Ethernet with DMA, LCD scan-out from DDR3, PT8211 audio, on-die\n"
-        "temperature/voltage sensors - all on the SoC's AHB/APB extension ports.\n\n"
-        "This desktop: LVGL " LVGL_VERSION_INFO " on /dev/fb0, software rendering.\n"
-        "Mouse and keyboard arrive from the PC over Ethernet (desktop/host/netinput.py).\n\n"
-        "Source: desktop/ in the mega_138K_test repository.");
+    lv_label_set_text_fmt(l,
+        "Gowin GW5AST-138B FPGA with the hard Andes AE350 RISC-V SoC (A25 core, 800 MHz,\n"
+        "L1 caches only) running Linux 6.12 (rv32, single hart, soft atomics) from SPI flash.\n\n"
+        "Gateware in this project, on the SoC's AHB/APB extension ports:\n"
+        LV_SYMBOL_BULLET " DDR3 bridge: 1 GB, 256-bit datapath, a read port for the LCD\n"
+        LV_SYMBOL_BULLET " LCD core: RGB565 / YUV 4:2:0 scan-out, scaler, ARGB8888 OSD layer\n"
+        LV_SYMBOL_BULLET " hardware JPEG decoder: Huffman decoding, IDCT, frame assembly\n"
+        LV_SYMBOL_BULLET " gigabit Ethernet DMA, microSD host with DMA, PT8211 audio with DMA\n"
+        LV_SYMBOL_BULLET " die temperature and supply sensors, fan control, board EEPROM\n\n"
+        "This desktop: LVGL %d.%d.%d on /dev/fb0, software rendering. Mouse and keyboard\n"
+        "come from the PC over Ethernet (src/apps/desktop/host/netinput.py).\n\n"
+        "Source: github.com/phoenix367/tang-mega-138K-Pro-demo",
+        LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR, LVGL_VERSION_PATCH);
 }
 
 /* ====================================================================== */
