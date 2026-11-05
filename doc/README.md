@@ -47,7 +47,7 @@ graph LR
 
 | Doc | Contents |
 |---|---|
-| [01-architecture.md](01-architecture.md) | System architecture, component diagram, address map, clock tree |
+| [01-architecture.md](01-architecture.md) | Hardware architecture: requirements and results, block diagram, clocks / CDC / reset, memory budget and arbitration, datapath arithmetic, interfaces and address map, verification, implementation and timing, open issues |
 | [02-build.md](02-build.md) | Building the gateware, firmware, U-Boot, OpenSBI, kernel, rootfs tools |
 | [03-boot.md](03-boot.md) | Power-on → FPGA config → U-Boot → OpenSBI → Linux → userspace; flash layout |
 | [04-firmware.md](04-firmware.md) | Bare-metal AE350 firmware + the eth_dma self-test suite |
