@@ -1,3 +1,28 @@
+# Entries for the initramfs that a git checkout of linux/rootfs cannot carry: git
+# keeps no empty directories and no modes beyond the execute bit, so the empty
+# mount points and scratch directories (with /tmp's sticky bit) are listed here.
+# They come after linux/rootfs in CONFIG_INITRAMFS_SOURCE, so these modes win over
+# whatever the checkout has. Without /dev the kernel cannot create /dev/console
+# ("unable to open an initial console") and rcS cannot mount /proc and /sys.
+dir /dev              0755 0 0
+dir /proc             0555 0 0
+dir /sys              0555 0 0
+dir /run              0755 0 0
+dir /tmp              1777 0 0
+dir /root             0700 0 0
+dir /sbin             0755 0 0
+dir /home             0755 0 0
+dir /home/ae350       0755 0 0
+dir /var/cache        0755 0 0
+dir /var/lock         0755 0 0
+dir /var/log          0755 0 0
+dir /var/run          0755 0 0
+dir /var/spool        0755 0 0
+dir /var/tmp          1777 0 0
+dir /var/lib/dpkg/info     0755 0 0
+dir /var/lib/dpkg/triggers 0755 0 0
+dir /var/lib/dpkg/updates  0755 0 0
+
 # Static device nodes for the initramfs so the kernel can open /dev/console
 # for the init process before /init runs (avoids "unable to open an initial
 # console" and lets the busybox banner/shell reach the UART).

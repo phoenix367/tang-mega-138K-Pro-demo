@@ -6,7 +6,8 @@
 #   make clean
 #
 # LVGL sources live outside the repo (CLAUDE.md "Linux userspace sources"):
-#   ~/projects/ae350_linux_user_level/lvgl/lvgl-<ver>/
+#   $AE350_USERSPACE/lvgl/lvgl-<ver>/ (default ~/projects/ae350_linux_user_level; the
+#   Docker image sets /userspace)
 
 # Bootlin musl toolchain with the soft-atomic libc.a; TOOLCHAIN is what the Docker image
 # and scripts/rootfs/common.sh use, TC the older name
@@ -14,7 +15,8 @@ TC       ?= $(if $(TOOLCHAIN),$(TOOLCHAIN),$(HOME)/projects/riscv32-ilp32d--musl
 CROSS    ?= $(TC)/bin/riscv32-buildroot-linux-musl-
 CC       := $(CROSS)gcc
 AR       := $(CROSS)ar
-LVGL_DIR ?= $(HOME)/projects/ae350_linux_user_level/lvgl/lvgl-9.6.0
+USERSPACE ?= $(if $(AE350_USERSPACE),$(AE350_USERSPACE),$(HOME)/projects/ae350_linux_user_level)
+LVGL_DIR ?= $(USERSPACE)/lvgl/lvgl-9.6.0
 ROOTFS   ?= ../../../linux/rootfs
 
 ARCH   := -march=rv32imafdc -mabi=ilp32d

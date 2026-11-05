@@ -6,9 +6,10 @@
 #   make clean
 #
 # Override the toolchain with TC=... or CROSS=...; the default is the patched
-# soft-atomic musl toolchain used by the rest of the project.
+# soft-atomic musl toolchain used by the rest of the project (TOOLCHAIN, as set in the
+# Docker image and by scripts/rootfs/common.sh, else the one in ~/projects).
 
-TC      ?= $(HOME)/projects/riscv32-ilp32d--musl--stable-2025.08-1
+TC      ?= $(if $(TOOLCHAIN),$(TOOLCHAIN),$(HOME)/projects/riscv32-ilp32d--musl--stable-2025.08-1)
 CROSS   ?= $(TC)/bin/riscv32-buildroot-linux-musl-
 CC      := $(CROSS)gcc
 OBJDUMP := $(CROSS)objdump

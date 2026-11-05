@@ -9,7 +9,8 @@ TC      ?= $(if $(TOOLCHAIN),$(TOOLCHAIN),$(HOME)/projects/riscv32-ilp32d--musl-
 CROSS   ?= $(TC)/bin/riscv32-buildroot-linux-musl-
 CC      := $(CROSS)gcc
 OBJDUMP := $(CROSS)objdump
-STAGING ?= $(HOME)/projects/ae350_linux_user_level/staging
+# AE350_USERSPACE: the userspace package root (scripts/rootfs/common.sh; /userspace in Docker)
+STAGING ?= $(if $(AE350_USERSPACE),$(AE350_USERSPACE),$(HOME)/projects/ae350_linux_user_level)/staging
 ROOTFS  ?= ../../../linux/rootfs
 # idct_dsp.c uses the Andes DSP extension, which only the Andes GCC knows (-mext-dsp);
 # its object links fine into the musl binary (same ilp32d ABI; no libc, no unwind tables)

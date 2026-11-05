@@ -203,7 +203,7 @@ xz --format=lzma --lzma1=preset=9,dict=8MiB -c fw_payload.bin > fw_payload_lzma.
 
 ### 4d. U-Boot (`external/u-boot`, hard-float XIP loader)
 ```sh
-scripts/config_uboot.sh        # one-time: defconfig + Kconfig tweaks (re-run on a clean tree)
+scripts/config_uboot.sh        # defconfig + Kconfig tweaks; build_uboot.sh runs it on a tree without .config
 scripts/build_uboot.sh         # -> external/u-boot/u-boot-ae350-xip.bin (u-boot + DTB @0xf0000)
 ```
 DT adaptation (single CPU, 50 MHz clocks, no `spi@f0b00000`/mac/mmc nodes; its memory

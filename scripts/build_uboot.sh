@@ -2,10 +2,11 @@
 # Build mainline U-Boot for the Gowin AE350 (Tang Mega 138K Pro) and produce a
 # combined "u-boot + DTB" XIP flash image ready to program at flash 0x600000.
 #
-# The U-Boot tree must already be configured + device-tree-adapted for this
-# board (ae350_rv32_xip_defconfig + RISCV_ISA_F/D on, ENV_IS_NOWHERE, no SPI
-# node in ae350_32.dts, etc.). This script does the incremental build with the
-# right toolchain and assembles the flash image; it does not re-run defconfig.
+# The board configuration (XIP, hard-float, ENV_IS_NOWHERE, the adapted DTS, ...) is
+# the fork's ae350_rv32_tang_mega_138k_defconfig, applied by scripts/config_uboot.sh.
+# This script runs that only on a tree without a .config (a fresh clone), so local
+# config changes survive; then it does the incremental build with the right toolchain
+# and assembles the flash image.
 #
 # Why each piece (see project memory ae350-uboot-build):
 #   - CROSS is the Andes Linux rv32 toolchain (its ld supports -pie, unlike the
@@ -33,6 +34,8 @@ OUT="${UBOOT_IMAGE:-$UBOOT_DIR/u-boot-ae350-xip.bin}"
 [ -d "$UBOOT_DIR" ] || { echo "UBOOT_DIR not found: $UBOOT_DIR" >&2; exit 1; }
 [ -x "${CROSS}gcc" ] || { echo "toolchain not found: ${CROSS}gcc" >&2; exit 1; }
 cd "$UBOOT_DIR"
+
+[ -f .config ] || UBOOT_DIR="$UBOOT_DIR" UBOOT_CROSS="$CROSS" "$REPO/scripts/config_uboot.sh"
 
 echo ">> Building U-Boot (hard-float XIP) with $CROSS"
 if [ -n "$HF_LIBGCC" ]; then
