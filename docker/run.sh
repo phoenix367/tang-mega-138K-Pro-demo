@@ -7,7 +7,7 @@
 #   docker/run.sh                                   # shell
 #   docker/run.sh make -C src/firmware              # bare-metal firmware
 #   docker/run.sh scripts/build_uboot.sh            # U-Boot
-#   docker/run.sh make -C external/linux ARCH=riscv CROSS_COMPILE=riscv32-linux- -j8 Image
+#   docker/run.sh scripts/build_kernel.sh           # kernel (release linux/RELEASE) + fw_payload
 #   docker/run.sh env STAGE=all scripts/gw_run.sh   # gateware (needs the licence server)
 #   docker/run.sh scripts/rootfs/build_all.sh       # rootfs binaries
 #   docker/run.sh --flash [-n] TARGET...            # program the board: scripts/flash.sh in the

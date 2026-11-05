@@ -197,6 +197,15 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
   stack (phoenix367/tang-mega-138k-{u-boot,opensbi,linux}, one port commit each on top of
   upstream; `git submodule update --init` after cloning). `scripts/build_uboot.sh`,
   `config_uboot.sh` and `build_linux_boot.sh` default to these paths. See BUILD.md §4.
+  **Kernel builds go through `scripts/build_kernel.sh`** (Image + fw_payload at 0x400000): it names
+  the kernel `6.12.0-tangmega138k-g<commit>` (`CONFIG_LOCALVERSION` in `tang_mega_138k_defconfig`)
+  and puts the board release from `linux/RELEASE` in `uname -v` (`#98 <date>`, `KBUILD_BUILD_VERSION`;
+  a plain `make Image` shows the tree's build counter instead). That number is the "kernel #N" of
+  BOOT.md (kernel + its initramfs rootfs): bump `linux/RELEASE` for each new release (test builds
+  of one release share it; the build date in `uname -v` tells them apart). `rcS` writes both into
+  `/etc/issue` at boot (the rootfs file is a template with getty's `\s \r \v \m`), so getty's
+  banner and `cat /etc/issue` agree; kernels up to #97 carried a separate build counter
+  ("build string #132").
 - `src/firmware/` — bare-metal **AE350 test firmware** (RISC-V, rv32imac) that runs on
   the SoC: UART2 banner/heartbeat + LED waterfall + key readback. Self-contained
   build (`make`) using the SDK BSP; flashed to SPI flash `0x600000` via

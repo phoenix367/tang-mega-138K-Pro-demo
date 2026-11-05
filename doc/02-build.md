@@ -104,13 +104,10 @@ make CROSS_COMPILE=$LGNU olddefconfig && make -j CROSS_COMPILE=$LGNU
 ## 4. Kernel + OpenSBI payload + rootfs
 
 ```bash
-# kernel (regenerates the initramfs from linux/rootfs/ on every Image build)
-cd external/linux
-make ARCH=riscv CROSS_COMPILE=$LGNU -j$(nproc) Image
-
-# wrap Image (+ OpenSBI + DTB) into an OpenSBI fw_payload, then gzip
-cd ~/projects/mega_138K_test
-FW_PAYLOAD_OFFSET=0x400000 LINUX_CROSS=$LGNU scripts/build_linux_boot.sh
+# kernel (regenerates the initramfs from linux/rootfs/ on every Image build), named
+# 6.12.0-tangmega138k-g<commit> with release #<linux/RELEASE> in uname -v, then wrapped
+# (+ OpenSBI + DTB) into an OpenSBI fw_payload at 0x400000
+LINUX_CROSS=$LGNU scripts/build_kernel.sh
 cd external/opensbi/build/platform/generic/firmware
 xz --format=lzma --lzma1=preset=9,dict=8MiB -c fw_payload.bin > fw_payload_lzma.bin   # or: scripts/flash.sh kernel
 ```

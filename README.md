@@ -32,7 +32,7 @@ atomic read-modify-write with interrupt-disabled plain loads and stores. See
 | CPU extensions | — (hard A25) | OpenSBI `andestech,a25` override (`PATCHES/0015`), kernel `PATCHES/0014` | `/proc/cpuinfo` lists the A25's Andes DSP (`p`, packed SIMD), `xandesperf` and `xandescodense` (`exec.it`), read from the core's `mmsc_cfg` by OpenSBI; the kernel keeps their user CSRs per process (kernel #96) |
 | Boot splash | `video/` | U-Boot `gowin_lcd` driver (fork) | `src/splash/splash.bmp` on the LCD from U-Boot until the kernel's fbdev driver starts |
 
-Current state in flash: gateware **Build 72**, kernel **#97**, keyed-autoboot U-Boot (2026-11-05).
+Current state in flash: gateware **Build 72**, kernel **#98**, keyed-autoboot U-Boot (2026-11-05).
 
 ## The desktop
 

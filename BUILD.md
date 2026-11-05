@@ -64,8 +64,7 @@ package dir at `/userspace` and USB passed through:
 docker/bootstrap.sh --gowin-path /mnt/data/Gowin_V1.9.12.02_SP2_linux   # once; ~3 GB image
 docker/run.sh make -C src/firmware
 docker/run.sh scripts/build_uboot.sh
-docker/run.sh make -C external/linux ARCH=riscv CROSS_COMPILE=riscv32-linux- -j8 Image
-docker/run.sh env FW_PAYLOAD_OFFSET=0x400000 scripts/build_linux_boot.sh
+docker/run.sh scripts/build_kernel.sh             # kernel (name + linux/RELEASE) + OpenSBI fw_payload
 docker/run.sh env STAGE=all scripts/gw_run.sh        # gateware; the licence server must be reachable
 docker/run.sh scripts/rootfs/build_all.sh
 docker/run.sh --flash bitstream uboot kernel      # program the board from the container (USB passed through)
@@ -152,9 +151,20 @@ export LGNU=/mnt/data/toolchains/nds32le-linux-glibc-v5d/bin/riscv32-linux-
 
 ### 4a. Kernel (`external/linux`, 6.12, RV32, UP + soft atomics)
 ```sh
-cd external/linux
-make ARCH=riscv CROSS_COMPILE=$LGNU -j$(nproc) Image     # -> arch/riscv/boot/Image
+LINUX_CROSS=$LGNU scripts/build_kernel.sh      # -> external/linux/arch/riscv/boot/Image + fw_payload (4c)
+NO_PAYLOAD=1 LINUX_CROSS=$LGNU scripts/build_kernel.sh   # Image only
 ```
+The script names the build. `uname -r` is `6.12.0-tangmega138k-g<commit>[-dirty]`
+(`CONFIG_LOCALVERSION` in `tang_mega_138k_defconfig`, then the fork's commit), `uname -v`
+is `#<release> <build date>` with the board release from **`linux/RELEASE`**
+(`KBUILD_BUILD_VERSION`; a plain `make Image` in the tree puts its own build counter
+there instead). The release is the "kernel #N" of BOOT.md, one number for the kernel and
+the initramfs rootfs in it: bump `linux/RELEASE` for each new release (test builds of one
+release share the number; the build date tells them apart). At boot `rcS` writes both into
+`/etc/issue` (the rootfs file is a template with getty's `\s \r \v \m`), which the serial
+console's getty prints before the login prompt; boardtest's `kernel.version` warns when
+the board's release differs from the file. Without a
+`.config` the script starts from `tang_mega_138k_defconfig`.
 Key config (`.config` on disk; built on this machine): `CONFIG_SMP=n` (UP — qspinlock
 deadlocks with soft atomics), `CONFIG_NONPORTABLE=y`, `CONFIG_HZ=250`,
 `CONFIG_RISCV_DMA_NONCOHERENT=y`, `CONFIG_RISCV_NONSTANDARD_CACHE_OPS=y`, heavy debug
@@ -179,6 +189,7 @@ dtc -I dts -O dtb -o linux/ae350-linux.dtb linux/ae350-linux.dts
 ```
 
 ### 4c. OpenSBI fw_payload (`external/opensbi`) + gzip
+`scripts/build_kernel.sh` ends with this step; on its own:
 ```sh
 FW_PAYLOAD_OFFSET=0x400000 LINUX_CROSS=$LGNU scripts/build_linux_boot.sh
 cd external/opensbi/build/platform/generic/firmware
@@ -263,8 +274,7 @@ LGNU=/mnt/data/toolchains/nds32le-linux-glibc-v5d/bin/riscv32-linux-
 
 GOWIN_PATH=$GP STAGE=all scripts/gw_run.sh            # gateware bitstream
 make -C firmware                                       # bare-metal firmware
-( cd external/linux && make ARCH=riscv CROSS_COMPILE=$LGNU -j$(nproc) Image )
 dtc -I dts -O dtb -o linux/ae350-linux.dtb linux/ae350-linux.dts
-FW_PAYLOAD_OFFSET=0x400000 LINUX_CROSS=$LGNU scripts/build_linux_boot.sh
+LINUX_CROSS=$LGNU scripts/build_kernel.sh             # kernel #$(cat linux/RELEASE) + fw_payload
 scripts/build_uboot.sh
 ```

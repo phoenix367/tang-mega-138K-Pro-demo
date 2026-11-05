@@ -31,7 +31,7 @@ when a precondition is missing (no SD card, no cross toolchain to build a tool).
 
 | Test | Checks | Fails when |
 |---|---|---|
-| `kernel.version` | `uname`, uptime, memory | MemTotal < 900 MB |
+| `kernel.version` | `uname`, uptime, memory, `/etc/issue` | MemTotal < 900 MB, `/etc/issue` without this kernel's `uname -r` / `uname -v` (rcS writes them in) or with an escape left (warn: no `-tangmega138k` name, or the release in `uname -v` is not `linux/RELEASE`) |
 | `kernel.dmesg` | the kernel log | oops / BUG / panic / WARNING; warns on hung tasks, I/O errors, MMC errors, underruns |
 | `kernel.drivers` | probe line + device node of every board driver (LCD, IDCT, ADC, fan, PT8211, SD host, EEPROM, I2C mux, DDR counters, TSE MAC + link, input bridge), hwmon names | a driver missing; warns on a JPEG core < 2048 wide (before Build 72) or YUV buffers too small for 720p (before kernel #93) |
 | `kernel.config` | `/proc/config.gz` | a board option not `=y` |

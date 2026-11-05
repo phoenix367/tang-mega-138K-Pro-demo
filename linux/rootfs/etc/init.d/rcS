@@ -42,6 +42,15 @@ chown 0:0 /etc/dropbear/dropbear_*_host_key 2>/dev/null
 chmod 0600 /etc/dropbear/dropbear_*_host_key
 chown -R 1000:1000 /home/ae350 2>/dev/null
 
+# 3c. /etc/issue with this kernel's name and release written in.  The file in the
+#     initramfs is a template with getty's escapes (\s \r \v \m): getty fills
+#     them in on the serial console, but `cat /etc/issue` would show them as-is.
+issue_val() { printf '%s' "$1" | sed 's/[|&\\]/\\&/g'; }
+sed -i -e "s|\\\\s|$(issue_val "$(uname -s)")|g" \
+       -e "s|\\\\r|$(issue_val "$(uname -r)")|g" \
+       -e "s|\\\\v|$(issue_val "$(uname -v)")|g" \
+       -e "s|\\\\m|$(issue_val "$(uname -m)")|g" /etc/issue
+
 # 4. Run the start scripts in lexical order (sysv-style rc.d).
 for s in /etc/init.d/S??* ; do
 	[ -x "$s" ] && "$s" start

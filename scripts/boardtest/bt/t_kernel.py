@@ -27,7 +27,7 @@ SERVICES = [("inputd", "inputd"), ("lvdesk", "desktop"), ("dropbear", "ssh"), ("
             ("S80fan", "fan curve"), ("getty", "serial console")]
 
 
-@test("kernel", "version", "kernel and uptime")
+@test("kernel", "version", "kernel name, release, uptime; /etc/issue")
 def version(ctx, r):
     rc, out = ctx.run("uname -r; uname -v; cut -d' ' -f1 /proc/uptime; grep MemTotal /proc/meminfo")
     lines = out.split("\n")
@@ -39,7 +39,18 @@ def version(ctx, r):
     r.metric("mem_mb", mem)
     r.check(mem >= 900, "MemTotal %d MB: the board has 1 GB" % mem)
     ctx.kernel = "%s %s" % (lines[0].strip(), r.metrics["build"])
-    return "Linux %s, build %s, up %d s, %d MB" % (lines[0].strip(), r.metrics["build"], up, mem)
+    # scripts/build_kernel.sh: the name from CONFIG_LOCALVERSION, the release (uname -v) from linux/RELEASE
+    if "-tangmega138k" not in lines[0]:
+        r.warn("kernel %s has no -tangmega138k name (before release #98)" % lines[0].strip())
+    tree = (REPO / "linux" / "RELEASE").read_text().strip()
+    if r.metrics["build"] != "#" + tree:
+        r.warn("the board runs release %s, linux/RELEASE says #%s (built without scripts/build_kernel.sh, "
+               "or not flashed)" % (r.metrics["build"], tree))
+    # rcS writes the kernel's name and release into the /etc/issue template at boot
+    rc, issue = ctx.run("cat /etc/issue")
+    r.check(lines[0].strip() in issue and lines[1].strip() in issue and "\\" not in issue,
+            "/etc/issue does not carry this kernel's uname -r / -v: %r" % issue.strip()[-160:])
+    return "Linux %s, release %s, up %d s, %d MB" % (lines[0].strip(), r.metrics["build"], up, mem)
 
 
 @test("kernel", "dmesg", "kernel log clean")
