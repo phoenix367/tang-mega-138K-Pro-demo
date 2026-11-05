@@ -53,7 +53,7 @@ graph LR
 | [04-firmware.md](04-firmware.md) | Bare-metal AE350 firmware + the eth_dma self-test suite |
 | [05-eth-dma.md](05-eth-dma.md) | The Ethernet DMA RTL engine: components, RX/TX sequences, CDC, rings, CSRs |
 | [06-key-findings.md](06-key-findings.md) | Soft-atomics (no coherence manager), DDR bandwidth, RGMII RX clock, RX desync, timing closure, video decoding on the A25, gotchas |
-| [07-cores.md](07-cores.md) | The fabric cores: bus integration, the LCD video core (RGB, YUV, scaler, OSD), the hardware JPEG decoder, the video path end to end, audio, SD, sensors, fan, GPIO |
+| [07-cores.md](07-cores.md) | The fabric cores, each with its architecture, block diagram and register map: bus integration, the LCD video core (RGB, YUV, scaler, OSD), the hardware JPEG decoder, the video path end to end, audio, SD, sensors, fan, GPIO, the DDR bridge and its bus counters, the Ethernet DMA (summary) |
 | [08-applications.md](08-applications.md) | The userspace programs: the desktop panel by panel (screenshots), vidplay, wavplay, boardcfg, the input bridge, the boot splash, the test tools |
 
 Per-block references live next to the RTL: `src/rtl/ddr_bridge/README.md` (bridge

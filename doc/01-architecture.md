@@ -17,8 +17,8 @@ section says otherwise.
 
 | topic | document |
 |---|---|
-| each core's registers, pins, driver and testbench | the README next to its RTL: `src/rtl/{ddr_bridge,video,idct,audio,sdhost,sensor,fan,gpio}/README.md` |
-| the cores as a whole: bus integration, the video path, the JPEG decoder | [07-cores.md](07-cores.md) |
+| each core's architecture, block diagram and registers; bus integration; the video path | [07-cores.md](07-cores.md) |
+| each core's pins, testbench and measurements in detail | the README next to its RTL: `src/rtl/{ddr_bridge,video,idct,audio,sdhost,sensor,fan,gpio}/README.md` |
 | the Ethernet DMA engine | [05-eth-dma.md](05-eth-dma.md), `ETH_DMA_DESIGN.md` |
 | why things are the way they are (atomics, DDR speed, RGMII clock, timing closure) | [06-key-findings.md](06-key-findings.md) |
 | build commands, toolchains, Docker | [02-build.md](02-build.md), `BUILD.md` |
