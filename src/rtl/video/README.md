@@ -28,7 +28,7 @@ DE mode, RGB666 on 18 pins plus `LCD_CLK` (H21) and `LCD_DE` (A24). Pins, drive 
 timing come from Sipeed's `rgb_screen/800_480_screen` example (see `src/rtl/ae350_demo.cst`).
 Timing: H 800 + 210 front / 182 back porch (1192 total), V 480 + 45 / 8 (533 total).
 The pixel clock is the Ethernet PLL's CLKOUT2 (VCO 1000 MHz / 30 = 33.3 MHz), giving
-~52 Hz (55 frames/s measured). The panel samples on the falling edge: `LCD_CLK` comes
+52.5 Hz (`lcdmon` measures 52.47 Hz). The panel samples on the falling edge: `LCD_CLK` comes
 from an ODDR in phase with the registered outputs. RGB565 is widened to RGB666 by
 repeating the 5-bit channels' MSB.
 
@@ -69,8 +69,8 @@ Change timing only while CTRL is 0. Enable/test/YUV mode take effect at the next
 **YUV 4:2:0 mode (Build 68+).** The framebuffer is what video decoders produce: planar
 Y (FB_BASE/STRIDE), U and V (FB_BASE_U/V, STRIDE_C, half width and height). The
 fetcher reads the three planes of a line into three regions of the line RAM (the same
-1600 bytes per line as RGB565, so the DDR port load is unchanged and the scan-out's DRAM
-traffic actually drops from 2 to 1.5 bytes per pixel); the output stage picks the Y, U
+1600 bytes per line as RGB565, so the DDR port load is unchanged: chroma is read again
+for the second panel line of each pair); the output stage picks the Y, U
 and V words of each 16-pixel group in the group's first three cycles and converts
 with fixed-point BT.601 (×256 coefficients 298/409/100/208/516, or 256/359/88/183/454
 for full range), repeating chroma samples. The CRC register still covers the RGB565
@@ -128,7 +128,8 @@ the CPU nothing noticeable: a frozen bar over playback left the load unchanged w
 configurations pixel-exact against the model, including upscale, 2.5× downscale, odd
 factors such as 150→61, RGB-mode scaling, windows with background, the OSD alone and
 over scaled pictures, and the mid-frame OSD move. On the board, `scaletest` checks
-seven scenes by frame CRC with no underruns: up to 800×450, down to a 400×240 window,
+eight scenes by frame CRC with no underruns (the eighth, 852×480 scaled to 800×450,
+needs kernel #85+): up to 800×450, down to a 400×240 window,
 333×211→761×462, OSD over 1:1, the info bar over an upscaled picture, and a
 full-screen OSD over a small window. Timing: lcd_pclk 95.8 MHz (needs 33.3), the DDR
 clock domain 100.08 MHz, all clocks met. Cost: the core grew from 8 to 32 block RAMs,

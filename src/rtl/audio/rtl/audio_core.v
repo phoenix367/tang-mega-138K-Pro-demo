@@ -8,8 +8,9 @@
 //                                                        |
 //   DAC <-- audio_out (NCO bit clock, serialiser, CRC) <-- head register
 //
-// No DMA: the CPU fills the FIFO one {R, L} frame per 32-bit write, and the
-// level-type interrupt (level < THRESH) asks for more.  The whole core runs
+// The FIFO is filled by the CPU, one {R, L} frame per 32-bit DATA write with the
+// level-type interrupt (level < THRESH) asking for more, or by the DMA fetch
+// engine (CTRL[6]) from a ring in DRAM.  The whole core runs
 // on the EXTS bus clock; the DAC bit clock is derived from it by a phase
 // accumulator, so the sample rate is programmable and the outputs are
 // ordinary registered I/O.  See audio/README.md.

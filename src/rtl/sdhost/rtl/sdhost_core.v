@@ -7,13 +7,13 @@
 // between a 1 KB FIFO and DDR.  All logic runs on the 50 MHz bus clock; the
 // SD clock is a divided copy driven from a register (SDCLK = 50 MHz /
 // (2 * (DIV + 1)): DIV 0 = 25 MHz default speed, DIV 62 = 397 kHz for
-// identification).  Host outputs change on the SDCLK falling edge, inputs
-// are sampled at the rising edge (the pad is read directly in the cycle the
-// clock rises, i.e. a full period after the card launched the bit).
+// identification).  Host outputs change on the SDCLK falling edge; inputs
+// are sampled one bus clock after the rising edge by default, or at the edge
+// with CTRL[16] (see the register list below).
 //
 // Command engine: 48-bit command with CRC7, responses of 48 bits (R1/R1b/
 // R3/R6/R7) or 136 bits (R2), optional CRC7 / index check, response
-// timeout (64 clocks), R1b busy wait on DAT0.
+// timeout (80 clocks), R1b busy wait on DAT0.
 // Data engine: BLKCNT blocks of BLKSIZE bytes (multiple of 8, <= 512) over
 // 1 or 4 lanes with CRC16 per lane; reads capture start bit, data, CRC and
 // end bit; writes send start bit, data, CRC, end bit, then check the card's

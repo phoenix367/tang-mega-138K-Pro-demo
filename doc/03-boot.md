@@ -40,7 +40,7 @@ sequenceDiagram
 
   PWR->>FPGA: load bitstream from flash 0x0
   FPGA->>A25: release reset → fetch @ 0x80000000
-  Note over A25: harts_early_init():<br/>enable I/D cache, DC_COHEN,<br/>clear ECC/prefetch/CCTL_SUEN
+  Note over A25: harts_early_init():<br/>enable I/D cache, DC_COHEN,<br/>clear ECC/prefetch/write-around,<br/>set CCTL_SUEN
   A25->>UB: run U-Boot XIP
   Note over UB: preboot: bmp display 0x80100000 →<br/>gowin_lcd driver, splash on the LCD
   UB->>DDR: lzmadec fw_payload (flash 0x800000) → DRAM 0x0, ~9 s
@@ -58,8 +58,10 @@ sequenceDiagram
 ### `harts_early_init()` (U-Boot, `arch/riscv/cpu/andes/cpu.c`)
 
 This is where the no-coherence-manager workaround starts: the cache is enabled
-but **ECC, prefetch, write-around and `CCTL_SUEN` are cleared** so DDR atomics
-behave (the cache SRAM has no ECC; ECC-on makes `amoswap` hang). `DC_COHEN` is
+but **ECC, prefetch and write-around are cleared** so DDR atomics
+behave (the cache SRAM has no ECC; ECC-on makes `amoswap` hang). `CCTL_SUEN` is set: it
+lets S-mode use the CCTL cache-control CSRs, which the kernel's non-coherent DMA
+handling needs (`PATCHES/0004`). `DC_COHEN` is
 set and the code waits for `DC_COHSTA` — but on this SoC `DC_COHEN` reads back 0
 (no CM), which is the root cause behind the soft-atomic stack.
 
@@ -68,7 +70,7 @@ set and the code waits for `DC_COHSTA` — but on this SoC `DC_COHEN` reads back
 The full kernel `Image` is ~26 MB and the `fw_payload` ~30 MB, while the flash region
 from `0x800000` to the end of the 16 MB NOR holds 8 MB. The payload is therefore
 LZMA-compressed (`scripts/flash.sh kernel`: `xz --format=lzma`, 8 MiB dictionary) to
-~6.4 MB and U-Boot's `lzmadec` expands it into DRAM at boot, about 9 s on the A25
+~7.4 MB (7.36 MB for kernel #98) and U-Boot's `lzmadec` expands it into DRAM at boot, about 9 s on the A25
 (gzip + `unzip` was used until 2026-11-02: 7.5 MB, 4 s; LZMA buys ~1.1 MB of headroom).
 The dictionary is allocated from U-Boot's heap, hence `CONFIG_SYS_MALLOC_LEN=0x1000000`
 in the fork's defconfig. `FW_PAYLOAD_OFFSET=0x400000` places the kernel 4 MB-aligned

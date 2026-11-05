@@ -91,8 +91,10 @@ marginal.
   the RX clock-to-data skew in the PHY (no fabric IODELAY needed). PnR then meets
   it with zero negative slack (max ~126.7 MHz — tight). The self-test passes
   `[1]`–`[7]`, and Linux gigabit RX becomes timing-verified.
-- `RGMII_RXC` is still on **generic routing** (`PR1014` warning) → only ~1.3 %
-  margin. Routing it onto a global clock buffer would harden it further (optional).
+- `RGMII_RXC` enters on C23, which is not clock-capable, so it reaches a global clock
+  wire through generic routing (`PR1014` warning). Since Build 65 the `.cst` pins it to
+  the first LW wire (`BUFG[8]`, see "Fewer 50 MHz clocks" below); Build 72 closes
+  `rgmii_rxclk` at 143 MHz.
 - **Logic depth, not the clock, was the real limit (fixed Oct 2026).** Adding the
   DDR bridge pushed the 125 MHz paths to −1.0 ns (build-to-build swing +0.08 …
   −2.1 ns). The failing paths were deep logic in our own RTL, now registered:
@@ -106,8 +108,10 @@ marginal.
 - **Some builds show ~2e-5 MAC-rejected RX frames** (Builds 22/23/30: 2–5 per 140k),
   others none (Builds 26/33, both with fast DDR), so it depends on placement. Every bad
   frame is CRC-rejected (TCP `InCsumErrors` 0) and TCP recovers. `RGMII_RXC` is on C23,
-  a VREF pin that is not clock-capable, so generic routing is forced, and the RGMII input
-  timing is unconstrained (no `set_input_delay`). That is the place to fix it.
+  a VREF pin that is not clock-capable, so generic routing is forced. The RGMII input
+  timing was unconstrained then; the SDC now sets `set_input_delay` 1.2–2.8 ns on RXD /
+  RX_CTL (both edges), and the RX clock is pinned to an LW wire (Build 65). The residual
+  rate since is about one frame in 10⁵–10⁶ (1 in 141 701 after Build 65); its cause is open.
 
 ## 4. RX data/metadata desync (fixed by the store-and-forward stage)
 
@@ -243,8 +247,9 @@ positive, so 4 ps of slack is "met", not "nearly failed" -- but a domain with ev
 at 0 ps has no room for the next netlist change. Build 62 -> 63 (first iteration)
 showed this: fixing the audio cone moved the placement and three previously-passing
 domains failed on their own marginal paths (perf counters, EXTS read return, BIST).
-The SDC now carries `report_timing` lines for `ae350_ahb_clk` and `ddr3_sysclk` as well as
-`ae350_ddr_clk`, so every build lists its worst paths per domain.
+The SDC now carries `report_timing` lines for `ae350_ahb_clk` and `ddr3_sysclk` (and for
+`ae350_ddr_clk` until Build 64 made it the same clock as `ddr3_sysclk`), so every build
+lists its worst paths per domain.
 
 ## One clock for the DDR path (2026-11-01, Build 64)
 

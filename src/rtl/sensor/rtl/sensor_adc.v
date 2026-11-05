@@ -10,12 +10,12 @@
 //                     chosen at run time through VSENCTL (VSEN_CTL_SEL = 1):
 //                       0 vtest   = VCC    /2    (BUF_VCC_EN)
 //                       1 vdd09_0 = VCCM   /2    (BUF_VCCM_EN)
-//                       2 vdd09_1 = SERDES Q0 / MIPI 0.9 V rails /2 (not enabled)
+//                       2 vdd09_1 = VDDA_Q0 (SerDes 0.9 V) /2 (BUF_SERDES_Q0_EN[0])
 //                       3 vdd09_2 = bank 6/7 IO pair or VCC (not enabled)
-//                       4 vdd18_0 = VDDHA_Q0 / VDDX_MIPI /4 (not enabled)
-//                       5 vdd18_1 = VCCX   /4
+//                       4 vdd18_0 = VDDX_MIPI /4 (BUF_MIPI_M0_EN[2])
+//                       5 vdd18_1 = VCCX   /4    (BUF_BK6_EN[4])
 //                       6 reserved
-//                       7 vdd33   = VCCIO6 / VCCIO7 /8 (BUF_BK6/7_EN, not enabled)
+//                       7 vdd33   = VCCIO7 /8 (BUF_BK7_EN[5]; the enables of 2/4/5/7 were found by probing)
 //                     ADCVALUE unsigned-ish 14-bit, /2048 = volts at the bus,
 //                     times the divider = rail volts.
 //

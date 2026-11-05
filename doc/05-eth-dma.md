@@ -31,8 +31,8 @@ graph TB
     AM1["ahb_master m1"]
   end
 
-  ARB["eth_ahb_arbiter<br/>priority RX>TX"]
-  BR["extm_bridge 32↔64"]
+  ARB["ahb_arbiter5<br/>RX first, TX last;<br/>lanes for the 32-bit TX"]
+  BR["extm_bridge (wiring)"]
   EXTM["SoC EXTM → DDR"]
   MAC["TSE MAC RGMII"]
 
@@ -65,8 +65,8 @@ RTL files (`src/rtl/eth_dma/rtl/`):
 | `tx_unpack.v` | MAC-side TX: len+words → MAC byte stream with `tx_mac_ready` backpressure |
 | `tx_ring_reader.v` | bus-side TX: read frame from the DRAM ring via `ahb_master` |
 | `tx_path.v` | TX integration: tx_ring_reader → 2× CDC FIFO → tx_unpack |
-| `ahb_master.v` | AHB-lite master mover (single-beat) used by both rings |
-| `eth_ahb_arbiter.v` | 2-master → 1, fixed priority RX>TX, registered grant |
+| `ahb_master.v` | AHB-lite master mover used by both rings (and the SD, audio and JPEG cores): pipelined INCR16/8/4 write bursts, single-beat reads |
+| `eth_ahb_arbiter.v` | 2-master → 1, fixed priority RX>TX, registered grant; now only in the testbenches (the top level uses `src/rtl/audio/rtl/ahb_arbiter5.v`) |
 | `extm_bridge.v` | 32-bit master ↔ 64-bit EXTM data adapter |
 | `cdc_fifo_reset.v` | aligned multi-domain FIFO reset (built on `Reset_Synchronizer`) |
 
@@ -127,8 +127,8 @@ sequenceDiagram
   participant CPU as driver (NAPI)
 
   MAC->>CAP: rx_mac_data byte stream + last/error
-  CAP->>SF: pack to 32-bit words; at EOF emit {len,err}
-  Note over SF: speculative write;<br/>commit whole frame on clean EOF,<br/>else rewind + count drop
+  CAP->>SF: pack to 32-bit words, at EOF emit {len,err}
+  Note over SF: speculative write,<br/>commit whole frame on clean EOF,<br/>else rewind + count drop
   SF->>FIFO: drain frame data-words first, then {len,err}
   FIFO->>RW: data stream + metadata stream
   RW->>DDR: m0 AHB: word0={err,len}, word1+=data<br/>at buf[rx_head & (len-1)]
@@ -175,7 +175,7 @@ sequenceDiagram
   participant UN as tx_unpack
   participant MAC as MAC (125 MHz)
 
-  CPU->>DDR: write frame [word0={len}][data…]; writeback cache
+  CPU->>DDR: write frame [word0={len}][data…], write back the cache
   CPU->>TR: bump TX_TAIL (TX_TAIL > TX_HEAD ⇒ work)
   TR->>DDR: m1 AHB read header {len} then data words
   TR->>FIFO: data stream + {len} metadata
@@ -201,9 +201,9 @@ sequenceDiagram
 
 ```mermaid
 graph LR
-  M0["m0 (RX write)"] --> ARB["eth_ahb_arbiter<br/>RX > TX, registered grant"]
+  M0["m0 (RX write)"] --> ARB["ahb_arbiter5<br/>RX > SD > audio > JPEG > TX,<br/>registered grant"]
   M1["m1 (TX read)"] --> ARB
-  ARB --> BR["extm_bridge<br/>32-addr/data ↔ 64-data"]
+  ARB --> BR["extm_bridge<br/>wiring: HSEL, HPROT, HREADY"]
   BR --> EXTM["SoC EXTM master-in"]
   EXTM --> ICN["SoC interconnect"]
   ICN --> DDR["DDR3"]
@@ -213,12 +213,14 @@ graph LR
   grant** so a transfer is never preempted mid-burst. It forwards the **full 32-bit
   address** — unlike the Gowin AHBBusArbiter IP, which only forwards a fixed 1 MB
   window at `0x80000000` (that IP was tried first and abandoned for DMA). The top
-  level now instantiates its 4-master descendant `ahb_arbiter5`
-  (`src/rtl/audio/rtl/`), which also carries the SD host's and the audio engine's DMA.
-- `extm_bridge` adapts the 32-bit masters to the **64-bit EXTM data** bus (write
-  replicates to both lanes; read selects by `HADDR[2]`). It also drives
-  `EXTM_HREADY` from the arbiter's `SHREADYMUXM0` — a wiring detail whose absence
-  originally deadlocked every DMA transfer.
+  level now instantiates its 5-master descendant `ahb_arbiter5`
+  (`src/rtl/audio/rtl/`), which also carries the SD host's, the audio engine's and the
+  JPEG decoder's DMA.
+- The 32-bit TX master meets the **64-bit EXTM data** bus in `ahb_arbiter5`: its write
+  data goes to both lanes and its read lane is picked by a registered `HADDR[2]`.
+  `extm_bridge` is wiring: HSEL, HPROT `0011`, and `EXTM_HREADY` driven from the
+  port's own `HREADYOUT` — a wiring detail whose absence originally deadlocked every
+  DMA transfer.
 - `ahb_master.v` v2 issues pipelined **INCR16/8/4 bursts of 64-bit beats** (the EXTM
   port charges ~16 cycles per burst start and breaks undefined-length INCR into
   singles, so fixed-length bursts are what pays). With the current `ddr_bridge`

@@ -95,7 +95,8 @@ GOWIN_PATH=$GP STAGE=all scripts/gw_run.sh    # syn + PnR + bitstream -> impl/pn
 - `impl/mega_138K_test_process_config.json` keeps `CPU`/`MSPI`/`SSPI` = `true` so the
   AE350's SPI-flash interface can use the dedicated config pins (else PnR fails `PR2017`).
 - Synthesis-only needs no constraints; PnR enforces `Promote_Physical_Constraint_Warning_to_Error`.
-- The current build: ~8% registers, ~7% BSRAM on `gw5ast138b-007`.
+- Build 72: logic 30 %, registers 26 %, BSRAM 57 % (192 of 340), DSP 11 % on
+  `gw5ast138b-007` (doc/01-architecture.md §8.5).
 
 Program the board:
 ```sh
@@ -120,7 +121,7 @@ Linux back):
 GOWIN_PATH=$GP src/firmware/flash_fw.sh              # writes ae350_fw.bin -> flash 0x600000 (run 55)
 GOWIN_PATH=$GP MODE=sram scripts/gw_program.sh   # reload gateware -> CPU resets, XIP-boots the fw
 ```
-The self-test prints over **UART2** (logic analyzer / USB-TTL on **U16**, 8N1, 115200;
+The self-test prints over **UART2** (USB-TTL adapter on the header's **B19** TX / **A17** RX, 8N1, 115200;
 the on-board FT2232 ch-B `/dev/ttyUSB1` does **not** work as the console — see memory).
 
 ---
@@ -171,7 +172,8 @@ deadlocks with soft atomics), `CONFIG_NONPORTABLE=y`, `CONFIG_HZ=250`,
 off, `CONFIG_INITRAMFS_SOURCE="…/linux/rootfs …/linux/initramfs_nodes.list"`. Soft-atomic
 patches live in `arch/riscv/include/asm/{soft_atomic,cmpxchg,atomic,bitops,futex}.h`.
 The Gowin ethernet driver is `drivers/net/ethernet/gowin/gw_tse.c`
-(`CONFIG_NET_VENDOR_GOWIN`); `linux/driver/` here holds the older PIO copy for reference.
+(`CONFIG_NET_VENDOR_GOWIN`); `linux/driver/` here holds reference copies of the board drivers, plus the older PIO
+Ethernet driver (`gw_tse_pio.c`).
 Sanity-check the build is atomic-free:
 ```sh
 $LGNU.objdump -d vmlinux | grep -cE '\b(amo[a-z]+|lr\.[wd]|sc\.[wd])\b'   # expect ~1

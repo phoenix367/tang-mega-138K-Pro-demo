@@ -596,9 +596,11 @@ gw_eth_dma_core u_gw_eth_dma_core
     .dbg_extm(dbg_extm)
 );
 
-// Custom 2-master AHB arbiter: full 32-bit address space, fixed priority RX>TX.
-// (The Gowin AHBBusArbiter only forwards a 0x80000000 register window -- not a
-//  DMA fabric; see eth_dma/rtl/eth_ahb_arbiter.v.)
+// EXTM arbiter for the five DMA masters: full 32-bit address space, fixed priority
+// eth RX > SD > audio > JPEG > eth TX, grant held per command; it also puts the
+// 32-bit TX master on the right 64-bit lane.  (The Gowin AHBBusArbiter only forwards
+// a 0x80000000 register window -- not a DMA fabric; eth_dma/rtl/eth_ahb_arbiter.v
+// is this one's 2-master ancestor.)
 ahb_arbiter5 u_eth_ahb_arbiter
 (
     .clk(EXTS_HCLK), .rstn(EXTS_HRSTN),
@@ -734,7 +736,8 @@ idct_core u_idct_core
     .irq(intr_idct)
 );
 
-// 32-bit arbiter master -> 64-bit SoC EXTM slave port
+// arbiter -> SoC EXTM port: wiring plus HSEL, HPROT and HREADY (the lane handling
+// for the 32-bit TX master is in ahb_arbiter5)
 extm_bridge u_extm_bridge
 (
     .hclk(EXTS_HCLK), .hresetn(EXTS_HRSTN),

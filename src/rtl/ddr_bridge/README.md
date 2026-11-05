@@ -231,7 +231,8 @@ two bus clocks stay separate PLL outputs.
 
 `tb/run_all.sh` runs everything:
 
-* **random regression** (`run_regress.sh`): 3 buffer/prefetch configs × 4 clock ratios ×
+* **random regression** (`run_regress.sh`): 3 buffer/prefetch configs × 5 clock settings (10/10 ns
+  with `SYNC_CLK=1` as built, and 10/10, 20/10, 20/20, 20/37 ns through the async FIFOs) ×
   4 seeds, A25-like traffic against a reference memory, plus one seed per combination with
   a video-port client (`+video=P`). The client reads a second window that AHB never
   writes, and every return is checked.
@@ -259,7 +260,7 @@ two bus clocks stay separate PLL outputs.
   stream-table update, the LRU ages are a permutation, nothing to flush while an
   allocation is possible). The clock-crossing FIFOs are free stubs and unused data is cut. ABC proves
   the small configuration (12-bit, 4 buffers) **for all reachable states**; the full size
-  is checked to 16 cycles. Z3 (`bridge_ahb.sby`) did not finish step 0 of this model with
+  is checked to 12 cycles (`run_all.sh`; `run_formal.sh full N` takes any depth). Z3 (`bridge_ahb.sby`) did not finish step 0 of this model with
   yosys-smtbmc 0.33 / Z3 4.8.12.
 
 ## Solved: overlapping DDR reads broke Linux fork/exec (A25 page-table walker)

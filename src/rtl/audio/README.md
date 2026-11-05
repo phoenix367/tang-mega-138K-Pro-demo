@@ -25,8 +25,9 @@ tb/run_tb.sh       iverilog run; prints RESULT: PASS|FAIL
       (PIO mode: DATA writes, one {R,L} frame each)
 ```
 
-**DMA.** The engine (CTRL[6]) reads the ALSA buffer as a ring with 64-bit INCR
-bursts (two frames per beat, up to DMA_FILL[23:16] beats per command) whenever the
+**DMA.** The engine (CTRL[6]) reads the ALSA buffer as a ring in commands of up
+to DMA_FILL[23:16] 64-bit beats (two frames per beat; the shared `ahb_master` reads each
+beat as a SINGLE transfer) whenever the
 FIFO level plus the frames in flight is below DMA_FILL[15:0] frames, never past
 DMA_LIMIT — the free-running count of bytes the application has committed, written
 by the driver after it cleaned the cache over that range (the A25 has no coherence

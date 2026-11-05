@@ -1,6 +1,6 @@
 
 //TANG_MEGA-138K_Pro_Dock
-//GW5AST-LV138FPGA676AES
+//GW5AST-LV138FPG676AC1/I0 (project part gw5ast138b-007)
 //GW5AST-138
 //B
 
@@ -23,7 +23,7 @@ IO_PORT "UART2_TXD" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
 IO_LOC "UART2_RXD" A17;
 IO_PORT "UART2_RXD" IO_TYPE=LVCMOS33 PULL_MODE=UP BANK_VCCIO=3.3;   // idle-high when the adapter is unplugged (a floating RX stopped U-Boot autoboot)
 
-// (SD pins removed -- SD support dropped from the design.)
+// (microSD pins: see the SD host section at the end of the file.)
 
 //JTAG
 IO_LOC "TMS_IN"     W21;    //5  p4

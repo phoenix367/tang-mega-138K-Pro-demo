@@ -53,7 +53,7 @@ sequenceDiagram
   PHY-->>MAC: RGMII RX (looped back)
   MAC-->>DMA: rx_mac byte stream
   DMA->>RXR: m0 AHB write [word0={err,len}][data…], bump RX_HEAD, IRQ
-  Note over CPU: poll RX_HEAD; ae350_dma_invalidate_range(buf)  ← invalidate D-cache
+  Note over CPU: poll RX_HEAD, then ae350_dma_invalidate_range(buf)  ← invalidate D-cache
   CPU->>RXR: read frame, compare to sent
   CPU->>CSR: cleanup: DMA off, PHY reset 0x8000 (so Linux boots clean)
 ```

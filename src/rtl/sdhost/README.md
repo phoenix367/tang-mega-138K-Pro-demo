@@ -17,7 +17,7 @@ All lines have 10 kΩ pull-ups on the Dock; the FPGA I/Os add `PULL_MODE=UP`.
 ## Gateware
 
 - `rtl/sdhost_core.v` — AHB-lite slave on EXTS @ `0xE8020000` (`HADDR[17]`) and a
-  64-bit AHB master (`src/rtl/eth_dma/rtl/ahb_master.v`, INCR16 bursts) that moves blocks
+  64-bit AHB master (`src/rtl/eth_dma/rtl/ahb_master.v`: INCR16 bursts for writes to DDR, single beats for reads) that moves blocks
   between a 128×64-bit FIFO and DDR. The FIFO is a synchronous-read BSRAM whose read
   address is the pointer after the current pop, so the head word is always present
   (as it was with the original flop array), plus a bypass register for a write into
