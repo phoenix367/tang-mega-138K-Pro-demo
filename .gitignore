@@ -49,6 +49,10 @@ __pycache__/
 /src/apps/tests/amotrace
 /src/apps/tests/dmactest
 /src/apps/tests/lcdmon
+/src/apps/tests/yuvtest
+/src/apps/tests/scaletest
+/src/apps/tests/idcttest
+/src/apps/tests/ucsr_test
 /src/apps/desktop/build/
 /src/apps/desktop/inputd
 /src/apps/desktop/build_lvgl.log

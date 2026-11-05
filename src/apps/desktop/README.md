@@ -49,26 +49,44 @@ PC: host/netinput.py  --tcp 5555-->  board: inputd  --/dev/uinput-->  /dev/input
   - `main.c` — fbdev display, VT 1 to `KD_GRAPHICS` + keyboard `K_OFF` (restored on
     exit), status bar (date and HH:MM clock, redrawn once a minute; wired-link icon + IP or "no link" when the cable is out, CPU %, die temperature, fan rpm — red "FAN
     STOPPED" when the tacho gives no pulses, free memory), home tile
-    grid, panel container with Back. `-p <panel>` opens a panel at start (for
+    grid, panel container under the status bar, whose left end ("< Panel", hover/press
+    highlight) is the one back control. `-p <panel>` opens a panel at start (for
     screenshots), `-T` leaves the VT alone. Only one copy runs: `lvdesk` takes
     an exclusive `flock` on `/run/lvdesk.lock` and a second copy exits with code
     3 ("already running, pid N"); `S70desktop start` likewise refuses while its
     supervisor is alive and the loop stops on exit code 3. (Two desktops once
     shared the framebuffer after a stray `killall lvdesk` + a second `start`.)
   - `input.c` — own evdev drivers (LVGL's built-in one drops printable keys):
-    pointer with ABS/REL and wheel-to-scroll, keyboard with US layout, Shift/Caps,
-    LVGL navigation keys, autorepeat; devices are grabbed (`EVIOCGRAB`) and
+    pointer with ABS/REL and wheel-to-scroll, the right button for context menus,
+    keyboard with US layout, Shift/Caps, LVGL navigation keys, F2/F5, Ctrl/Shift state
+    for the panels, autorepeat; devices are grabbed (`EVIOCGRAB`) and
     re-scanned every second if missing. Ctrl+Alt+H = home, Ctrl+Alt+Q = restart.
   - `sysinfo.c` — `/proc/stat`, `/proc/meminfo`, loadavg, uptime, hwmon
     `gowin-adc` (temperature + 8 rails), eth0 state/counters/IP.
-  - `panels.c` — **System** (CPU chart, memory, sensors, fan), **Files** (LVGL file
-    explorer over `lv_fs_posix`; click = text preview or, for `.wav`, play; a
-    status row shows the microSD card as a mountable resource with a
-    Mount/Unmount button and an "SD card" quick-access entry),
+  - `files.c` — **Files**, a small file manager after Ubuntu's Files in list view:
+    places (Home, SD card, `/tmp`, `/etc`, File System), Up + path, a table of Name /
+    Size / Modified (folders first, item counts), a status line (items, selection,
+    free space), and the microSD card as a mountable resource (Mount/Unmount).
+    Click selects, Ctrl+click toggles, Shift+click extends, double click opens: folders
+    in place, `.avi`/`.mp4`/`.mkv`/`.mp3`/`.m4a` through `vidplay`
+    (`src/apps/vidplay/`; the child owns the framebuffer and the CPU: meanwhile the
+    desktop runs no LVGL work at all, its main loop only waits in `poll()` on the
+    input devices, and any key or click ends it), `.wav` through `wavplay`, small
+    text files in a preview. **Right click** opens a context menu: on the selection
+    Open, Cut, Copy, Paste Into Folder, Rename, Delete, Properties; on the background
+    New Folder, Paste, Select All, Show Hidden Files, Properties (name, type, size or
+    contents counted recursively, location, times, permissions, owner, free space).
+    Keys: arrows (Shift extends), Home/End, Enter, Backspace (up), Ctrl+A/C/X/V,
+    Delete, F2, F5, Ctrl+H, Esc. Copy, move and delete run in a child process
+    (busybox `cp -a` / `mv` / `rm -rf`, one item after the other) with a progress
+    bar and Cancel, so a large copy to the card leaves the desktop usable. Nothing is
+    overwritten: a taken name becomes "name (copy).ext", "name (copy 2).ext". There
+    is no trash: Delete asks, then removes for good. The right button reaches
+    panels as `DESK_EVENT_CONTEXT` (`desk_context_click()` in `main.c`, sent to the
+    object under the pointer and then its parents); `desk_menu()` draws the popup.
+  - `panels.c` — **System** (CPU chart, memory, sensors, fan),
     **Audio** (WAV list from `/home/ae350`, `/tmp`; plays via a `wavplay` child
-    process; "Test tone" writes and plays a 440/880 Hz stereo file), **Files** also plays `.avi`/`.mp4`/`.mkv`/`.mp3`/`.m4a` through `vidplay` (`src/apps/vidplay/`): the child owns
-    the framebuffer and the CPU: meanwhile the desktop runs no LVGL work at all, its main loop only
-    waits in `poll()` on the input devices, and any key or click ends it), **Network**
+    process; "Test tone" writes and plays a 440/880 Hz stereo file), **Network**
     (RX/TX kbit/s chart, mode/IP/gateway/MAC/link; **Configure** opens a dialog for
     static IP/prefix, gateway, DNS, DHCP, hostname and MAC that is validated like
     `boardcfg` does and saved with `boardcfg set`, so the daemon writes the EEPROM and
@@ -87,8 +105,8 @@ PC: host/netinput.py  --tcp 5555-->  board: inputd  --/dev/uinput-->  /dev/input
     RTC, so without NTP the clock starts at 1970), **About** (the board, the gateware
     cores, the LVGL version, the repository).
 - **`lv_conf.h`** — LVGL configuration: RGB565, CLIB malloc/string, fbdev driver
-  in partial mode with a 120-line draw buffer, POSIX fs on drive `A:`, file
-  explorer, sysmon/perf monitor (hidden by default), Montserrat 12–32 + UNSCII,
+  in partial mode with a 120-line draw buffer, POSIX fs on drive `A:`, table (the
+  Files list), sysmon/perf monitor (hidden by default), Montserrat 12–32 + UNSCII,
   calendar/roller/dropdown widgets, no demos, log level WARN to stdout.
 
 ## Build
@@ -124,8 +142,9 @@ name is the tile's title in any case, `lvdesk -p "date & time"`.
   a few frames. The benchmark demo gives numbers.
 - The LCD framebuffer is cached memory written back by the fbdev driver's deferred
   I/O (20 ms), so LVGL's mmap writes appear on the panel one tick later.
-- LVGL 9.6 marks `lv_file_explorer` and `lv_list` deprecated; they still work and
-  are used here for brevity (`-Wno-deprecated-declarations` in the Makefile).
+- LVGL 9.6 marks `lv_list` deprecated; it still works and is used here for brevity
+  (`-Wno-deprecated-declarations` in the Makefile). The Files panel no longer uses
+  `lv_file_explorer` (no multiple selection, no right click); it is off in `lv_conf.h`.
 - Measured over the link: idle frame 12 B / 20 ms round trip, status-bar update 8 KB / 25 ms,
   keyframe of the home screen 90 KB / 120 ms, widgets demo animating ~8 KB per
   frame at 18 fps. The 20 ms floor is the A25 comparing 768 KB of framebuffer.

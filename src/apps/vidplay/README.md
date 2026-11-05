@@ -187,11 +187,9 @@ layer (`src/rtl/video/README.md`). vidplay decodes the picture at its own size a
 origin of the scan-out buffer, in a plane layout made for the stream (32-byte strides,
 whole MCU rows). `GOWIN_LCD_IOC_SCALE` then fits the picture to the panel with the
 aspect kept: 480×270 and 640×360 fill 800×450, centred with black bars, and pictures
-larger than the panel shrink. The driver's buffers hold sources up to 1024×768
-(kernel #85+), and the IDCT core takes MJPEG up to 1024 wide. Wider video falls back to
-FFmpeg's C decoder: 1280×524 takes 84 ms per frame (~9 fps shown, the rest skipped), and
-1280×720 fits no scan-out buffer at all, so it plays sound over the desktop's picture.
-852×480 is the size to encode for this panel. No CPU time goes into
+larger than the panel shrink. The driver's buffers hold sources up to 1280×768
+(kernel #93+; 1024×768 from #85), and the IDCT core takes MJPEG up to 2048 wide (Build
+72+; 1024 before). 720p therefore plays on the gateware path; see "720p" below. No CPU time goes into
 scaling, and a small clip decodes as fast as before.
 
 Checked with the music video re-encoded at 852×480, wider than the panel. `vidplay -C 300`
@@ -228,6 +226,44 @@ times a second, and redrew the whole strip, ~10 ms of cache misses, whenever the
 progress line moved a pixel.
 Fit-to-panel scaling costs no CPU: 480×270 MJPEG decodes in 1.1–1.2 ms per frame on the
 gateware path either way.
+
+## 720p (Build 72 + kernel #93, 2026-11-05)
+
+Before Build 72, 1280-wide video fell back to FFmpeg's C decoder: 84 ms per frame, so
+~9 fps were shown and the rest skipped. 1280×720 did not fit a scan-out buffer at all and
+played sound only. Three changes fixed that:
+- **Gateware:** the IDCT core's band RAMs hold 2048-pixel luma / 1024-pixel chroma lines.
+  STATUS[9] says so, and `gowin-idct` reports `max_width` 2048 from it.
+- **Kernel:** gowin-lcdfb's YUV buffers default to 1280×768 (`yuv_max_w`), 1440 KB each.
+- **vidplay:** takes the width limit from the driver, and decodes one frame ahead
+  (below).
+
+`vidplay -C 300` on 1280×720 clips is bit-exact with FFmpeg's C decoder. Per frame the
+gateware path costs 27 ms against 84 ms on the CPU. `VIDPLAY_CHECKLOG=1` prints each
+frame's size, the CPU's parse and copy (2–4 ms), and the wait for the core. The core
+time fits **23.4 ms + 0.083 ms per KB** of JPEG data: the IDCT of 21 600 blocks
+dominates, and even a 140 KB frame takes 34 ms of the 40–42 ms a frame may last.
+
+**Decode ahead.** Until now the next frame went to the core only after the pending one
+was shown. With 34 ms frames that left a few milliseconds per period, and the audio
+stage and the loop's sleep ate them: the densest clip skipped 11 % of its frames. Now
+the loop asks the core whether it is idle (`idct_hw_idle()`, a STATUS ioctl, no wait),
+and if it is, the next frame starts while the decoded one waits for its time.
+`yuv_show()` waits only for the buffer still in flight. 720p music videos, full length
+from the SD card, `lcdmon` watching the panel:
+
+| Clip (MJPEG q 8 + AAC) | Frames | Largest frame | Skipped | Holds ≥ 95 ms | Longest hold |
+|---|---|---|---|---|---|
+| Tora – "Eat The Sun", 1280×720, 25 fps | 5619 | 71 KB | 0 | 0 | 57 ms |
+| Ensiferum – "Andromeda", 1280×720, 24 fps | 6134 | 72 KB | 0 | 0 | 57 ms |
+| Cavetown – "Green", 1280×524, 30 fps | 8116 | 45 KB | 0 | 0 | 57 ms |
+| S. Mergenthaler – "Sound Asleep", 1280×720, 24 fps, before decode ahead | 7608 | 148 KB | 873 | 217 | 191 ms |
+| the same with decode ahead | 7608 | 148 KB | 57 | 0 | 76 ms |
+
+The rest of "Sound Asleep" (a frame in 130 skipped) is in its densest scenes, where
+the 3 ms parse plus the core's ~34 ms leave no margin. Hiding the parse as well would
+take frame setup as a ring record, so that the next frame's records could go in
+while the core is still busy. CPU load at 720p is 56–60 %.
 
 ## Frame timing on the panel: no hitches (2026-11-04)
 

@@ -1,0 +1,237 @@
+diff --git a/Documentation/devicetree/bindings/riscv/extensions.yaml b/Documentation/devicetree/bindings/riscv/extensions.yaml
+index 2cf2026cf..5cc13e5b4 100644
+--- a/Documentation/devicetree/bindings/riscv/extensions.yaml
++++ b/Documentation/devicetree/bindings/riscv/extensions.yaml
+@@ -109,6 +109,12 @@ properties:
+             The standard C extension for compressed instructions, as ratified in
+             the 20191213 version of the unprivileged ISA specification.
+ 
++        - const: p
++          description:
++            The P extension for packed-SIMD / DSP instructions, not ratified. The
++            Andes A25 implements draft v0.5 (major opcode 0x7f, Andes GCC
++            -mext-dsp); firmware adds it when the core's mmsc_cfg.EDSP is set.
++
+         - const: v
+           description:
+             The standard V extension for vector operations, as ratified
+@@ -570,6 +576,17 @@ properties:
+             Registers in the AX45MP datasheet.
+             https://www.andestech.com/wp-content/uploads/AX45MP-1C-Rev.-5.0.0-Datasheet.pdf
+ 
++        - const: xandesperf
++          description:
++            The Andes Technology AndeStar V5 performance extension (lea,
++            bbc/bbs, beqc/bnec, bfos/bfoz, ffb/ffzmism/ffmism/flmism and the
++            gp-relative loads and stores), present when mmsc_cfg.EV5PE is set.
++
++        - const: xandescodense
++          description:
++            The Andes Technology CoDense code-size extension (exec.it), present
++            when mmsc_cfg.ECD is set.
++
+     allOf:
+       # Zcb depends on Zca
+       - if:
+diff --git a/arch/riscv/include/asm/hwcap.h b/arch/riscv/include/asm/hwcap.h
+index 46d9de541..f1259fa32 100644
+--- a/arch/riscv/include/asm/hwcap.h
++++ b/arch/riscv/include/asm/hwcap.h
+@@ -17,6 +17,7 @@
+ #define RISCV_ISA_EXT_h		('h' - 'a')
+ #define RISCV_ISA_EXT_i		('i' - 'a')
+ #define RISCV_ISA_EXT_m		('m' - 'a')
++#define RISCV_ISA_EXT_p		('p' - 'a')	/* the draft packed-SIMD / DSP extension */
+ #define RISCV_ISA_EXT_q		('q' - 'a')
+ #define RISCV_ISA_EXT_v		('v' - 'a')
+ 
+diff --git a/arch/riscv/include/asm/processor.h b/arch/riscv/include/asm/processor.h
+index efa1b3519..835fcd934 100644
+--- a/arch/riscv/include/asm/processor.h
++++ b/arch/riscv/include/asm/processor.h
+@@ -107,6 +107,11 @@ struct thread_struct {
+ 	struct __riscv_v_ext_state vstate;
+ 	unsigned long align_ctl;
+ 	struct __riscv_v_ext_state kernel_vstate;
++#ifdef CONFIG_RISCV_ISA_VENDOR_EXT_ANDES
++	/* Andes user CSRs, per task when the core has them (asm/switch_to.h) */
++	unsigned long andes_ucode;	/* DSP (P draft v0.5): overflow flag */
++	unsigned long andes_uitb;	/* CoDense: exec.it table base */
++#endif
+ #ifdef CONFIG_SMP
+ 	/* Flush the icache on migration */
+ 	bool force_icache_flush;
+diff --git a/arch/riscv/include/asm/switch_to.h b/arch/riscv/include/asm/switch_to.h
+index 7594df37c..58a6e4d0a 100644
+--- a/arch/riscv/include/asm/switch_to.h
++++ b/arch/riscv/include/asm/switch_to.h
+@@ -92,6 +92,50 @@ static inline bool switch_to_should_flush_icache(struct task_struct *task)
+ #define __set_prev_cpu(thread)
+ #endif
+ 
++#ifdef CONFIG_RISCV_ISA_VENDOR_EXT_ANDES
++#include <asm/vendor_extensions.h>
++#include <asm/vendor_extensions/andes.h>
++#include <asm/vendorid_list.h>
++
++/*
++ * The user CSRs of the Andes extensions /proc/cpuinfo advertises belong to the
++ * task, like the FPU registers: without this, a process saw another's DSP
++ * overflow flag or exec.it table (src/apps/tests/ucsr_test: 31-86 % of reads).
++ */
++static __always_inline bool andes_has_uitb(void)
++{
++	return riscv_has_vendor_extension_unlikely(ANDES_VENDOR_ID, RISCV_ISA_VENDOR_EXT_XANDESCODENSE);
++}
++
++static inline void andes_ustate_save(struct task_struct *t)
++{
++	if (riscv_andes_dsp)
++		t->thread.andes_ucode = csr_read(CSR_ANDES_UCODE);
++	if (andes_has_uitb())
++		t->thread.andes_uitb = csr_read(CSR_ANDES_UITB);
++}
++
++static inline void andes_ustate_restore(struct task_struct *t)
++{
++	if (riscv_andes_dsp)
++		csr_write(CSR_ANDES_UCODE, t->thread.andes_ucode);
++	if (andes_has_uitb())
++		csr_write(CSR_ANDES_UITB, t->thread.andes_uitb);
++}
++
++/* exec: a new program starts with a clear flag and no exec.it table */
++static inline void andes_ustate_reset(struct task_struct *t)
++{
++	t->thread.andes_ucode = 0;
++	t->thread.andes_uitb = 0;
++	andes_ustate_restore(t);
++}
++#else
++static inline void andes_ustate_save(struct task_struct *t) { }
++static inline void andes_ustate_restore(struct task_struct *t) { }
++static inline void andes_ustate_reset(struct task_struct *t) { }
++#endif
++
+ #define switch_to(prev, next, last)			\
+ do {							\
+ 	struct task_struct *__prev = (prev);		\
+@@ -101,6 +145,8 @@ do {							\
+ 		__switch_to_fpu(__prev, __next);	\
+ 	if (has_vector())					\
+ 		__switch_to_vector(__prev, __next);	\
++	andes_ustate_save(__prev);			\
++	andes_ustate_restore(__next);			\
+ 	if (switch_to_should_flush_icache(__next))	\
+ 		local_flush_icache_all();		\
+ 	((last) = __switch_to(__prev, __next));		\
+diff --git a/arch/riscv/include/asm/vendor_extensions/andes.h b/arch/riscv/include/asm/vendor_extensions/andes.h
+index 7bb2fc434..fbacf8f37 100644
+--- a/arch/riscv/include/asm/vendor_extensions/andes.h
++++ b/arch/riscv/include/asm/vendor_extensions/andes.h
+@@ -7,6 +7,8 @@
+ #include <linux/types.h>
+ 
+ #define RISCV_ISA_VENDOR_EXT_XANDESPMU		0
++#define RISCV_ISA_VENDOR_EXT_XANDESPERF		1
++#define RISCV_ISA_VENDOR_EXT_XANDESCODENSE	2
+ 
+ /*
+  * Extension keys should be strictly less than max.
+@@ -16,4 +18,11 @@
+ 
+ extern struct riscv_isa_vendor_ext_data_list riscv_isa_vendor_ext_list_andes;
+ 
++/* user CSRs of the instruction extensions, switched per task (asm/switch_to.h) */
++#define CSR_ANDES_UITB		0x800	/* CoDense: exec.it table base */
++#define CSR_ANDES_UCODE		0x801	/* DSP (P draft v0.5): overflow / saturation flag */
++
++/* P on an Andes core: v0.5, whose state is ucode (other P drafts keep it elsewhere) */
++extern bool riscv_andes_dsp;
++
+ #endif
+diff --git a/arch/riscv/kernel/cpufeature.c b/arch/riscv/kernel/cpufeature.c
+index 3a8eeaa93..53ce964a5 100644
+--- a/arch/riscv/kernel/cpufeature.c
++++ b/arch/riscv/kernel/cpufeature.c
+@@ -308,6 +308,12 @@ const struct riscv_isa_ext_data riscv_isa_ext[] = {
+ 	__RISCV_ISA_EXT_DATA(d, RISCV_ISA_EXT_d),
+ 	__RISCV_ISA_EXT_DATA(q, RISCV_ISA_EXT_q),
+ 	__RISCV_ISA_EXT_SUPERSET(c, RISCV_ISA_EXT_c, riscv_c_exts),
++	/*
++	 * P, packed SIMD / DSP: still a draft, so only "riscv,isa-extensions" from the
++	 * firmware puts it here -- the Andes A25 implements v0.5 (Andes GCC -mext-dsp,
++	 * -march=...p), and OpenSBI adds it when the core's mmsc_cfg.EDSP says so.
++	 */
++	__RISCV_ISA_EXT_DATA(p, RISCV_ISA_EXT_p),
+ 	__RISCV_ISA_EXT_SUPERSET(v, RISCV_ISA_EXT_v, riscv_v_exts),
+ 	__RISCV_ISA_EXT_DATA(h, RISCV_ISA_EXT_h),
+ 	__RISCV_ISA_EXT_SUPERSET_VALIDATE(zicbom, RISCV_ISA_EXT_ZICBOM, riscv_xlinuxenvcfg_exts,
+diff --git a/arch/riscv/kernel/process.c b/arch/riscv/kernel/process.c
+index e3142d8a6..f0d875689 100644
+--- a/arch/riscv/kernel/process.c
++++ b/arch/riscv/kernel/process.c
+@@ -180,6 +180,7 @@ void flush_thread(void)
+ 	memset(&current->thread.vstate, 0, sizeof(struct __riscv_v_ext_state));
+ 	clear_tsk_thread_flag(current, TIF_RISCV_V_DEFER_RESTORE);
+ #endif
++	andes_ustate_reset(current);
+ }
+ 
+ void arch_release_task_struct(struct task_struct *tsk)
+@@ -192,6 +193,7 @@ void arch_release_task_struct(struct task_struct *tsk)
+ int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
+ {
+ 	fstate_save(src, task_pt_regs(src));
++	andes_ustate_save(src);		/* a child inherits the live DSP flag / exec.it table */
+ 	*dst = *src;
+ 	/* clear entire V context, including datap for a new task */
+ 	memset(&dst->thread.vstate, 0, sizeof(struct __riscv_v_ext_state));
+diff --git a/arch/riscv/kernel/vendor_extensions/andes.c b/arch/riscv/kernel/vendor_extensions/andes.c
+index 51f302b6d..a4c69c9ad 100644
+--- a/arch/riscv/kernel/vendor_extensions/andes.c
++++ b/arch/riscv/kernel/vendor_extensions/andes.c
+@@ -1,18 +1,42 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ 
+ #include <asm/cpufeature.h>
++#include <asm/sbi.h>
+ #include <asm/vendor_extensions.h>
+ #include <asm/vendor_extensions/andes.h>
++#include <asm/vendorid_list.h>
+ 
+ #include <linux/array_size.h>
++#include <linux/cache.h>
++#include <linux/init.h>
+ #include <linux/types.h>
+ 
+-/* All Andes vendor extensions supported in Linux */
++/*
++ * All Andes vendor extensions supported in Linux.  The instruction extensions are
++ * advertised (/proc/cpuinfo) for userspace; the kernel does not use them itself.
++ * Names as the Andes toolchain spells them in -march.
++ */
+ static const struct riscv_isa_ext_data riscv_isa_vendor_ext_andes[] = {
+ 	__RISCV_ISA_EXT_DATA(xandespmu, RISCV_ISA_VENDOR_EXT_XANDESPMU),
++	/* AndeStar V5 performance extension (mmsc_cfg.EV5PE): lea, bbc/bbs, beqc/bnec,
++	 * bfos/bfoz, ffb/ffzmism/ffmism/flmism, addigp/l*gp/s*gp */
++	__RISCV_ISA_EXT_DATA(xandesperf, RISCV_ISA_VENDOR_EXT_XANDESPERF),
++	/* CoDense code-size extension (mmsc_cfg.ECD): exec.it */
++	__RISCV_ISA_EXT_DATA(xandescodense, RISCV_ISA_VENDOR_EXT_XANDESCODENSE),
+ };
+ 
+ struct riscv_isa_vendor_ext_data_list riscv_isa_vendor_ext_list_andes = {
+ 	.ext_data_count = ARRAY_SIZE(riscv_isa_vendor_ext_andes),
+ 	.ext_data = riscv_isa_vendor_ext_andes,
+ };
++
++bool riscv_andes_dsp __ro_after_init;
++
++/* decided once, before the first user task: switch_to() then only tests a bool */
++static int __init riscv_andes_dsp_init(void)
++{
++	riscv_andes_dsp = riscv_isa_extension_available(NULL, p) &&
++			  riscv_cached_mvendorid(0) == ANDES_VENDOR_ID;
++	return 0;
++}
++arch_initcall(riscv_andes_dsp_init);

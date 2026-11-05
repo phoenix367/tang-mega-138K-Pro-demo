@@ -20,6 +20,22 @@ bool desk_is_dark(void);
 void desk_request_exit(int code);
 lv_obj_t *desk_card(lv_obj_t *parent, const char *title);
 lv_obj_t *desk_msgbox(const char *title, const char *text);
+/* context menus: a right click goes to the object under the pointer, then to its
+ * parents, as DESK_EVENT_CONTEXT (param: lv_point_t *, the screen point) until one
+ * of them calls desk_context_take().  desk_menu() pops a menu up there: items with a
+ * NULL text are separators; the menu closes on a click outside it or on an item
+ * (then the item's cb runs). */
+extern uint32_t DESK_EVENT_CONTEXT;
+void desk_context_click(int x, int y);
+void desk_context_take(void);
+typedef struct {
+    const char *text, *hint;           /* hint: a shortcut shown on the right, or NULL */
+    void (*cb)(void *ud);
+    void *ud;
+    bool disabled;
+} desk_menu_item_t;
+void desk_menu(int x, int y, const desk_menu_item_t *items, int n);
+bool desk_menu_close(void);            /* true if a menu was open */
 /* wired-network icon (two boxes joined by a cable, GNOME "network-wired" style);
  * state: 1 = link up (white), 0 = cable unplugged (grey + red slash), -1 = unknown (grey) */
 lv_obj_t *desk_clock_icon(lv_obj_t *parent, int size);   /* tile icon: a clock face */
@@ -40,6 +56,10 @@ void video_wait(void);
 bool input_init(lv_display_t *disp);
 const char *input_status(void);
 void input_wait(int ms);              /* sleep until input or ms, then handle it (video playback) */
+bool input_ctrl(void);                /* modifier state, for Ctrl+click / Shift+click */
+bool input_shift(void);
+#define DESK_KEY_F2 0xF702            /* keys LVGL has no code for (private-use code points) */
+#define DESK_KEY_F5 0xF705
 
 /* sysinfo.c */
 typedef struct {
@@ -66,7 +86,7 @@ int  sysinfo_run(const char *cmd, char *out, int len);          /* popen, return
 
 /* panels.c */
 void panel_sysmon(lv_obj_t *parent);
-void panel_files(lv_obj_t *parent);
+void panel_files(lv_obj_t *parent);      /* files.c */
 void panel_audio(lv_obj_t *parent);
 void panel_network(lv_obj_t *parent);
 void panel_console(lv_obj_t *parent);

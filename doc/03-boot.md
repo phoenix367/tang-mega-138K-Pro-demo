@@ -128,7 +128,7 @@ stateDiagram-v2
 |---|---|
 | `S35boardcfg` | `boardcfg -d`: restores hostname / time zone / eth0 MAC / network settings from the Dock EEPROM, then watches `/etc/board.conf` to write changes back, re-runs `S40network` when the network keys change and `S41ntp` when `ntp` changes (`src/apps/boardcfg/`) |
 | `S40network` | `lo` + `eth0` from the `net`/`ip`/`gateway`/`dns` keys in `/etc/board.conf`: static (default `192.168.200.2/24`) or busybox `udhcpc` (`/usr/share/udhcpc/default.script`); records what it did in `/run/network.state`; asks `S41ntp` to retry once eth0 is up |
-| `S41ntp` | busybox `ntpd -n -S /usr/share/ntpd/event`: the system clock from the `ntp` setting, the DHCP lease's servers or `pool.ntp.org`; state in `/run/ntp.state` (`S41ntp status`, shown in the desktop's Date & Time panel), a `ntp: clock set from the network` line in the kernel log when it steps the clock |
+| `S41ntp` | busybox `ntpd -n -S /usr/share/ntpd/event`: the system clock from the `ntp` setting, the DHCP lease's servers or `pool.ntp.org`; state in `/run/ntp.state` (`S41ntp status`, shown in the desktop's Date & Time panel), a `ntp: clock set from the network` line in the kernel log when it steps the clock. ntpd runs the hook's `periodic` event every ~11 min whether synchronised or not; at stratum 16 (no server) the hook leaves the state alone (kernel #95; before, a board without internet showed "clock set … refining") |
 | `S45sdcard` | mounts `/dev/mmcblk0(p1)` on `/mnt/sd` when a card is present |
 | `S50ssh` | dropbear on port 22 with the baked-in host keys |
 | `S60inputd` | `inputd`: keyboard/mouse events from the PC over TCP 5555 → `/dev/uinput` |

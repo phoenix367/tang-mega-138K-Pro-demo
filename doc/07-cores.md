@@ -24,7 +24,7 @@ CPU without an L2 cache.
 | Board GPIO / EEPROM | `src/rtl/gpio/` | `0xE801_0000` | — | — | mainline `gpio-mmio` + `i2c-gpio` + `i2c-mux-gpio` + `at24` | `boardcfg` |
 | microSD host | `src/rtl/sdhost/` | `0xE802_0000` | EXTM m2 | 12 | `gowin-sdhost` mmc_host (`PATCHES/0011`) | `tb/`, `dd` |
 | JPEG decoder (IDCT) | `src/rtl/idct/` | `0xE804_0000` | EXTM m4 | 13 | `gowin-idct` misc (`PATCHES/0013`) | `tb/run_tb.sh`, `tb/run_jpeg_tb.sh`, `idcttest`, `vidplay -C` |
-| DDR perf counters | `src/rtl/ddr_perf.v` | ext. APB `0xF800_0000` | — | — | `/dev/mem` (`scripts/ddr_perf.py`) | bridge `tb/run_all.sh` |
+| DDR perf counters | `src/rtl/ddr_perf.v` | ext. APB `0xF800_0000` | — | — | `gowin-ddr-perf` sysfs (`PATCHES/0016`), `scripts/ddr_perf.py` | bridge `tb/run_all.sh`, boardtest `cores.ddr_perf` |
 
 Interrupts arrive on the SoC's `EXT_INT[n]`, which the PLIC numbers `n + 10` for n ≥ 1;
 `EXT_INT[0]` (Ethernet) is source 4.
@@ -290,7 +290,8 @@ A frame costs the CPU a header parse and one ~10–20 KB copy into the ring.
 - The engine takes ~35 clocks per block (8 rows, 8 columns, pipeline latency, 8 band
   writes) and latches the block's plane and position at start, because the parser moves on
   while it works.
-- Band RAMs hold one MCU row per plane (Y 16 × 1024, U/V 8 × 512 pixels). The flush engine
+- Band RAMs hold one MCU row per plane (Y 16 × 2048, U/V 8 × 1024 pixels since Build 72, so
+  720p fits; 1024 / 512 before, STATUS[9] tells them apart). The flush engine
   writes them as whole lines through a prefetch FIFO, with one line command per plane line.
 
 ### 4.6 Software and results

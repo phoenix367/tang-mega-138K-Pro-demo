@@ -76,7 +76,8 @@ ssh ae350@192.168.200.2
   /tmp/memthroughput            # safe: read/write/copy bandwidth vs chunk size
   /tmp/compute_bench            # safe: core int/FP throughput (register-resident)
   /tmp/dsp_probe                # safe: does the A25 run Andes DSP/P-ext? (SIGILL-guarded)
-  /tmp/ext_probe                # safe: XAndesPerf (ffb/ffmism) + Zbb + prefetch probe
+  /tmp/ext_probe                # safe: XAndesPerf (ffb/ffmism) + CoDense (exec.it) + Zbb + prefetch probe
+  /tmp/ucsr_test 4 20000        # safe: are the DSP ucode / CoDense uitb CSRs kept per process?
   /tmp/amo_probe                # safe: amo hot-vs-cold (fork+timeout, no reboot)
   /tmp/atomic_test hot          # amoadd.w on a cached line
   /tmp/atomic_test lrsc          # bounded lr.w/sc.w on a cold line
@@ -236,14 +237,15 @@ the vector ones need RVV (absent). So the only FP path is the standard scalar F/
 FPU (compute_bench: ~0.82 GFLOP/s, single==double, no packed float). The Andes float
 extensions are for the AI parts (NX27V-class), not this A25.
 
-### ext_probe — XAndesPerf works, Zbb absent, prefetch is a hint
-Probes three more extensions via raw `.word` (encodings from the Andes toolchain),
-each SIGILL-guarded; Zbb and XAndesPerf are self-checked. Result on hardware:
+### ext_probe — XAndesPerf and CoDense work, Zbb absent, prefetch is a hint
+Probes four more extensions via raw `.word` / `.hword` (encodings from the Andes toolchain),
+each SIGILL-guarded; Zbb, XAndesPerf and CoDense are self-checked. Result on hardware:
 
 ```
-[Zbb]         clz/ctz/cpop/orcb/rev8/min/max/minu/maxu/andn/ror  -> 0/11 (all SIGILL)
-[XAndesPerf]  ffb / ffmism / flmism                              -> 6/6 OK
-[Zicbop]      prefetch.r                                          -> runs (hint)
+[Zbb]           clz/ctz/cpop/orcb/rev8/min/max/minu/maxu/andn/ror  -> 0/11 (all SIGILL)
+[XAndesPerf]    ffb / ffmism / flmism                              -> 6/6 OK
+[XAndesCoDense] exec.it #0/#1/#2 from a table at uitb              -> 3/3 OK
+[Zicbop]        prefetch.r                                          -> runs (hint)
 ```
 
 - **Zbb (basic bit-manip) is ABSENT** -- every op SIGILLs. So no hardware clz/ctz/
@@ -254,9 +256,28 @@ each SIGILL-guarded; Zbb and XAndesPerf are self-checked. Result on hardware:
   `ffb` finds the byte `(rs2 & 0xff)` in `rs1`; `ffmism`/`flmism` = first/last differing
   byte of `rs1` vs `rs2`. These accelerate `memchr`/`strlen` (`ffb`) and `memcmp`/`strcmp`
   (`ffmism`) a word at a time -- genuinely useful for libc string routines.
+- **CoDense `exec.it #n` WORKS** (mmsc_cfg.ECD): the 16-bit `exec.it` (0x8000 = #0, 0x8010 = #1,
+  0x8400 = #2) runs the 32-bit instruction at `uitb` (CSR 0x800) + 4n, here a table of
+  `addi`/`slli` in the text segment. The Andes linker uses it to replace repeated 32-bit
+  instructions with 16-bit references (`-mexecit`); our musl toolchain does not.
 - **Zicbop `prefetch.r`** decodes to an ORI-hint, so it never traps (can't be detected by
   SIGILL); its real effect was measured by the memthroughput delay sweep (hides latency
   when there's an overlap window).
+
+### ucsr_test — the extensions' user CSRs are per process (kernel #96+)
+The DSP's overflow flag lives in `ucode` (0x801) and CoDense's table base in `uitb` (0x800),
+both writable from user mode. N processes each write their own values, `sched_yield()`
+and read them back. Kernel #95 and older did not switch these CSRs: 31–86 % of the reads
+returned another process's value, so a DSP overflow test or an `exec.it` could act on
+someone else's state. Since kernel #96 (`PATCHES/0014`) `switch_to()` saves and restores
+them, fork inherits them and exec clears them: `UCSRTEST PASSED` with 4 and 8 processes,
+20000 rounds each. boardtest's `kernel.ucsr` runs it.
+
+### The ISA line in /proc/cpuinfo (kernel #96+)
+`rv32imafdcp_zicntr_zicsr_zifencei_zihpm_zca_zcd_zcf_xandesperf_xandescodense`: OpenSBI's A25
+override reads `mmsc_cfg` (0x2007f039) and adds `p`, `xandesperf` and `xandescodense` to the CPU
+node's `riscv,isa-extensions` (`PATCHES/0015`). boardtest's `kernel.isa` checks that it matches
+dsp_probe / ext_probe: every advertised extension executes and Zbb, which does not, is not listed.
 
 ### atomic_test — the headline result
 On this **no-coherence-manager** A25, userspace hardware atomics:

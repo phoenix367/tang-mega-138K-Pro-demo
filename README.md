@@ -16,7 +16,7 @@ atomic read-modify-write with interrupt-disabled plain loads and stores. See
 
 | Feature | Fabric block (`src/rtl/`) | Linux side | Notes |
 |---|---|---|---|
-| 1 GB DDR3-800, 32-bit bus | `ddr_bridge/` + Gowin DDR3 PHY | — | line-buffered AHB→DDR3 bridge, ~23× the stock bridge; video read port; perf counters in `ddr_perf.v` |
+| 1 GB DDR3-800, 32-bit bus | `ddr_bridge/` + Gowin DDR3 PHY | `gowin-ddr-perf` (bus counters in sysfs) | line-buffered AHB→DDR3 bridge, ~23× the stock bridge; video read port; bus counters and transfer trace in `ddr_perf.v` (`/sys/bus/platform/devices/f8000000.ddr-perf/counters`) |
 | Gigabit Ethernet | `eth_dma/` + Gowin TSE MAC | `gw_tse` (PATCHES / kernel fork) | descriptor-ring DMA with 64-bit INCR bursts; TCP ≈65 Mbit/s RX, ≈40 TX; ssh/scp/sftp via dropbear |
 | 5" 800×480 RGB LCD | `video/` | `gowin-lcdfb` fbdev | scans the framebuffer straight from DDR3; fbcon + LVGL 9.6 desktop (`src/apps/desktop/`: system monitor, files, audio, network with an EEPROM-backed configuration dialog, console, date & time with tzdata and NTP status, settings) |
 | Audio (PT8211 DAC) | `audio/` | ALSA `gowin-pt8211` | own DMA fetch engine, 2048-frame FIFO |
@@ -28,10 +28,11 @@ atomic read-modify-write with interrupt-disabled plain loads and stores. See
 | Console | — | UART2, 115200 | header pin B19; `scripts/uart_console.py` |
 | Video playback | `video/` YUV 4:2:0 scan-out, `idct/` JPEG decoder | `vidplay` (`src/apps/vidplay/`, trimmed static FFmpeg 7.1.1), gowin-lcdfb YUV buffers, `gowin-idct` | MJPEG + AAC/MP3 from the Files panel at 25 fps with ~1 ms of CPU per 800×480 frame: the gateware decodes the JPEG straight into a scan-out buffer that the LCD core converts, scales and overlays with the playback bar. H.264 was dropped: memory-latency bound on this SoC (no L2, ~1.4 µs per cache miss), ~12 fps at 480×270. See [doc/07-cores.md](doc/07-cores.md) |
 | Video scaler + OSD | `video/` (CTRL[4]/[5]) | gowin-lcdfb `SCALE` / `OSD` ioctls (`PATCHES/0006`), `vidplay` | nearest-neighbour scaling of the picture into a window, ARGB8888 overlay blended in hardware; vidplay fits videos to the panel and shows an info bar (Build 71 / kernel #84) |
-| Hardware JPEG decoder | `idct/` @0xE8040000, EXTM master 4 | `gowin-idct` misc driver (`PATCHES/0013`), `vidplay` `jpeg_hw.c` / `idct_hw.c` | MJPEG frames decoded by the gateware: Huffman decoding, dequantisation, IDCT, frame assembly into the YUV planes (Build 70); the CPU only parses headers, ~1 ms per 800×480 frame. Build 69 had the IDCT only |
+| Hardware JPEG decoder | `idct/` @0xE8040000, EXTM master 4 | `gowin-idct` misc driver (`PATCHES/0013`), `vidplay` `jpeg_hw.c` / `idct_hw.c` | MJPEG frames decoded by the gateware: Huffman decoding, dequantisation, IDCT, frame assembly into the YUV planes (Build 70); the CPU only parses headers, ~1 ms per 800×480 frame. Build 69 had the IDCT only; Build 72 takes frames up to 2048 wide, so 1280×720 plays at full rate with audio |
+| CPU extensions | — (hard A25) | OpenSBI `andestech,a25` override (`PATCHES/0015`), kernel `PATCHES/0014` | `/proc/cpuinfo` lists the A25's Andes DSP (`p`, packed SIMD), `xandesperf` and `xandescodense` (`exec.it`), read from the core's `mmsc_cfg` by OpenSBI; the kernel keeps their user CSRs per process (kernel #96) |
 | Boot splash | `video/` | U-Boot `gowin_lcd` driver (fork) | `src/splash/splash.bmp` on the LCD from U-Boot until the kernel's fbdev driver starts |
 
-Current state in flash: gateware **Build 71**, kernel **#92**, keyed-autoboot U-Boot (2026-11-04).
+Current state in flash: gateware **Build 72**, kernel **#97**, keyed-autoboot U-Boot (2026-11-05).
 
 ## The desktop
 
@@ -73,7 +74,8 @@ PATCHES/                 the same board changes as patch series against pristine
 scripts/                 gw_run.sh / gw_program.sh (Gowin flow), build_uboot.sh,
                          build_linux_boot.sh, build_musl_toolchain.sh, rootfs/ (one
                          reproducible build script per rootfs binary), uart_console.py,
-                         ddr_perf.py, timing_summary.py
+                         ddr_perf.py, timing_summary.py, boardtest/ (the peripheral test
+                         harness: kernel, network, cores, desktop)
 doc/                     the curated documentation set (start at doc/README.md)
 ```
 
@@ -125,7 +127,10 @@ FW_PAYLOAD_OFFSET=0x400000 LINUX_CROSS=$LGNU scripts/build_linux_boot.sh   # ext
 
 Then `scripts/flash.sh bitstream uboot kernel` programs the board (or `docker/run.sh --flash ...`
 from the container); [BOOT.md](BOOT.md) has the flash layout and the boot sequence. The
-rootfs binaries are rebuilt with `scripts/rootfs/build_all.sh`.
+rootfs binaries are rebuilt with `scripts/rootfs/build_all.sh`. `scripts/boardtest/boardtest.py`
+then checks the running board in ~5 min: drivers, network, every gateware core
+(bit-exact where possible) and the desktop through the input bridge
+([scripts/boardtest/README.md](scripts/boardtest/README.md)).
 
 ## Documentation
 

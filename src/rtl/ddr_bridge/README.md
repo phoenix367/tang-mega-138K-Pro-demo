@@ -284,6 +284,12 @@ within seconds.
 
 ## Tools
 
+Linux (kernel #97+, `gowin-ddr-perf`, `PATCHES/0016`): the counters as 64-bit totals in
+`/sys/bus/platform/devices/f8000000.ddr-perf/` — `cat counters` (all of them from one sample;
+read beats × 8 = bytes), `echo 1 > clear`, `echo 1 > trace_arm` + `trace` (8-byte entries),
+`mode` (read only; set it with `devmem 0xF8000020`). The driver samples by stopping the
+counters for a few µs about once a second, so a read in flight at that edge is counted
+as a return without its command (`mc_rd_valid` gains ~1 per second on `mc_rd_cmds`).
 `scripts/ddr_perf.py 'cmd'` (counters around a workload, `--trace N`),
 `scripts/boot_mode.py BIT.fs MODE` (load SRAM, set MODE in U-Boot, boot, count oopses),
 `scripts/uboot_cmd.py BIT.fs 'cmd'...`, `scripts/uart_console.py login|run|push|listen`

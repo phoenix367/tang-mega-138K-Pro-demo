@@ -3,7 +3,10 @@
 /*
  * Linux + OpenSBI device tree for the Gowin AE350 (Tang Mega 138K Pro Dock).
  * Self-contained (no U-Boot includes). Differences vs our U-Boot DT:
- *   - riscv,isa = "rv32imafdc"  (expose the FPU; userspace is ilp32d)
+ *   - riscv,isa = "rv32imafdc"  (expose the FPU; userspace is ilp32d), and the
+ *     same as riscv,isa-base + riscv,isa-extensions: OpenSBI (andes/a25.c)
+ *     appends the A25's Andes extensions from mmsc_cfg there at boot (p = DSP,
+ *     xandesperf, xandescodense), which Linux shows in /proc/cpuinfo
  *   - chosen/bootargs carry earlycon + console for the 8250 at 0xf0300020
  *     (console=tty0 too: the boot log also goes to fbcon on the LCD; ttyS0
  *     stays last, so /dev/console is the UART)
@@ -54,6 +57,10 @@
 			status = "okay";
 			compatible = "riscv";
 			riscv,isa = "rv32imafdc";	/* FPU present (misa IMAFDC) */
+			riscv,isa-base = "rv32i";
+			/* what Linux derived from "rv32imafdc" before; the Andes ones are added by OpenSBI */
+			riscv,isa-extensions = "i", "m", "a", "f", "d", "c",
+					       "zicntr", "zicsr", "zifencei", "zihpm";
 			mmu-type = "riscv,sv32";
 			clock-frequency = <800000000>;
 			i-cache-size = <0x8000>;
@@ -191,6 +198,15 @@
 			reg = <0xe8040000 0x100>;
 			interrupts = <13 4>;
 			interrupt-parent = <&plic0>;
+		};
+
+		/* src/rtl/ddr_perf.v on the SoC's external APB: counters + transfer
+		 * trace of the data-memory AHB bus, the DDR3 bridge's statistics and
+		 * its MODE register.  gowin-ddr-perf: sysfs statistics/, trace. */
+		ddr_perf: ddr-perf@f8000000 {
+			compatible = "gowin,ae350-ddr-perf";
+			reg = <0xf8000000 0x1000>;
+			clock-frequency = <100000000>;	/* DDR_HCLK, what "cycles" counts */
 		};
 
 		gmac0: ethernet@e8000000 {

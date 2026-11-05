@@ -36,8 +36,8 @@ player's side is `src/apps/vidplay/idct_hw.c`.
 | `rtl/idct_core.v` | Registers, ring reader (shared `ahb_master`, 32-word FIFO), record parser, 2-D engine (rows → transpose buffer → columns), the three band RAMs, flush engine with a prefetch FIFO, status/interrupts. |
 | `rtl/jpeg_entropy.v` | Baseline JPEG entropy decoder: table loads, byte unstuffing and RST markers, canonical Huffman decoding (one symbol per four clocks), DC prediction, dequantisation, zigzag; writes each block into the core's block buffer and hands it to the IDCT path. |
 | `rtl/idct_ram.v` | Simple dual-port 64-bit RAM for the bands (inferred BSRAM; the shared `RAM_Simple_Dual_Port_Dual_Clock` has an init loop GowinSyn refuses at depth 2048). |
-| `tb/tb_jpeg.v`, `tb/run_jpeg_tb.sh`, `tb/jpeg_ref.py` | JPEG regression: real files (libjpeg standard and optimised tables, restart markers, dense q 100, q 5 with sizes not multiples of 16, an ffmpeg MJPEG frame, damaged frames followed by a good one) as records through the core; every pixel compared with `jpeg_ref.py`, a literal port of FFmpeg's unescaping, restart handling, `decode_block` and simple IDCT, which is itself checked against the host's FFmpeg (C code, `-idct simple`) on every image. |
-| `tb/tb_idct.v`, `tb/run_tb.sh` | iverilog regression: small 4:2:0 frames of random blocks (DC-only, sparse, dense, clamp stress) in MCU order through a 64-bit AHB RAM model, every pixel compared with a model of FFmpeg's IDCT; per-block flush flags, automatic flushes, flush-only records, a height that is not a multiple of 16, a wrapping ring, the done interrupt exactly once. |
+| `tb/tb_jpeg.v`, `tb/run_jpeg_tb.sh`, `tb/jpeg_ref.py` | JPEG regression: real files (libjpeg standard and optimised tables, restart markers, dense q 100, q 5 with sizes not multiples of 16, an ffmpeg MJPEG frame, damaged frames followed by a good one, frames 1280 and 2048 wide) as records through the core; every pixel compared with `jpeg_ref.py`, a literal port of FFmpeg's unescaping, restart handling, `decode_block` and simple IDCT, which is itself checked against the host's FFmpeg (C code, `-idct simple`) on every image. |
+| `tb/tb_idct.v`, `tb/run_tb.sh` | iverilog regression: small 4:2:0 frames of random blocks (DC-only, sparse, dense, clamp stress) in MCU order through a 64-bit AHB RAM model, every pixel compared with a model of FFmpeg's IDCT; per-block flush flags, automatic flushes, flush-only records, a height that is not a multiple of 16, a wrapping ring, lines 1280 and 2048 wide, the done interrupt exactly once. |
 
 ## Records
 
@@ -110,14 +110,14 @@ grew from 5.9k to 11.9k LUT/ALU (device logic 25 % to 30 %).
 | Offset | | |
 |---|---|---|
 | `0x00` | CTRL | `[0]` enable, `[1]` reset (self-clearing: pointers, parser, engine, bands), `[2]` done irq enable, `[3]` band irq enable |
-| `0x04` | STATUS | `[0]` busy, `[1]` done irq, `[2]` band irq, `[3]` bad record (n > 64, plane 3, unknown type, corrupt JPEG data); write 1 to clear; `[8]` read-only 1: JPEG records supported |
+| `0x04` | STATUS | `[0]` busy, `[1]` done irq, `[2]` band irq, `[3]` bad record (n > 64, plane 3, unknown type, corrupt JPEG data); write 1 to clear; `[8]` read-only 1: JPEG records supported; `[9]` read-only 1: frames up to 2048 wide (Build 72+; before: 1024) |
 | `0x08` | RING_BASE | byte address, 8-byte aligned |
 | `0x0C` | RING_MASK | ring size − 1 |
 | `0x10` | TAIL | byte offset past the last record (8-aligned); the core consumes up to it |
 | `0x14` | HEAD | byte offset consumed so far (read-only) |
 | `0x18`/`0x1C`/`0x20` | Y/U/V_BASE | plane addresses, 8-byte aligned |
 | `0x24` | STRIDES | `[15:0]` luma, `[31:16]` chroma, bytes (multiples of 8) |
-| `0x28` | SIZE | `[15:0]` width (multiple of 16, ≤ 1024), `[31:16]` height (luma pixels) |
+| `0x28` | SIZE | `[15:0]` width (multiple of 16, ≤ 2048; ≤ 1024 before Build 72), `[31:16]` height (luma pixels) |
 | `0x2C` | BLOCKS | blocks transformed (read-only) |
 | `0x30` | BANDS | bands flushed (read-only) |
 | `0x34` | ID | `0x49444354` "IDCT" |
@@ -139,6 +139,19 @@ is bit-exact; vidplay's 800×480 MJPEG decode went from 42.6 to 26.4 ms per fram
 25 fps with audio), 640×360 from 29.3 to 19.1 ms. Build 69 timing: all clocks met,
 ahb_clk 52.4 MHz (constraint 50), ddr3_sysclk 100.03. Band flushes are 128-byte bursts on the
 EXTM arbiter at the lowest DMA priority but above the Ethernet TX read.
+
+## 2048-wide bands (Build 72, 2026-11-05)
+
+Up to Build 71 the band RAMs held 1024-pixel lines (Y 2048 words, U/V 512 words of 64
+bits), so 720p MJPEG fell back to FFmpeg on the CPU. Build 72 gives the luma RAM 4096
+words (16 lines x 256) and each chroma RAM 1024 (8 x 128). The write and flush
+addresses gain a bit, and STATUS[9] reads 1. A 1280-wide line uses 160 of its 256
+words: with power-of-two line slots, 1280 costs the same as 2048. Block RAM rose to
+192 of 340, and timing still closes (`ae350_ahb_clk` 51.06 MHz at 50, 0 TNS on every
+clock). Both regressions gained wide cases (`tb_idct` 1280x40 and 2048x32,
+`run_jpeg_tb.sh` real 1280x96 and 2048x48 MJPEG frames). The old RTL fails them:
+addresses wrap past 1024. On the board a 1280x720 frame takes 23.4 ms + 0.083 ms per
+KB of JPEG data (vidplay `VIDPLAY_CHECKLOG=1 -C N`), bit-exact with FFmpeg.
 
 ## Software
 

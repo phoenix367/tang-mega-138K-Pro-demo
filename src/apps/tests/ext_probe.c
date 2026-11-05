@@ -1,6 +1,7 @@
 /*
- * ext_probe.c -- probe three more extensions on the A25: Andes Performance Ext
- * (ffb/ffmism/flmism string search), Zbb (bit-manip), Zicbop (prefetch.r).
+ * ext_probe.c -- probe more extensions on the A25: Andes Performance Ext
+ * (ffb/ffmism/flmism string search), Andes CoDense (exec.it), Zbb (bit-manip),
+ * Zicbop (prefetch.r).
  *
  * The buildroot toolchain doesn't support them, so each is emitted as raw
  * `.word` with the real encodings (from the Andes riscv32-elf toolchain) under a
@@ -9,6 +10,8 @@
  * prefetch.r is a hint (can't trap-detect) so we just confirm it runs.
  *
  *   XAndesPerf (opcode 0x5B):  nds.ffb=0x20b5055b nds.ffmism=0x24b5055b nds.flmism=0x26b5055b
+ *   XAndesCoDense (16-bit, RVC quadrant 0 funct3 100): exec.it #0=0x8000 #1=0x8010 #2=0x8400;
+ *        exec.it #n runs the 32-bit instruction at uitb (CSR 0x800) + 4n
  *   Zbb: clz=0x60051513 ctz=0x60151513 cpop=0x60251513 orc.b=0x28755513 rev8=0x69855513
  *        min=0x0ab54533 max=0x0ab56533 minu=0x0ab55533 maxu=0x0ab57533 andn=0x40b57533 ror=0x60b55533
  *   Zicbop: prefetch.r 0(a0)=0x00156013
@@ -37,6 +40,21 @@ BIN(min,0x0ab54533) BIN(max,0x0ab56533) BIN(minu,0x0ab55533) BIN(maxu,0x0ab57533
 BIN(andn,0x40b57533) BIN(ror,0x60b55533)
 /* XAndesPerf */
 BIN(ffb,0x20b5055b) BIN(ffmism,0x24b5055b) BIN(flmism,0x26b5055b)
+
+/* XAndesCoDense: exec.it #0..#2 on a0 */
+#define EXECIT(nm,half) static inline uint32_t i_##nm(uint32_t a){ \
+	register uint32_t x asm("a0")=a; __asm__ volatile(".hword " #half:"+r"(x)::"memory"); return x; }
+EXECIT(execit0,0x8000) EXECIT(execit1,0x8010) EXECIT(execit2,0x8400)
+/* the instruction table: in the text segment, in case the core fetches it as code */
+static const uint32_t itb[4] __attribute__((section(".text.itb"), aligned(16))) = {
+	0x00150513,	/* #0 addi a0,a0,1 */
+	0x00750513,	/* #1 addi a0,a0,7 */
+	0x00351513,	/* #2 slli a0,a0,3 */
+	0x00000013,	/* nop */
+};
+static uint32_t r_execit0(uint32_t a){ return a+1; }
+static uint32_t r_execit1(uint32_t a){ return a+7; }
+static uint32_t r_execit2(uint32_t a){ return a<<3; }
 
 /* Zbb references */
 static uint32_t r_clz(uint32_t a){ int n=0; if(!a)return 32; while(!(a&0x80000000u)){a<<=1;n++;} return n; }
@@ -89,6 +107,20 @@ int main(void)
 	XP(ffb,   0x11223344u,0x00000022u);   /* find 0x22 at byte2 -> -2 */
 	XP(ffb,   0x11223344u,0x00000099u);   /* not present -> 0 */
 	printf("  -> XAndesPerf %d/%d correct\n", xp, xt);
+
+	printf("[XAndesCoDense] exec.it from a table at uitb (self-checked)\n");
+	int cp=0, ct=0;
+	trapped=0;
+	if(sigsetjmp(jb,1)==0){ __asm__ volatile("csrw 0x800, %0\n\t.word 0x0000100f /* fence.i */"::"r"(itb):"memory"); }
+	if(trapped) printf("  uitb   SIGILL (no CoDense)\n");
+	else {
+#define CP(nm,A) do{ trapped=0; uint32_t g=(sigsetjmp(jb,1)==0)?i_##nm(A):0; uint32_t e=r_##nm(A); ct++; \
+	if(trapped) printf("  %-8s SIGILL\n",#nm); else if(g!=e) printf("  %-8s WRONG %08x!=%08x\n",#nm,g,e); \
+	else {cp++; printf("  %-8s OK (%08x)\n",#nm,g);} }while(0)
+		CP(execit0,0x100u); CP(execit1,0x100u); CP(execit2,0x123u);
+		__asm__ volatile("csrw 0x800, zero");
+	}
+	printf("  -> XAndesCoDense %d/%d correct\n", cp, ct);
 
 	printf("[Zicbop] prefetch.r (hint -- can't trap-detect)\n");
 	trapped=0; static uint32_t buf[16];

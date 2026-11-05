@@ -1,17 +1,28 @@
 #!/bin/busybox sh
 # /usr/share/ntpd/event -- busybox ntpd's event hook (ntpd -S, started by
 # /etc/init.d/S41ntp).  $1 is the event: step (the clock was set), stratum,
-# periodic (every ~11 minutes while synchronised) or unsync; ntpd passes
-# stratum, offset, freq_drift_ppm and poll_interval in the environment.
-# Writes /run/ntp.state for the desktop's Date & Time panel and the shell
-# (S41ntp status); a step also goes to the kernel log.
+# periodic or unsync; ntpd passes stratum, offset, freq_drift_ppm and
+# poll_interval in the environment.  Writes /run/ntp.state for the desktop's
+# Date & Time panel and the shell (S41ntp status); a step also goes to the
+# kernel log.  NTP_STATE overrides the file (scripts/boardtest drives the hook
+# with made-up events that way).
+#
+# "periodic" comes every ~11 minutes whether ntpd is synchronised or not
+# (busybox runs it for battery-backed RTCs): with stratum 16 (no server yet, or
+# none since the last step) it is not news, and the state stays as it was --
+# reporting it as "synced" made the desktop show a synchronised clock on a
+# board with no internet.  "step" also comes with stratum 16 (ntpd resets it
+# when it sets the clock), and is reported: the clock was set from a server.
 
-STATE=/run/ntp.state
+STATE=${NTP_STATE:-/run/ntp.state}
 servers=$(sed -n 's/.*servers=\([^ ]*\).*/\1/p' "$STATE" 2>/dev/null)
 now=$(date +%s)
 case "$1" in
 	unsync)
 		echo "state=unsynced servers=$servers since=$now" > "$STATE.tmp" ;;
+	periodic)
+		[ "${stratum:-16}" -lt 16 ] 2>/dev/null || exit 0
+		echo "state=synced servers=$servers stratum=$stratum offset=$offset poll=$poll_interval drift=$freq_drift_ppm last=$now event=$1" > "$STATE.tmp" ;;
 	*)
 		echo "state=synced servers=$servers stratum=$stratum offset=$offset poll=$poll_interval drift=$freq_drift_ppm last=$now event=$1" > "$STATE.tmp" ;;
 esac

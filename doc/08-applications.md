@@ -55,7 +55,9 @@ below were taken from the board's framebuffer through `inputd`.
 
 ![Home screen with eight tiles](images/desktop-home.png)
 
-Eight tiles open the panels; every panel has a Back button.
+Eight tiles open the panels. In a panel the status bar's left end reads "‹ Panel" and is the
+way back home (highlighted under the pointer; Ctrl+Alt+H does the same); there is no second
+Back button, so the panel gets the whole area below the status bar.
 
 ### System
 
@@ -72,10 +74,22 @@ Eight tiles open the panels; every panel has a Back button.
 
 ![Files panel: the SD card's video folder](images/desktop-files.png)
 
-- **Browser:** a file browser over the whole filesystem, with quick places for home, the
-  SD card, pictures, music and documents.
-- **Clicking a file:** a text file opens a preview, `.wav` plays through `wavplay`, and
-  `.avi`, `.mp4`, `.mkv`, `.mp3` and `.m4a` play through `vidplay`.
+- **File manager:** a list view in the manner of Ubuntu's Files over the whole
+  filesystem: places for home, the SD card, `/tmp`, `/etc` and `/`; Name, Size and
+  Modified columns, folders first; a status line with the selection and the free space.
+- **Selecting and opening:** click selects, Ctrl+click toggles, Shift+click extends, and
+  Ctrl+A selects everything. A double click (or Enter) opens: folders in place, a text
+  file in a preview, `.wav` through `wavplay`, and `.avi`, `.mp4`, `.mkv`, `.mp3` and
+  `.m4a` through `vidplay`.
+- **Right click:** on files Open, Cut, Copy, Paste Into Folder, Rename, Delete and
+  Properties; on the background New Folder, Paste, Select All, Show Hidden Files and
+  Properties. The shortcuts work too: Ctrl+C / X / V, Delete, F2, Backspace (up), F5.
+- **Copying:** copy, move and delete run in the background with a progress bar and a
+  Cancel button. A name that already exists gets "(copy)" added, nothing is
+  overwritten, and Delete asks first, as there is no trash. Cancel removes the item
+  that was half copied.
+
+![Files: three files selected, right click](images/desktop-files-menu.png)
 - **During playback:** the player owns the panel, and any key or click on the PC side
   stops it. Meanwhile the desktop does no work at all; it only waits for that key or
   click. Its once-a-second status bar work used to delay frames: before, a picture was
@@ -196,7 +210,8 @@ kernel offer:
 | converted to RGB565 by the CPU and written with `pwrite()` | anything | the fallback, ~50 ms per 800×480 frame |
 
 The first packet that does not fit the gateware's JPEG subset hands the stream to FFmpeg
-for the rest of the file. The subset is baseline 8-bit 4:2:0, ≤ 1024 wide.
+for the rest of the file. The subset is baseline 8-bit 4:2:0, ≤ 2048 wide since gateware
+Build 72 (≤ 1024 before), so 720p MJPEG is decoded by the gateware as well.
 
 **Playback bar.** A 64-line strip at the bottom of the panel on the LCD core's OSD layer,
 always shown (`-O` hides it):
@@ -242,7 +257,9 @@ ffmpeg -i in.mp4 -vf scale=800:450 -c:v mjpeg -q:v 8 -pix_fmt yuvj420p -r 25 \
        -c:a aac -b:a 128k out.mp4
 ```
 
-Sizes other than the panel's are fine: the core scales anything up to 1024×768.
+Sizes other than the panel's are fine: the core scales anything the scan-out buffers hold,
+up to 1280×768 since kernel #93 (1024×768 before). 1280×720 plays at full rate with audio;
+see `src/apps/vidplay/README.md` for the numbers.
 
 ## 3. `wavplay`
 
@@ -328,9 +345,11 @@ panel or the speaker.
 | `wavplay` | audio bit-exactness (section 3) |
 | `ddr_memtest` | DDR3 correctness, latency and bandwidth through the bridge |
 | `memthroughput`, `compute_bench` | the L1-vs-DDR cliff; integer / FP throughput of the core |
-| `dsp_probe`, `ext_probe` | which Andes extensions the A25 executes (DSP: yes, though `misa` does not say so) |
+| `dsp_probe`, `ext_probe` | which Andes extensions the A25 executes (DSP, XAndesPerf, CoDense `exec.it`: yes; Zbb: no); since kernel #96 `/proc/cpuinfo` lists the same set |
+| `ucsr_test` | the DSP `ucode` and CoDense `uitb` CSRs are kept per process (kernel #96+) |
 | `atomic_test`, `amo_probe`, `amotrace`, `cctl_probe` | the atomics investigation behind the soft-atomic stack, and cache-control CSR access ([06-key-findings.md](06-key-findings.md)) |
 | `dmactest` | why the SoC's DMAC cannot reach fabric cores |
 
 `vidplay -C N` is the corresponding check for the JPEG decoder (section 2), and
-`scripts/ddr_perf.py` reads the bridge's bus counters.
+`scripts/ddr_perf.py` reads the bridge's bus counters (through the `gowin-ddr-perf` sysfs
+files since kernel #97: `/sys/bus/platform/devices/f8000000.ddr-perf/counters`).

@@ -168,9 +168,12 @@ $LGNU.objdump -d vmlinux | grep -cE '\b(amo[a-z]+|lr\.[wd]|sc\.[wd])\b'   # expe
 ```
 
 ### 4b. Device tree (`linux/ae350-linux.dts`)
-`compatible = "andestech,a25"` (NOT `ae350` — that OpenSBI override resets this SoC),
-`timebase-frequency = <50000000>`, cpu `clock-frequency = <800000000>`, eth at
-`ethernet@e8000000` (`gowin,ae350-tse`). Rebuild after edits:
+`compatible = "andestech,a25"` (NOT `ae350` — that OpenSBI override resets this SoC; the
+`a25` one, `external/opensbi/platform/generic/andes/a25.c`, only adds the core's
+`mmsc_cfg` extensions — `p`, `xandesperf`, `xandescodense` — to the CPU node's
+`riscv,isa-extensions`, which must therefore list the standard ones too; Linux shows them
+in `/proc/cpuinfo`), `timebase-frequency = <50000000>`, cpu `clock-frequency = <800000000>`,
+eth at `ethernet@e8000000` (`gowin,ae350-tse`). Rebuild after edits:
 ```sh
 dtc -I dts -O dtb -o linux/ae350-linux.dtb linux/ae350-linux.dts
 ```

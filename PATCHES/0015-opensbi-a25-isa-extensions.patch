@@ -1,0 +1,142 @@
+diff --git a/platform/generic/Kconfig b/platform/generic/Kconfig
+index d594b140..6ce32296 100644
+--- a/platform/generic/Kconfig
++++ b/platform/generic/Kconfig
+@@ -40,6 +40,13 @@ config PLATFORM_ANDES_AE350
+ 	select ANDES_PMA
+ 	default n
+ 
++config PLATFORM_ANDES_A25
++	bool "Andes A25 (Gowin AE350, Tang Mega 138K Pro) support"
++	default n
++	help
++	  Adds the A25's AndeStar V5 instruction extensions (mmsc_cfg: DSP,
++	  V5 performance, CoDense) to the CPU nodes' riscv,isa-extensions.
++
+ config PLATFORM_ANDES_QILAI
+ 	bool "Andes QiLai support"
+ 	select ANDES_PMU
+diff --git a/platform/generic/andes/a25.c b/platform/generic/andes/a25.c
+new file mode 100644
+index 00000000..d071f682
+--- /dev/null
++++ b/platform/generic/andes/a25.c
+@@ -0,0 +1,94 @@
++// SPDX-License-Identifier: BSD-2-Clause
++/*
++ * Andes A25 as the Gowin GW5AST-138B's hard SoC (Tang Mega 138K Pro Dock,
++ * device tree compatible "andestech,a25"): tell the OS which AndeStar V5
++ * instruction extensions the core was built with.
++ *
++ * mmsc_cfg is an M-mode CSR, so only the firmware can read the core's options.
++ * After the generic fixups, every enabled CPU node that lists
++ * "riscv,isa-extensions" gets the extensions its mmsc_cfg reports appended,
++ * in the names the Andes toolchain uses in -march; Linux shows them in
++ * /proc/cpuinfo (it reads vendor and draft extensions only from that property).
++ * Nothing else changes: this override deliberately leaves out the AE350
++ * platform's PMU, PMA and suspend hooks (that override resets this SoC).
++ */
++
++#include <andes/andes.h>
++#include <libfdt.h>
++#include <platform_override.h>
++#include <sbi/riscv_asm.h>
++#include <sbi/sbi_console.h>
++#include <sbi_utils/fdt/fdt_helper.h>
++
++/* mmsc_cfg feature bits (AndeStar V5, as in the AX45MP datasheet) */
++static const struct {
++	unsigned long mask;
++	const char *name;
++} a25_isa_exts[] = {
++	{ 1UL << 29, "p" },		/* EDSP: DSP, P-extension draft v0.5 (-mext-dsp) */
++	{ 1UL << 13, "xandesperf" },	/* EV5PE: AndeStar V5 performance extension */
++	{ 1UL << 3, "xandescodense" },	/* ECD: CoDense, exec.it */
++};
++
++static void a25_fdt_add_isa_extensions(void *fdt, unsigned long mmsc)
++{
++	int cpus, cpu, len, i;
++	const char *list;
++
++	cpus = fdt_path_offset(fdt, "/cpus");
++	if (cpus < 0)
++		return;
++
++	fdt_for_each_subnode(cpu, fdt, cpus) {
++		if (!fdt_node_is_enabled(fdt, cpu))
++			continue;
++		list = fdt_getprop(fdt, cpu, "riscv,isa-extensions", &len);
++		if (!list || len <= 0)
++			continue;	/* a "riscv,isa" string only: vendor names are not read from it */
++		for (i = 0; i < array_size(a25_isa_exts); i++) {
++			if (!(mmsc & a25_isa_exts[i].mask))
++				continue;
++			list = fdt_getprop(fdt, cpu, "riscv,isa-extensions", &len);
++			if (list && fdt_stringlist_contains(list, len, a25_isa_exts[i].name))
++				continue;
++			fdt_appendprop_string(fdt, cpu, "riscv,isa-extensions", a25_isa_exts[i].name);
++		}
++	}
++}
++
++static int a25_final_init(bool cold_boot)
++{
++	unsigned long mmsc;
++	int rc, i;
++
++	/* the generic fixups, then the FDT is reopened with free space to grow into */
++	rc = generic_final_init(cold_boot);
++	if (rc || !cold_boot)
++		return rc;
++
++	mmsc = csr_read(CSR_MMSC_CFG);
++	a25_fdt_add_isa_extensions(fdt_get_address_rw(), mmsc);
++
++	sbi_printf("Andes A25 mmsc_cfg         : 0x%08lx ->", mmsc);
++	for (i = 0; i < array_size(a25_isa_exts); i++)
++		if (mmsc & a25_isa_exts[i].mask)
++			sbi_printf(" %s", a25_isa_exts[i].name);
++	sbi_printf("\n");
++	return 0;
++}
++
++static int a25_platform_init(const void *fdt, int nodeoff, const struct fdt_match *match)
++{
++	generic_platform_ops.final_init = a25_final_init;
++	return 0;
++}
++
++static const struct fdt_match andes_a25_match[] = {
++	{ .compatible = "andestech,a25" },
++	{ },
++};
++
++const struct fdt_driver andes_a25 = {
++	.match_table = andes_a25_match,
++	.init = a25_platform_init,
++};
+diff --git a/platform/generic/andes/objects.mk b/platform/generic/andes/objects.mk
+index 660546c3..ba3ebbd1 100644
+--- a/platform/generic/andes/objects.mk
++++ b/platform/generic/andes/objects.mk
+@@ -5,6 +5,9 @@
+ carray-platform_override_modules-$(CONFIG_PLATFORM_ANDES_AE350) += andes_ae350
+ platform-objs-$(CONFIG_PLATFORM_ANDES_AE350) += andes/ae350.o
+ 
++carray-platform_override_modules-$(CONFIG_PLATFORM_ANDES_A25) += andes_a25
++platform-objs-$(CONFIG_PLATFORM_ANDES_A25) += andes/a25.o
++
+ carray-platform_override_modules-$(CONFIG_PLATFORM_ANDES_QILAI) += andes_qilai
+ platform-objs-$(CONFIG_PLATFORM_ANDES_QILAI) += andes/qilai.o
+ 
+diff --git a/platform/generic/configs/defconfig b/platform/generic/configs/defconfig
+index 818b71f4..f42f236f 100644
+--- a/platform/generic/configs/defconfig
++++ b/platform/generic/configs/defconfig
+@@ -1,4 +1,5 @@
+ CONFIG_PLATFORM_ALLWINNER_D1=y
++CONFIG_PLATFORM_ANDES_A25=y
+ CONFIG_PLATFORM_ANDES_AE350=y
+ CONFIG_PLATFORM_ANDES_QILAI=y
+ CONFIG_PLATFORM_ESWIN_EIC770X=y

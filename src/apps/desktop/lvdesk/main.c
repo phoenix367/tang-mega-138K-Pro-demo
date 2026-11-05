@@ -9,8 +9,9 @@
  *          keyboard is turned off while we run, restored on exit.
  *
  * Layout: a status bar (clock, IP, CPU, temperature, memory) over a
- * content area that shows either the home tile grid or one panel with a
- * title row and a Back button.
+ * content area that shows either the home tile grid or one panel.  The
+ * status bar's left end is the only navigation: "AE350" on the home grid,
+ * "< Panel" in a panel, which goes back home (as does Ctrl+Alt+H).
  */
 #define _GNU_SOURCE
 #include "lvdesk.h"
@@ -150,6 +151,115 @@ lv_obj_t *desk_msgbox(const char *title, const char *text)
     lv_msgbox_add_close_button(mb);
     lv_obj_set_width(mb, 420);
     return mb;
+}
+
+/* ---- context menus ------------------------------------------------------ */
+uint32_t DESK_EVENT_CONTEXT;
+static bool s_ctx_taken;
+static lv_obj_t *s_menu;            /* the open menu's full-screen backdrop on the top layer */
+typedef struct { void (*cb)(void *); void *ud; } menu_act_t;
+
+void desk_context_take(void) { s_ctx_taken = true; }
+
+void desk_context_click(int x, int y)
+{
+    lv_obj_t *old = s_menu, *top = lv_layer_top();
+    desk_menu_close();                                     /* (deleted asynchronously) */
+    for (uint32_t i = 0; i < lv_obj_get_child_count(top); i++)
+        if (lv_obj_get_child(top, i) != old) return;      /* a dialog is up: it is modal */
+    lv_point_t p = { x, y };
+    s_ctx_taken = false;
+    for (lv_obj_t *o = lv_indev_search_obj(lv_screen_active(), &p); o && !s_ctx_taken; o = lv_obj_get_parent(o))
+        if (lv_obj_send_event(o, (lv_event_code_t)DESK_EVENT_CONTEXT, &p) != LV_RESULT_OK) break;
+}
+
+bool desk_menu_close(void)
+{
+    if (!s_menu) return false;
+    lv_obj_delete_async(s_menu);          /* may be called from one of its own items */
+    s_menu = NULL;
+    return true;
+}
+
+static void menu_backdrop(lv_event_t *e) { (void)e; desk_menu_close(); }
+static void menu_free(lv_event_t *e) { free(lv_event_get_user_data(e)); }
+
+static void menu_item(lv_event_t *e)
+{
+    menu_act_t a = *(menu_act_t *)lv_event_get_user_data(e);
+    desk_menu_close();
+    if (a.cb) a.cb(a.ud);
+}
+
+void desk_menu(int x, int y, const desk_menu_item_t *it, int n)
+{
+    bool dark = desk_is_dark();
+    lv_color_t bg = dark ? lv_color_hex(0x2b323c) : lv_color_white(), fg = dark ? lv_color_white() : lv_color_black();
+    desk_menu_close();
+    s_menu = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(s_menu);
+    lv_obj_set_size(s_menu, SCR_W, SCR_H);
+    lv_obj_add_flag(s_menu, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_menu, menu_backdrop, LV_EVENT_PRESSED, NULL);
+    menu_act_t *acts = calloc(n, sizeof(*acts));
+    lv_obj_add_event_cb(s_menu, menu_free, LV_EVENT_DELETE, acts);
+    lv_obj_t *m = lv_obj_create(s_menu);
+    lv_obj_set_size(m, 250, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(m, bg, 0);
+    lv_obj_set_style_border_color(m, lv_color_hex(0x5a6370), 0);
+    lv_obj_set_style_border_width(m, 1, 0);
+    lv_obj_set_style_radius(m, 6, 0);
+    lv_obj_set_style_shadow_width(m, 16, 0);
+    lv_obj_set_style_shadow_opa(m, LV_OPA_40, 0);
+    lv_obj_set_style_pad_all(m, 4, 0);
+    lv_obj_set_style_pad_row(m, 0, 0);
+    lv_obj_set_flex_flow(m, LV_FLEX_FLOW_COLUMN);
+    lv_obj_remove_flag(m, LV_OBJ_FLAG_SCROLLABLE);
+    for (int i = 0; i < n; i++) {
+        if (!it[i].text) {                                   /* separator */
+            lv_obj_t *s = lv_obj_create(m);
+            lv_obj_remove_style_all(s);
+            lv_obj_set_size(s, LV_PCT(100), 9);
+            lv_obj_set_style_border_side(s, LV_BORDER_SIDE_BOTTOM, 0);
+            lv_obj_set_style_border_width(s, 1, 0);
+            lv_obj_set_style_border_color(s, lv_color_hex(0x5a6370), 0);
+            lv_obj_set_style_margin_bottom(s, 4, 0);
+            continue;
+        }
+        lv_obj_t *b = lv_obj_create(m);
+        lv_obj_remove_style_all(b);
+        lv_obj_set_size(b, LV_PCT(100), 30);
+        lv_obj_set_style_pad_hor(b, 10, 0);
+        lv_obj_set_style_radius(b, 4, 0);
+        lv_obj_t *l = lv_label_create(b);
+        lv_label_set_text(l, it[i].text);
+        lv_obj_set_style_text_color(l, fg, 0);
+        lv_obj_align(l, LV_ALIGN_LEFT_MID, 0, 0);
+        if (it[i].hint) {
+            lv_obj_t *h = lv_label_create(b);
+            lv_label_set_text(h, it[i].hint);
+            lv_obj_set_style_text_color(h, fg, 0);
+            lv_obj_set_style_text_opa(h, LV_OPA_50, 0);
+            lv_obj_align(h, LV_ALIGN_RIGHT_MID, 0, 0);
+        }
+        if (it[i].disabled) {
+            lv_obj_set_style_opa(b, LV_OPA_40, 0);
+            continue;                                         /* not clickable: the backdrop takes the click */
+        }
+        lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_style_bg_color(b, lv_palette_main(LV_PALETTE_BLUE), LV_STATE_PRESSED);
+        lv_obj_set_style_bg_opa(b, LV_OPA_COVER, LV_STATE_PRESSED);
+        lv_obj_set_style_bg_color(b, lv_palette_main(LV_PALETTE_BLUE), LV_STATE_HOVERED);
+        lv_obj_set_style_bg_opa(b, LV_OPA_50, LV_STATE_HOVERED);
+        acts[i] = (menu_act_t){ it[i].cb, it[i].ud };
+        lv_obj_add_event_cb(b, menu_item, LV_EVENT_CLICKED, &acts[i]);
+    }
+    /* at the pointer, kept on the screen (upwards when there is no room below) */
+    lv_obj_update_layout(m);
+    int32_t w = lv_obj_get_width(m), h = lv_obj_get_height(m);
+    if (x + w > SCR_W) x = SCR_W - w;
+    if (y + h > SCR_H) y = y - h >= 0 ? y - h : SCR_H - h;
+    lv_obj_set_pos(m, x < 0 ? 0 : x, y < 0 ? 0 : y);
 }
 
 /* ---- wired-network icon ----------------------------------------------- */
@@ -365,6 +475,14 @@ static void bar_create(lv_obj_t *scr)
     s_bar_title = bar_label(LV_SYMBOL_HOME " AE350");
     lv_obj_set_style_text_font(s_bar_title, &lv_font_montserrat_18, 0);
     lv_obj_set_clickable(s_bar_title, true);
+    /* the desktop's back button: looks pressable (hover / press highlight) */
+    lv_obj_set_style_pad_hor(s_bar_title, 8, 0);
+    lv_obj_set_style_pad_ver(s_bar_title, 3, 0);
+    lv_obj_set_style_radius(s_bar_title, 6, 0);
+    lv_obj_set_style_bg_color(s_bar_title, lv_palette_main(LV_PALETTE_BLUE), LV_STATE_HOVERED);
+    lv_obj_set_style_bg_opa(s_bar_title, LV_OPA_40, LV_STATE_HOVERED);
+    lv_obj_set_style_bg_color(s_bar_title, lv_palette_main(LV_PALETTE_BLUE), LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(s_bar_title, LV_OPA_COVER, LV_STATE_PRESSED);
     lv_obj_add_event_cb(s_bar_title, (lv_event_cb_t)desk_go_home, LV_EVENT_CLICKED, NULL);
     /* network: wired icon + address / "no link" */
     lv_obj_t *net = lv_obj_create(s_bar);
@@ -478,8 +596,6 @@ void desk_go_home(void)
     lv_label_set_text(s_bar_title, LV_SYMBOL_HOME " AE350");
 }
 
-static void back_click(lv_event_t *e) { (void)e; desk_go_home(); }
-
 void desk_open_panel(const char *title, void (*build)(lv_obj_t *parent))
 {
     lv_obj_clean(g_content);
@@ -490,22 +606,10 @@ void desk_open_panel(const char *title, void (*build)(lv_obj_t *parent))
     lv_obj_set_size(p, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_pad_all(p, 10, 0);
     lv_obj_set_flex_flow(p, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(p, 8, 0);
-
-    lv_obj_t *hdr = lv_obj_create(p);
-    lv_obj_remove_style_all(hdr);
-    lv_obj_set_size(hdr, LV_PCT(100), 40);
-    lv_obj_set_flex_flow(hdr, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(hdr, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(hdr, 12, 0);
-
-    lv_obj_t *back = lv_button_create(hdr);
-    lv_obj_add_event_cb(back, back_click, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *bl = lv_label_create(back);
-    lv_label_set_text(bl, LV_SYMBOL_LEFT " Back");
-    lv_obj_t *tl = lv_label_create(hdr);
-    lv_label_set_text(tl, title);
-    lv_obj_set_style_text_font(tl, &lv_font_montserrat_24, 0);
+    /* no title row and no Back button of its own: the status bar shows "< title" and
+     * goes back home -- one control, and ~48 px more for the panel.  Unstyled labels
+     * in a panel inherit the theme's text colour from here (else near-black on dark). */
+    lv_obj_set_style_text_color(p, desk_is_dark() ? lv_color_white() : lv_color_hex(0x1a1a1a), 0);
 
     lv_obj_t *body = lv_obj_create(p);
     lv_obj_remove_style_all(body);
@@ -547,6 +651,7 @@ int main(int argc, char **argv)
 
     lv_group_t *grp = lv_group_create();
     lv_group_set_default(grp);
+    DESK_EVENT_CONTEXT = lv_event_register_id();
     input_init(g_disp);
 
     lv_obj_t *scr = lv_screen_active();

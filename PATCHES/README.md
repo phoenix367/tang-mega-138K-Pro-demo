@@ -18,6 +18,10 @@ git apply 0008-linux-gowin-adc-hwmon.patch                     # in linux/ (inde
 git apply 0009-linux-gowin-fan-hwmon.patch                     # in linux/ (independent)
 git apply 0010-linux-gowin-spi-mmc.patch                      # in linux/ (independent; enable CONFIG_MMC_SPI)
 git apply 0011-linux-gowin-sdhost.patch                       # in linux/ (independent; native SD host, supersedes 0010 for the card)
+git apply 0013-linux-gowin-idct.patch                         # in linux/ (independent)
+git apply 0014-linux-a25-isa-extensions.patch                 # in linux/ (independent; needs 0015 for the names)
+git apply 0015-opensbi-a25-isa-extensions.patch               # in opensbi/ (after 0001)
+git apply 0016-linux-gowin-ddr-perf.patch                     # in linux/ (independent)
 ```
 (or `patch -p1 < <file>`). Base versions used: OpenSBI v1.8, Linux 6.12, U-Boot 2026.07-rc3.
 
@@ -114,7 +118,8 @@ git apply 0011-linux-gowin-sdhost.patch                       # in linux/ (indep
   `GOWIN_LCD_IOC_OSD` (show one of `osd_buffers`, default 2, panel-sized ARGB8888
   buffers mmap()ed after the YUV buffers, written back from the cache, in a window).
   RGB mode, and closing the file, turn both off. With the scaler the YUV buffers hold
-  sources up to `yuv_max_w` x `yuv_max_h` (default 1024x768, kernel #85): the caller lays
+  sources up to `yuv_max_w` x `yuv_max_h` (default 1280x768 since kernel #93 for 720p,
+  1024x768 from #85): the caller lays
   out its planes and YUV_SHOW checks them for the scaler's source height.
 - **Not in the patch** (Kconfig): `CONFIG_FB=y`, `CONFIG_FB_GOWIN_LCD=y`,
   `CONFIG_FRAMEBUFFER_CONSOLE=y`, `CONFIG_LOGO=y` (+ `LOGO_LINUX_CLUT224`), and the
@@ -187,7 +192,50 @@ with a coherence manager (or AXI exclusive-access support).
   Gateware: `src/rtl/idct/` (Build 69+). Kernel #78 (final form #81). The uapi header also
   defines the JPEG record macros (`GOWIN_IDCT_HDR_JPEG`, `GOWIN_IDCT_SCAN_PARAM`,
   `GOWIN_IDCT_ST_JPEG`) for the core's entropy decoder (Build 70+); the driver itself is
-  unchanged by them.
+  unchanged by them. Since kernel #93 `INFO.max_width` (and the `SETUP` width check) is
+  2048 when the core sets STATUS[9] (Build 72: 2048-pixel band lines, 720p), else 1024.
+
+## 0014 — Linux: the A25's instruction extensions in /proc/cpuinfo, their user CSRs per task
+- `asm/hwcap.h` + `kernel/cpufeature.c`: `RISCV_ISA_EXT_p` (the P packed-SIMD / DSP draft;
+  Linux 6.12 has no entry for it). `asm/vendor_extensions/andes.h` + `vendor_extensions/andes.c`:
+  Andes vendor extensions `xandesperf` (V5 performance: `nds.ffb`/`ffmism`/`flmism`, ...) and
+  `xandescodense` (`exec.it`) next to the existing `xandespmu`; DT binding text in
+  `extensions.yaml`. The kernel takes draft and vendor names only from a CPU node's
+  `riscv,isa-extensions` list (not from the `riscv,isa` string), which 0015 fills in from
+  `mmsc_cfg`, so `/proc/cpuinfo` reads `rv32imafdcp_zicntr_zicsr_zifencei_zihpm_zca_zcd_zcf_xandesperf_xandescodense`.
+- `asm/processor.h`, `asm/switch_to.h`, `kernel/process.c`: the extensions' user CSRs become
+  task state, like the FPU registers: `ucode` (0x801, the DSP overflow flag) when P is
+  present on an Andes core (`riscv_andes_dsp`, decided once at boot), `uitb` (0x800, the
+  `exec.it` table base) when `xandescodense` is (an alternatives-patched test). Saved and
+  restored in `switch_to()`, inherited by a fork, cleared by exec. Before this, one
+  process saw another's values (`src/apps/tests/ucsr_test`: 31–86 % of reads wrong).
+- Needs `CONFIG_RISCV_ISA_VENDOR_EXT_ANDES=y` (set). Kernel #96.
+
+## 0015 — OpenSBI: A25 override that reports the core's extensions
+- `platform/generic/andes/a25.c` (new) + Kconfig `PLATFORM_ANDES_A25` (on in the generic
+  defconfig) + `objects.mk`: a platform override for root compatible `"andestech,a25"`.
+  After the generic FDT fixups it reads the M-mode `mmsc_cfg` CSR and appends `p` (EDSP,
+  bit 29), `xandesperf` (EV5PE, bit 13) and `xandescodense` (ECD, bit 3) to every enabled CPU
+  node's `riscv,isa-extensions` (nodes without that list are left alone), and prints
+  `Andes A25 mmsc_cfg : 0x2007f039 -> p xandesperf xandescodense`. It deliberately does not
+  take over the stock `andestech,ae350` override's PMU/PMA/suspend hooks (that one resets
+  this SoC). The CPU node in `linux/ae350-linux.dts` lists its standard extensions in
+  `riscv,isa-extensions` for this.
+
+## 0016 — Linux sysfs driver for the gateware's DDR bus counters
+- New `drivers/misc/gowin-ddr-perf.c` (`GOWIN_DDR_PERF`, DT `"gowin,ae350-ddr-perf"`, node
+  `ddr-perf@f8000000`, optional `clock-frequency` = the bus clock, default 100 MHz) for
+  `src/rtl/ddr_perf.v`: transfers, beats, wait states and burst/size mix of the SoC's
+  data-memory AHB bus plus the DDR3 bridge's counters (prefetch, demand, MC commands).
+- The 32-bit counters read consistently only while stopped, so the driver samples them
+  (stop, read all 44, start; a few µs) every `interval_ms` (1 s) and on reads, and adds the
+  differences into 64-bit totals (the cycle counter wraps every 43 s). It never clears the
+  block on probe (a trace from before a watchdog reset survives) and notices a clear done
+  behind its back (more cycles than the elapsed time allows).
+- sysfs in `/sys/bus/platform/devices/f8000000.ddr-perf/`: `counters` (all, one sample,
+  `name value` lines), `statistics/<name>` (one each; files read one after another are
+  different samples), `clear`, `interval_ms`, `clock_hz`, `config`, `mode` (read only),
+  `trace_arm`, `trace_count`, `trace` (binary, 8 bytes per bus transfer). Kernel #97.
 
 ## 0012 — musl 1.2.5 soft atomics (the rootfs toolchain's `libc.a`)
 - `arch/riscv32/atomic_arch.h`: `a_cas` becomes a plain compare-and-store (no `lr.w`/`sc.w`).

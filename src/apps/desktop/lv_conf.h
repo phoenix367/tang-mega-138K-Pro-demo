@@ -2295,7 +2295,7 @@
  *
  *  Enable: LV_USE_TABLE
  */
-#define LV_USE_FILE_EXPLORER 1
+#define LV_USE_FILE_EXPLORER 0
 
 #if LV_USE_FILE_EXPLORER
 /** Maximum path length (bytes) */

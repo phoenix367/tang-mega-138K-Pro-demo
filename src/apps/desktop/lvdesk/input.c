@@ -88,6 +88,8 @@ static uint32_t key_translate(int code)
     case KEY_END: return LV_KEY_END;
     case KEY_PAGEUP: return LV_KEY_PREV;
     case KEY_PAGEDOWN: return LV_KEY_NEXT;
+    case KEY_F2: return DESK_KEY_F2;
+    case KEY_F5: return DESK_KEY_F5;
     default: break;
     }
     if (code < 0 || code >= 128) return 0;
@@ -149,7 +151,18 @@ static void drop(int *fd)
 }
 
 /* ---- reading the devices ------------------------------------------------ */
-/* everything queued on the pointer: position, wheel, button (a click ends a video) */
+bool input_ctrl(void) { return s_ctrl; }
+bool input_shift(void) { return s_shift; }
+
+/* the right button's press, outside the indev read: the menu it opens is new objects */
+static void context_async(void *p)
+{
+    uintptr_t v = (uintptr_t)p;
+    desk_context_click((int)(v & 0xffff), (int)(v >> 16));
+}
+
+/* everything queued on the pointer: position, wheel, buttons (a click ends a video;
+ * the right button opens context menus) */
 static void mouse_drain(void)
 {
     struct input_event ev[32];
@@ -175,6 +188,10 @@ static void mouse_drain(void)
                 if (ev[i].code == BTN_LEFT) {
                     if (ev[i].value && video_active()) { video_stop(); break; }   /* click ends a video */
                     s_mdown = ev[i].value != 0;
+                } else if (ev[i].code == BTN_RIGHT && ev[i].value == 1) {
+                    if (video_active()) { video_stop(); break; }
+                    int x = s_mx < 0 ? 0 : s_mx >= SCR_W ? SCR_W - 1 : s_mx, y = s_my < 0 ? 0 : s_my >= SCR_H ? SCR_H - 1 : s_my;
+                    lv_async_call(context_async, (void *)(uintptr_t)((unsigned)y << 16 | (unsigned)x));
                 }
                 break;
             }

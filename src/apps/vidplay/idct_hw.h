@@ -12,6 +12,7 @@ int  idct_hw_frame_begin(int buf, uint8_t *base, uint8_t *y, uint8_t *u, uint8_t
                          int ys, int cs, int cw, int ch, int w, int h);
 void idct_hw_frame_end(void);           /* all records to the core, no wait */
 int  idct_hw_frame_done(void);          /* wait until the core has written everything */
+int  idct_hw_idle(void);                /* the core has finished everything submitted (no wait) */
 int  idct_hw_put(uint8_t *dest, ptrdiff_t line_size, int16_t *block);   /* 1 = taken */
 void idct_hw_stats(FILE *f);
 int  idct_hw_jpeg_capable(void);        /* the core takes JPEG records (Build 70+) */

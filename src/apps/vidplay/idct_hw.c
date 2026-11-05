@@ -38,6 +38,7 @@ static struct {
     uint32_t size, wmask;               /* ring bytes; word-index mask */
     uint32_t tail, head;                /* byte offsets: ours / the core's (last known) */
     uint32_t submitted;                 /* tail last given to the core */
+    uint32_t max_width;                 /* luma pixels a band line holds: 1024, 2048 (Build 72+) */
     int frame_open;
     int band_y0;                        /* band of the last luma block, -1 = none yet */
     struct { uint8_t *base; int stride, w, h; } pl[3];
@@ -55,6 +56,7 @@ int idct_hw_open(int fb_fd)
     hw.ring = mmap(NULL, info.ring_size, PROT_READ | PROT_WRITE, MAP_SHARED, hw.fd, 0);
     if (hw.ring == MAP_FAILED) { perror("mmap idct ring"); close(hw.fd); hw.fd = -1; return -1; }
     hw.size = info.ring_size;
+    hw.max_width = info.max_width ? info.max_width : 1024;
     /* VIDPLAY_RING_KB: a ring small enough to stay in the D-cache spares the
      * write-allocate miss per record line (the core reads DRAM after SUBMIT's write-back) */
     if (getenv("VIDPLAY_RING_KB")) {
@@ -66,7 +68,7 @@ int idct_hw_open(int fb_fd)
     hw.fb_fd = fb_fd;
     hw.tail = hw.head = hw.submitted = 0;
     ioctl(hw.fd, GOWIN_IDCT_IOC_STATUS, &hw.base);
-    fprintf(stderr, "vidplay: hardware IDCT (ring %u KB, id %08x)\n", hw.size / 1024, info.id);
+    fprintf(stderr, "vidplay: hardware IDCT (frames up to %u wide, ring %u KB, id %08x)\n", hw.max_width, hw.size / 1024, info.id);
     return 0;
 }
 
@@ -107,7 +109,7 @@ static int wait_idle(void)
 int idct_hw_frame_begin(int buf, uint8_t *base, uint8_t *y, uint8_t *u, uint8_t *v,
                         int ys, int cs, int cw, int ch, int w, int h)
 {
-    if (hw.fd < 0 || cw & 15 || cw > 1024 || !w || !h || w > cw || h > ch) { hw.fallbacks++; return -1; }
+    if (hw.fd < 0 || cw & 15 || cw > (int)hw.max_width || !w || !h || w > cw || h > ch) { hw.fallbacks++; return -1; }
     if (hw.frame_open) idct_hw_frame_end();
     struct gowin_lcd_yuv_dma d = { .buf = buf, .flags = GOWIN_LCD_YUV_DMA_INVALIDATE };
     if (wait_idle()) { hw.fallbacks++; return -1; }       /* before the invalidate: no flush in flight */
@@ -150,6 +152,16 @@ void idct_hw_frame_end(void)
             hw.tail = (hw.tail + 8) & (hw.size - 1);
         }
     submit();
+}
+
+int idct_hw_idle(void)
+{
+    struct gowin_idct_status st;
+    if (hw.fd < 0) return 1;
+    if (hw.frame_open || ioctl(hw.fd, GOWIN_IDCT_IOC_STATUS, &st)) return 0;
+    if ((st.status & 1) || st.head != st.tail) return 0;
+    hw.head = st.head;
+    return 1;
 }
 
 int idct_hw_frame_done(void)

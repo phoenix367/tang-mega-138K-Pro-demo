@@ -120,7 +120,7 @@ Key integration facts (`src/rtl/ae350_demo.v`):
 | SMU | `0xF010_0000` | — | system management (HSM / reset) |
 | UART2 | `0xF030_0000` | — | console (header pin B19 @ 115200) |
 | WDT (atcwdt200) | `0xF050_0000` | — | watchdog (drives reset) |
-| **DDR perf / bridge MODE (ext. APB)** | `0xF800_0000` | — | `src/rtl/ddr_perf.v`: bus event counters, trace, bridge MODE register (`scripts/ddr_perf.py`) |
+| **DDR perf / bridge MODE (ext. APB)** | `0xF800_0000` | — | `src/rtl/ddr_perf.v`: bus event counters, trace, bridge MODE register (Linux `gowin-ddr-perf` sysfs, `scripts/ddr_perf.py`) |
 
 EXTS register reads take one wait state (the read data is registered before the
 SoC's pins for timing); writes are zero-wait. Every peripheral above has a README

@@ -7,7 +7,8 @@
 #   noise at q 100; q 5 with a width and height not multiples of 16 (odd
 #   height); an ffmpeg MJPEG frame (its per-frame optimal tables); damaged
 #   frames followed by a good one (flagged, no hang, the good one exact); a
-#   full 800x450 frame encoded like the player's clips (FRAMES=extra.jpg,... adds files).
+#   full 800x450 frame encoded like the player's clips; frames wider than 1024
+#   (1280 = 720p, 2048 = the band RAM's limit) (FRAMES=extra.jpg,... adds files).
 # Usage: src/rtl/idct/tb/run_jpeg_tb.sh      (from anywhere; needs python3 + Pillow, ffmpeg)
 set -u
 cd "$(dirname "$0")/../.."
@@ -49,6 +50,9 @@ EOF
 ffmpeg -v error -y -f lavfi -i testsrc=size=160x64:rate=1 -frames:v 1 -c:v mjpeg -q:v 2 -pix_fmt yuvj420p "$OUT/img/ffmjpeg.jpg"
 # a full panel-sized frame the way the player's clips are encoded (q 8, optimal tables)
 ffmpeg -v error -y -f lavfi -i testsrc2=size=800x450:rate=1 -frames:v 1 -c:v mjpeg -q:v 8 -pix_fmt yuvj420p "$OUT/img/panel.jpg"
+# 720p width and the band RAM's limit, short enough for the 1 MB RAM model
+ffmpeg -v error -y -f lavfi -i testsrc2=size=1280x96:rate=1 -frames:v 1 -c:v mjpeg -q:v 8 -pix_fmt yuvj420p "$OUT/img/w1280.jpg"
+ffmpeg -v error -y -f lavfi -i testsrc2=size=2048x48:rate=1 -frames:v 1 -c:v mjpeg -q:v 8 -pix_fmt yuvj420p "$OUT/img/w2048.jpg"
 
 fail=0
 #        name     files                        ring   corrupt
@@ -59,6 +63,8 @@ for t in "std     std.jpg                      4096   0" \
          "sparse  sparse.jpg                   512    0" \
          "ffmjpeg ffmjpeg.jpg                  4096   0" \
          "panel   panel.jpg                    65536  0" \
+         "w1280   w1280.jpg                    65536  0" \
+         "w2048   w2048.jpg                    16384  0" \
          "corrupt bad.jpg,bad.jpg,std.jpg      4096   1"; do
     set -- $t
     name=$1; files=$(echo "$2" | tr ',' ' '); ring=$3; corrupt=$4

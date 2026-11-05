@@ -18,7 +18,7 @@ ARCH := -march=rv32imafdc -mabi=ilp32d
 BOARD ?= 192.168.200.2
 RUSER ?= ae350
 
-BINS := atomic_test memthroughput compute_bench dsp_probe ext_probe amo_probe cctl_probe ddr_memtest fbtest wavplay amotrace dmactest yuvtest idcttest scaletest lcdmon
+BINS := atomic_test memthroughput compute_bench dsp_probe ext_probe amo_probe cctl_probe ddr_memtest fbtest wavplay amotrace dmactest yuvtest idcttest scaletest lcdmon ucsr_test
 
 all: $(BINS)
 
@@ -80,6 +80,10 @@ ext_probe: ext_probe.c
 
 dsp_probe: dsp_probe.c
 	$(CC) -static -O2 $(ARCH) -o $@ $<
+
+# the Andes user CSRs (DSP ucode, CoDense uitb) must be switched per process by the kernel
+ucsr_test: ucsr_test.c
+	$(CC) -static -O2 $(ARCH) -Wall -o $@ $<
 
 cctl_probe: cctl_probe.c
 	$(CC) -static -O2 -o $@ $<

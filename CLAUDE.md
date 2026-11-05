@@ -33,7 +33,13 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    DDR3 IP. `src/rtl/ddr_perf.v` = bus perf counters/trace + bridge MODE register on the
    SoC external APB @ `0xF8000000` (reset MODE 0x10000 = overlapped reads; needs the
    Linux page-table writeback patch `PATCHES/0005`, else use 0x100 — see
-   src/rtl/ddr_bridge/README.md). Wide event counters use `src/rtl/pipe_counter.v` (byte slices
+   src/rtl/ddr_bridge/README.md). Linux driver `gowin-ddr-perf` (`PATCHES/0016`, kernel #97, DT
+   `ddr-perf@f8000000`) owns its CTRL: it samples the 32-bit counters (stop, read, start: they
+   read consistently only while stopped) every second and on every read into 64-bit totals in
+   `/sys/bus/platform/devices/f8000000.ddr-perf/` — `counters` = all 44 from ONE sample (use this;
+   the one-per-file `statistics/` straddle samples, a `cat` here takes >10 ms), `clear`,
+   `trace_arm`/`trace_count`/`trace`, `mode` read-only; `scripts/ddr_perf.py` uses it (devmem on
+   older kernels). Wide event counters use `src/rtl/pipe_counter.v` (byte slices
    with registered carries: GowinSyn builds a 32-bit `+1` as a 12-level LUT chain).
    EXTS register reads take one wait state (read data registered at the top level
    before the SoC's pins; writes zero-wait) — see doc/06-key-findings.md, timing section. Bridge RTL is validated with
@@ -68,7 +74,8 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    thermal block; the board has no current sense, so no power measurement. See
    src/rtl/sensor/README.md.
    **Desktop + input:** `src/apps/desktop/` = LVGL 9.6 desktop (`lvdesk`, static musl) on
-   `/dev/fb0` with system monitor, file browser, WAV player, network, console, date & time
+   `/dev/fb0` with system monitor, file manager
+   (`files.c`: multi-select, right-click menu, copy/move/delete in a child process), WAV player, network, console, date & time
    (clock + tzdata zone, `linux/rootfs/usr/share/zoneinfo` from `scripts/rootfs/build_tzdata.sh`) and
    settings panels, started on VT 1 by `S70desktop`; keyboard/mouse come from the PC
    over TCP (`src/apps/desktop/host/netinput.py` → `inputd` on the board → `/dev/uinput`, kernel
@@ -122,7 +129,11 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    `VIDPLAY_NOHWJPEG=1`); `vidplay -C N` compares N frames bit for bit with FFmpeg's C decoder.
    Player CPU per 800×480 frame 29.5 → 1.2 ms, system load during playback ~85 % → ~31 %.
    Sim `src/rtl/idct/tb/run_jpeg_tb.sh` (real JPEGs, `jpeg_ref.py` = FFmpeg's decode ported,
-   itself checked against host ffmpeg). **Scaler + OSD in the LCD core** (Build 71 / kernel #83+):
+   itself checked against host ffmpeg). **720p** (Build 72 / kernel #93): the band RAMs
+   hold 2048-pixel lines (STATUS[9]; gowin-idct `max_width` from it), gowin-lcdfb's YUV
+   buffers default to 1280×768 (`yuv_max_w`), and vidplay decodes one frame ahead (the core
+   gets the next frame as soon as `idct_hw_idle()`, not after the show): 1280×720 MJPEG
+   plays at 24–30 fps with audio; the core needs 23.4 ms + 0.083 ms per KB of JPEG data. **Scaler + OSD in the LCD core** (Build 71 / kernel #83+):
    the line buffer is four RAMs (Y/RGB, U, V, OSD; 32 BSRAM) with their own read ports, so a
    nearest-neighbour scaler (CTRL[4]; SRC_SIZE, DST_POS/SIZE, 16.16 STEP_X/Y with pixel-centre
    sampling, BG around the window; YUV sources up to 2048 wide) and an ARGB8888 OSD layer
@@ -134,8 +145,15 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    by CRC. The desktop launches it from the Files
    panel (`video_play_file()` in panels.c; while it runs the desktop does no LVGL work, its main loop only
    waits for input in `video_wait()`, and vidplay raises itself to nice -10; any key/click stops it).
-   The Andes DSP (P-ext draft) instructions DO execute on this AE350 (kadd16/smul16/kdmbb tested)
-   though misa/cpuinfo do not advertise them; only the Andes GCC (-mext-dsp) knows them.
+   The Andes DSP (P-ext draft) instructions DO execute on this AE350 (kadd16/smul16/kdmbb tested);
+   misa does not say so, only the Andes GCC (-mext-dsp) knows them. **ISA in /proc/cpuinfo**
+   (kernel #96+): OpenSBI's `andestech,a25` override (`external/opensbi/platform/generic/andes/a25.c`)
+   reads `mmsc_cfg` and appends `p` (EDSP), `xandesperf` (EV5PE), `xandescodense` (ECD) to the CPU
+   node's `riscv,isa-extensions` (Linux reads draft/vendor names only from that list, so the DT
+   must use it, not just `riscv,isa`) → `rv32imafdcp_..._xandesperf_xandescodense`. The kernel
+   switches their user CSRs per task (`ucode` 0x801, `uitb` 0x800; `asm/switch_to.h`, fork
+   inherits, exec clears): before, processes saw each other's values (`src/apps/tests/ucsr_test`).
+   boardtest `kernel.isa` checks advertised == executes (dsp_probe, ext_probe incl. exec.it).
    **Boot splash:** the U-Boot fork has a `gowin_lcd` video driver (`drivers/video/gowin_lcd.c`, DT
    `lcd@e8001000` with `framebuffer = <0x0e000000>`) and shows `src/splash/splash.bmp` (made by
    `src/splash/make_splash.py`, appended to the XIP image at +0x100000 = flash 0x700000 by
@@ -155,7 +173,9 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    `/run/ntp.dhcp`), else `0/1/2.pool.ntp.org`; with no internet it keeps retrying, and S40network /
    the DHCP script `kick` it when eth0 comes up. The hook writes `/run/ntp.state` (`S41ntp status`;
    the Date & Time panel shows it) and a `ntp: clock set from the network` kernel log line on a
-   step; the boardcfg daemon restarts S41ntp when the `ntp` key differs from `/run/ntp.key`.
+   step; busybox runs its `periodic` event every ~11 min even unsynchronised, so the hook ignores
+   it at stratum 16 (kernel #95; `NTP_STATE` overrides the file, used by boardtest's
+   `kernel.ntp_hook`); the boardcfg daemon restarts S41ntp when the `ntp` key differs from `/run/ntp.key`.
    **microSD:** `src/rtl/sdhost/` = native 4-bit SD host with CRC engines and a 64-bit DMA
    master (arbiter master 2) on EXTS @ `0xE8020000` (`HADDR[17]`), IRQ EXT_INT[2] =
    PLIC 12, for the Dock slot J19 (CLK D23, CMD D24, DAT0..3 H23/J23/A25/B25, detect
@@ -249,6 +269,17 @@ synthesizes and place-and-routes unchanged on `-007` — verified (≈5% LUT, 8%
   on any missing or invalid pin. Get real pad numbers from the board schematic/pinout
   or the IDE FloorPlanner.
 - Generated `impl/` artifacts are build output, not source.
+
+## Testing the board
+
+`scripts/boardtest/boardtest.py` (README beside it) runs the peripheral checks on a
+running board from the host: kernel log / drivers / config, network throughput with md5,
+the gateware cores bit-exactly (fbtest, yuvtest, scaletest, idcttest, `vidplay -C`,
+wavplay CRCs) plus frame timing (`lcdmon`), sensors, SD, DDR, and the desktop through
+inputd (panels, file manager, video from Files). `-g GROUP`, `-t TEST`, `--quick`,
+`--list`; report in `/mnt/data/build/boardtest/<time>/`. Run it after a reflash; add a
+test to its `bt/t_<group>.py` with any new core or driver. Close `netinput.py` first
+(inputd serves one client).
 
 ## Linux userspace sources
 

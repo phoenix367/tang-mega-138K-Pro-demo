@@ -233,6 +233,7 @@ static struct {
     uint8_t *buf[8];
     int free[8];
     int hw[8];                 /* the buffer's picture was written by the IDCT core (CPU cache clean) */
+    int inflight;              /* the buffer the core is still writing, -1 = none */
     int shown, prev;
     unsigned nobuf;            /* frames that got no scan-out buffer (decoded elsewhere, not shown) */
     int scale;                 /* the core's scaler fits the picture to the panel (Build 71+): */
@@ -240,7 +241,7 @@ static struct {
     /* the planes' layout in a buffer: the driver's panel layout, or (scaler) the stream's own,
      * which lets a picture larger than the panel in (the driver's buffers hold up to 1024x768) */
     struct { unsigned y_stride, c_stride, u_off, v_off, max_w, max_h; } lay;
-} yuvo = { .shown = -1, .prev = -1 };
+} yuvo = { .shown = -1, .prev = -1, .inflight = -1 };
 static int opt_scale = 1, opt_osd = 1;     /* -1: 1:1; -O: no playback bar */
 
 /* where the picture goes in a panel-sized buffer: its origin when the core scales,
@@ -303,6 +304,8 @@ static int yuv_get_buffer(AVCodecContext *s, AVFrame *f, int flags)
                                      cw, ch, w, h) == 0;
     if (!yuvo.hw[i])
         idct_stage_setup(f->data[0], f->data[1], f->data[2], f->linesize[0], f->linesize[1], w, h);
+    else
+        yuvo.inflight = i;
     return 0;
 }
 
@@ -391,6 +394,7 @@ static int jhw_decode(AVCodecContext *vc, const AVPacket *pk, AVFrame *f)
     }
     idct_hw_frame_end();                    /* flush records + submit: the core works on, we go on */
     yuvo.hw[i] = 1;
+    yuvo.inflight = i;
     jhw.frames++;
     return 0;
 }
@@ -410,14 +414,20 @@ static int jhw_check(AVFormatContext *ic, int vi, AVCodecContext *vc, int n)
     idct_no_stage = 1;
     AVPacket *pk = av_packet_alloc();
     AVFrame *hf = av_frame_alloc(), *sf = av_frame_alloc();
-    int frames = 0, badframes = 0;
-    double t_hw = 0, t_sw = 0;
+    int frames = 0, badframes = 0, log = getenv("VIDPLAY_CHECKLOG") != NULL;
+    double t_hw = 0, t_sw = 0, t_wait = 0;
     while (frames < n && av_read_frame(ic, pk) >= 0) {
         if (pk->stream_index != vi) { av_packet_unref(pk); continue; }
         double t0 = now_s();
         if (jhw_decode(vc, pk, hf)) { fprintf(stderr, "check: frame %d not for the hardware path\n", frames); return 1; }
+        double t1 = now_s();
         if (idct_hw_frame_done()) return 1;
-        t_hw += now_s() - t0;
+        double t2 = now_s();
+        t_hw += t2 - t0;
+        t_wait += t2 - t1;
+        /* VIDPLAY_CHECKLOG: per frame, the packet size, the CPU's parse + copy into the ring,
+         * and the wait for the core (which starts at the submit): the core's time per size */
+        if (log) fprintf(stderr, "CHECKLOG %d %d %.2f %.2f\n", frames, pk->size, (t1 - t0) * 1e3, (t2 - t1) * 1e3);
         t0 = now_s();
         if (avcodec_send_packet(sc, pk) < 0 || avcodec_receive_frame(sc, sf) < 0) { fprintf(stderr, "check: FFmpeg failed\n"); return 1; }
         t_sw += now_s() - t0;
@@ -441,8 +451,9 @@ static int jhw_check(AVFormatContext *ic, int vi, AVCodecContext *vc, int n)
         av_packet_unref(pk);
         frames++;
     }
-    fprintf(stderr, "JPEGCHECK %d frames %dx%d: %d differ; per frame: gateware %.1f ms (CPU parse + copy + wait), FFmpeg on the CPU %.1f ms\n",
-            frames, vc->width, vc->height, badframes, frames ? t_hw * 1e3 / frames : 0, frames ? t_sw * 1e3 / frames : 0);
+    fprintf(stderr, "JPEGCHECK %d frames %dx%d: %d differ; per frame: gateware %.1f ms (CPU parse + copy + wait, the wait %.1f), FFmpeg on the CPU %.1f ms\n",
+            frames, vc->width, vc->height, badframes, frames ? t_hw * 1e3 / frames : 0, frames ? t_wait * 1e3 / frames : 0,
+            frames ? t_sw * 1e3 / frames : 0);
     idct_hw_stats(stderr);
     return badframes || !frames;
 }
@@ -450,7 +461,10 @@ static int jhw_check(AVFormatContext *ic, int vi, AVCodecContext *vc, int n)
 static int yuv_show(const AVFrame *f)
 {
     int i = (int)(intptr_t)f->opaque - 1;
-    if (yuvo.hw[i] && idct_hw_frame_done()) return -1;      /* the core's last band must have landed */
+    if (yuvo.hw[i] && i == yuvo.inflight) {                 /* the core's last band must have landed */
+        if (idct_hw_frame_done()) return -1;
+        yuvo.inflight = -1;
+    }
     if (yuvo.scale && !yuvo.scaled) { yuv_scale(f->width, f->height); yuvo.scaled = 1; }
     /* the core scans the whole panel-sized buffer; the picture sits inside it at (dx, dy) */
     struct gowin_lcd_yuv_show sh = {
@@ -721,9 +735,9 @@ int main(int argc, char **argv)
         fprintf(stderr, "  audio %d Hz, %d ch -> %s\n", ac->sample_rate, ac->ch_layout.nb_channels, bench ? "discarded" : pcmdev);
 
     AVPacket *pkt = av_packet_alloc();
-    AVFrame *af = av_frame_alloc(), *pending = av_frame_alloc();
+    AVFrame *af = av_frame_alloc(), *pending = av_frame_alloc(), *ahead = av_frame_alloc();
     pq_t vq = { 0 }, aq = { 0 };
-    int have_pending = 0, eof = 0, held = 0, veof_sent = 0, aeof_sent = 0, late_streak = 0, skip_pkts = 0;
+    int have_pending = 0, have_ahead = 0, eof = 0, held = 0, veof_sent = 0, aeof_sent = 0, late_streak = 0, skip_pkts = 0;
     unsigned skipped = 0;                    /* packets skipped undecoded (intra-only catch-up) */
     int16_t *abuf = malloc(8192 * 2 * sizeof(int16_t));
     double t_start = now_s(), vtb = vi >= 0 ? av_q2d(ic->streams[vi]->time_base) : 0;
@@ -777,7 +791,12 @@ int main(int argc, char **argv)
         }
 
         /* video, MJPEG on the gateware: one packet = one frame handed to the core */
-        if (vc && !have_pending && jhw.on) {
+        if (vc && !have_pending && jhw.on && have_ahead) {         /* the frame decoded ahead is next */
+            av_frame_move_ref(pending, ahead);
+            have_ahead = 0;
+            have_pending = 1;
+            progress = 1;
+        } else if (vc && !have_pending && jhw.on) {
             AVPacket *pk = pq_peek(&vq);
             while (pk && skip_pkts > 0) {            /* intra-only: catch up without decoding */
                 pq_pop(&vq); skip_pkts--; skipped++;
@@ -817,6 +836,21 @@ int main(int argc, char **argv)
                 } else if (eof && !veof_sent) { avcodec_send_packet(vc, NULL); veof_sent = 1; progress = 1; }
             } else if (r == AVERROR_EOF) {
                 vc = NULL; progress = 1;
+            }
+        }
+
+        /* ... and one frame ahead: the core takes the next frame as soon as it is idle,
+         * not only after the pending one is shown.  At 720p a dense frame keeps the core
+         * busy ~35 ms of the 40-42: waiting for the show left it idle part of every
+         * period, and heavy scenes fell behind. */
+        if (vc && have_pending && !have_ahead && jhw.on && !skip_pkts && idct_hw_idle()) {
+            AVPacket *pk = pq_peek(&vq);
+            if (pk) {
+                yuvo.inflight = -1;                    /* idle: the pending frame is complete */
+                double t0 = now_s();
+                if (jhw_decode(vc, pk, ahead) == 0) { pq_pop(&vq); have_ahead = 1; decoded++; }
+                dec_time += now_s() - t0;               /* (a refused packet: the path above deals with it) */
+                progress = 1;
             }
         }
 

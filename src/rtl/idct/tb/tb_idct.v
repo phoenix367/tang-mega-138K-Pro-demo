@@ -105,8 +105,8 @@ module tb_idct;
     localparam RING_BASE = 32'h10000, Y_BASE = 32'h20000, U_BASE = 32'h40000, V_BASE = 32'h50000;
     localparam YS = W, CS = W / 2;                     // strides (multiples of 8: W multiple of 16)
     localparam CH = H / 2, CW = W / 2;
-    integer model_y [0:1023][0:1023];                  // generous
-    integer model_u [0:511][0:511], model_v [0:511][0:511];
+    integer model_y [0:127][0:2047];                   // up to 2048 wide (the band RAM's limit), 128 high
+    integer model_u [0:63][0:1023], model_v [0:63][0:1023];
 
     // ---- CPU-side ring writer with flow control ----
     integer tail;
@@ -179,13 +179,15 @@ module tb_idct;
 
     initial begin
         errors = 0; irq_count = 0; tail = 0;
-        for (y = 0; y < 1024; y = y + 1) for (x = 0; x < 1024; x = x + 1) model_y[y][x] = 0;
-        for (y = 0; y < 512; y = y + 1) for (x = 0; x < 512; x = x + 1) begin model_u[y][x] = 0; model_v[y][x] = 0; end
+        for (y = 0; y < 128; y = y + 1) for (x = 0; x < 2048; x = x + 1) model_y[y][x] = 0;
+        for (y = 0; y < 64; y = y + 1) for (x = 0; x < 1024; x = x + 1) begin model_u[y][x] = 0; model_v[y][x] = 0; end
         for (k = 0; k < 65536; k = k + 1) ram.mem[k] = 64'h0;
         repeat (5) @(posedge hclk); hresetn = 1; repeat (5) @(posedge hclk);
 
         reg_rd(8'h34, r);
         if (r !== 32'h49444354) begin errors = errors + 1; $display("  ID %08x", r); end
+        reg_rd(8'h04, r);                              // capabilities: JPEG records, 2048-wide bands
+        if (r[9:8] !== 2'b11) begin errors = errors + 1; $display("  STATUS capabilities %b", r[9:8]); end
         reg_wr(8'h08, RING_BASE);
         reg_wr(8'h0C, RING - 1);
         reg_wr(8'h18, Y_BASE); reg_wr(8'h1C, U_BASE); reg_wr(8'h20, V_BASE);

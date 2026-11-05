@@ -9,7 +9,8 @@
 //                                                 v
 //             parser -> block (64 x int16) -> 2-D IDCT (idct_1d: rows, then
 //             columns through a transpose buffer) -> band RAM (one MCU band
-//             per plane: 16 luma / 8 chroma lines) -> flush engine -> DRAM
+//             per plane: 16 luma / 8 chroma lines of up to 2048 / 1024
+//             pixels) -> flush engine -> DRAM
 //
 // Records in the ring (64-bit words, little-endian, any number of them, the
 // ring wraps at RING_MASK + 1 bytes):
@@ -41,6 +42,7 @@
 //                      [2] done interrupt enable  [3] band interrupt enable
 //   0x04 STATUS    rw1c [0] busy  [1] done irq  [2] band irq  [3] bad record
 //                      (or corrupt JPEG data)  [8] ro 1: JPEG records supported
+//                      [9] ro 1: frames up to 2048 wide (before: up to 1024)
 //   0x08 RING_BASE rw  byte address, 8-byte aligned
 //   0x0C RING_MASK rw  ring size - 1 (size a power of two >= 64 bytes)
 //   0x10 TAIL      rw  byte offset in the ring, 8-byte aligned
@@ -50,7 +52,7 @@
 //   0x20 V_BASE    rw
 //   0x24 STRIDES   rw  [15:0] luma stride  [31:16] chroma stride (bytes, x8)
 //   0x28 SIZE      rw  [15:0] width  [31:16] height (luma pixels; width x16,
-//                      <= 1024; chroma planes are half of both)
+//                      <= 2048; chroma planes are half of both)
 //   0x2C BLOCKS    ro  blocks transformed
 //   0x30 BANDS     ro  bands flushed
 //   0x34 ID        ro  0x49444354 ("IDCT")
@@ -138,7 +140,7 @@ module idct_core (
     always @(*) begin
         case (a_off)
             6'h00: rd = {28'b0, irq_en_band, irq_en_done, 1'b0, enable};
-            6'h01: rd = {23'b0, 1'b1, 4'b0, bad_rec, band_irq, done_irq, busy};
+            6'h01: rd = {22'b0, 1'b1, 1'b1, 4'b0, bad_rec, band_irq, done_irq, busy};
             6'h02: rd = ring_base;
             6'h03: rd = ring_mask;
             6'h04: rd = tail;
@@ -374,15 +376,15 @@ module idct_core (
     );
     // band RAM write
     reg         br_we;
-    reg  [10:0] br_waddr;
+    reg  [11:0] br_waddr;
     reg  [63:0] br_wdata;
     reg  [1:0]  br_wplane;
     // the block's position, latched at the start: the parser moves on to the
     // next record (JPEG mode) while the engine is still writing this block
     reg  [1:0]  e_plane;
     reg  [11:0] e_x, e_y;
-    wire [10:0] y_waddr = {e_y[3:0] + e_i[2:0], e_x[9:3]};             // 16 lines x 128 words
-    wire [10:0] c_waddr = {2'b00, e_y[2:0] + e_i[2:0], e_x[8:3]};      // 8 lines x 64 words
+    wire [11:0] y_waddr = {e_y[3:0] + e_i[2:0], e_x[10:3]};            // 16 lines x 256 words
+    wire [11:0] c_waddr = {2'b00, e_y[2:0] + e_i[2:0], e_x[9:3]};      // 8 lines x 128 words
 
     assign eng_busy = (est != E_IDLE);
     assign eng_reading = (est == E_ROWS);
@@ -443,16 +445,16 @@ module idct_core (
     end
 
     // ======================================================================
-    // band RAMs (64-bit words): Y 16 x 128, U/V 8 x 64
+    // band RAMs (64-bit words): Y 16 x 256, U/V 8 x 128 (2048 / 1024 pixels a line)
     // ======================================================================
-    reg  [10:0] br_raddr;
+    reg  [11:0] br_raddr;
     wire [63:0] br_rdata_y, br_rdata_u, br_rdata_v;
-    idct_ram #(.ADDR_WIDTH(11)) ram_y (.clk(hclk), .wren(br_we && br_wplane == 2'd0), .write_addr(br_waddr),
+    idct_ram #(.ADDR_WIDTH(12)) ram_y (.clk(hclk), .wren(br_we && br_wplane == 2'd0), .write_addr(br_waddr),
                                        .write_data(br_wdata), .read_addr(br_raddr), .read_data(br_rdata_y));
-    idct_ram #(.ADDR_WIDTH(9))  ram_u (.clk(hclk), .wren(br_we && br_wplane == 2'd1), .write_addr(br_waddr[8:0]),
-                                       .write_data(br_wdata), .read_addr(br_raddr[8:0]), .read_data(br_rdata_u));
-    idct_ram #(.ADDR_WIDTH(9))  ram_v (.clk(hclk), .wren(br_we && br_wplane == 2'd2), .write_addr(br_waddr[8:0]),
-                                       .write_data(br_wdata), .read_addr(br_raddr[8:0]), .read_data(br_rdata_v));
+    idct_ram #(.ADDR_WIDTH(10)) ram_u (.clk(hclk), .wren(br_we && br_wplane == 2'd1), .write_addr(br_waddr[9:0]),
+                                       .write_data(br_wdata), .read_addr(br_raddr[9:0]), .read_data(br_rdata_u));
+    idct_ram #(.ADDR_WIDTH(10)) ram_v (.clk(hclk), .wren(br_we && br_wplane == 2'd2), .write_addr(br_waddr[9:0]),
+                                       .write_data(br_wdata), .read_addr(br_raddr[9:0]), .read_data(br_rdata_v));
 
     // ======================================================================
     // flush engine: the dirty band of plane fl_plane, line by line, as write
@@ -469,7 +471,7 @@ module idct_core (
     wire [31:0] p_base   = (fl_plane == 2'd0) ? y_base : (fl_plane == 2'd1) ? u_base : v_base;
     wire [3:0]  band_h   = (fl_plane == 2'd0) ? 4'd15 : 4'd7;          // last line index
     wire [15:0] line_beats = {3'b000, p_width[15:3]};
-    wire [10:0] line_w0  = (fl_plane == 2'd0) ? {f_line, 7'b0} : {2'b00, f_line[2:0], 6'b0};  // first word of the line
+    wire [11:0] line_w0  = (fl_plane == 2'd0) ? {f_line, 8'b0} : {2'b00, f_line[2:0], 7'b0};  // first word of the line
     wire [63:0] br_rdata = (fl_plane == 2'd0) ? br_rdata_y : (fl_plane == 2'd1) ? br_rdata_u : br_rdata_v;
 
     // prefetch FIFO between the band RAM (read latency 1) and the master, which
@@ -496,7 +498,7 @@ module idct_core (
         end else begin
             // ---- prefetch FIFO ----
             pf_inflight <= pf_issue;
-            if (pf_issue) begin br_raddr <= br_raddr + 11'd1; pf_left <= pf_left - 16'd1; end
+            if (pf_issue) begin br_raddr <= br_raddr + 12'd1; pf_left <= pf_left - 16'd1; end
             if (pf_inflight) begin pf_q[pf_wp] <= br_rdata; pf_wp <= pf_wp + 2'd1; end
             if (w_req) pf_rp <= pf_rp + 2'd1;
             pf_cnt <= pf_cnt + {2'b0, pf_inflight} - {2'b0, w_req};
