@@ -288,7 +288,11 @@ wavplay CRCs) plus frame timing (`lcdmon`), sensors, SD, DDR, and the desktop th
 inputd (panels, file manager, video from Files). `-g GROUP`, `-t TEST`, `--quick`,
 `--list`; report in `/mnt/data/build/boardtest/<time>/`. Run it after a reflash; add a
 test to its `bt/t_<group>.py` with any new core or driver. Close `netinput.py` first
-(inputd serves one client).
+(inputd serves one client). One-off commands on the board: `scripts/board.py run|root|put|get|wait`
+(the harness's ssh code; `root` runs a script file through doas). The project skills in
+`.claude/skills/` walk through a kernel release (`kernel-release`), a gateware build
+(`gateware-build`), a board test run with triage and run-to-run comparison (`board-test`)
+and the fresh-clone Docker build check (`docker-build-check`).
 
 ## Linux userspace sources
 
