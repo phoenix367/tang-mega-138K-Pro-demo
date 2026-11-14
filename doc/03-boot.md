@@ -8,7 +8,7 @@ runs XIP from it via the dedicated config pins).
 The SoM has a second, separate W25Q128 (U7, 16 MB) on ordinary bank-3 pins, behind
 the SoC's SPI2 since Build 73. The FPGA cannot configure from it and nothing boots
 from it yet: U-Boot reads and writes it with `sf probe 0:0` and `sf read|write|erase`
-(about 1.5 MB/s read), and Linux (kernel #99+, `spi-atcspi200`) has it as `/dev/mtd0`
+(2.4 MB/s read), and Linux (kernel #99+, `spi-atcspi200`) has it as `/dev/mtd0`
 (busybox `flashcp IMAGE /dev/mtd0` erases, writes and verifies from offset 0). It came
 blank.
 

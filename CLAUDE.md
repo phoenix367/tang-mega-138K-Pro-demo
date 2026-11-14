@@ -188,13 +188,13 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    carries a second W25Q128 (U7, 16 MB; schematic block "QSPI_NAND") on ordinary bank-3 pins
    (L25 CS#, P20 CLK, R21/T22/R22/R20 IO0..3), driven by the SoC's own second ATCSPI200 (SPI2 @
    `0xF0F00000`, top-level `FLASH2_SPI_*`). U-Boot reads/writes it (`sf probe 0:0`, DT
-   `spi@f0f00000` = alias spi0, 25 MHz, ~1.5 MB/s read; `sf probe 0:0 <hz>` sets the clock but
+   `spi@f0f00000` = alias spi0, 25 MHz, 2.4 MB/s read; `sf probe 0:0 <hz>` sets the clock but
    not the uclass's cached speed, so a later probe with another speed is ignored). Linux
    (kernel #99+): mainline's `spi-atcspi200` backported (`PATCHES/0017`, PIO, DT
    `spi@f0f00000` + `flash@0`) → `/dev/mtd0` (`spi0.0`, 16 MB, 4 KB erase); busybox
    `flashcp` / `flash_eraseall` / `flash_lock|unlock`; check `src/apps/tests/flashtest`
    (boardtest `cores.flash2`, writes only a blank last 64 KB). SPI2's input clock is ~23 MHz,
-   not the 50 MHz APB (measured; U-Boot's DT still says 50, so its "25 MHz" is ~11.5). The
+   not the 50 MHz APB (measured; both DTs say 25 MHz, the flash runs undivided). The
    A25 has no `time` CSR (OpenSBI emulates it): clock reads in tight driver loops are slow.
    The FPGA can't configure from U7; nothing is stored on it yet.
 2. **`led_blink` — a disabled sample.** Counter-based LED blinker (`CLK_FREQ_HZ` /
