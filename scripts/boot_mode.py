@@ -36,15 +36,12 @@ def main():
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     log = ""
     # catch the autoboot countdown
-    text, hit = uc.read_until(s, ["Hit any key"], 90)
+    text, ok = uc.stop_autoboot(s, 90)
     log += text
-    if hit is None:
+    if not ok:
         print("no U-Boot autoboot prompt seen")
         print(log[-2000:])
         sys.exit(2)
-    s.write(b" ")
-    text, hit = uc.read_until(s, ["=> "], 10)
-    log += text
     s.write(b"mw.l 0xf8000020 0x%x; md.l 0xf8000018 3\r" % a.mode)
     text, _ = uc.read_until(s, ["=> "], 10)
     log += text

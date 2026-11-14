@@ -5,6 +5,11 @@
 The same SPI NOR holds both the FPGA bitstream and all boot software (the AE350
 runs XIP from it via the dedicated config pins).
 
+The SoM has a second, separate W25Q128 (U7, 16 MB) on ordinary bank-3 pins, behind
+the SoC's SPI2 since Build 73. The FPGA cannot configure from it and nothing boots
+from it yet: U-Boot reads and writes it with `sf probe 0:0` and `sf read|write|erase`
+(about 1.5 MB/s read), and Linux has no driver for it. It came blank.
+
 ```mermaid
 graph TD
   A["0x000000 — FPGA bitstream (.fs)<br/>region reserved up to 0x600000"]

@@ -183,6 +183,13 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    `/dev/mmcblk0`, mounted at `/mnt/sd` by `S45sdcard`. The earlier SPI-mode route (`sdspi/`
    core + `spi-gowin` + mmc_spi, PATCHES/0010) and Gowin's native SD IPs (never answered on
    this board) were removed from the tree on 2026-11-01; see src/rtl/sdhost/README.md.
+   **Second SPI NOR** (Build 73): besides the configuration flash on the MSPI pins, the SoM
+   carries a second W25Q128 (U7, 16 MB; schematic block "QSPI_NAND") on ordinary bank-3 pins
+   (L25 CS#, P20 CLK, R21/T22/R22/R20 IO0..3), driven by the SoC's own second ATCSPI200 (SPI2 @
+   `0xF0F00000`, top-level `FLASH2_SPI_*`). U-Boot reads/writes it (`sf probe 0:0`, DT
+   `spi@f0f00000` = alias spi0, 25 MHz, ~1.5 MB/s read; `sf probe 0:0 <hz>` sets the clock but
+   not the uclass's cached speed, so a later probe with another speed is ignored). Linux 6.12
+   has no ATCSPI200 driver; the FPGA can't configure from U7; the chip came blank.
 2. **`led_blink` — a disabled sample.** Counter-based LED blinker (`CLK_FREQ_HZ` /
    `BLINK_HZ` params) on the board's `clk`=P16 / `rst_n`=K16 / `led`=J14. Files present
    but `enable="0"` in the `.gprj`. To switch back to it: enable its three files, disable

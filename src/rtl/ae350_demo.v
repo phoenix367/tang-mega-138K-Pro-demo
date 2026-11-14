@@ -17,6 +17,14 @@ module ae350_demo_top
     inout FLASH_SPI_CLK,
     inout FLASH_SPI_HOLDN,
     inout FLASH_SPI_WPN,
+    // Second SPI NOR on the SoM (U7, 128 Mbit, ordinary bank-3 pins, not the MSPI
+    // configuration pins): the SoC's SPI2 (ATCSPI200 @ 0xF0F00000)
+    inout FLASH2_SPI_CSN,
+    inout FLASH2_SPI_MISO,      // IO1
+    inout FLASH2_SPI_MOSI,      // IO0
+    inout FLASH2_SPI_CLK,
+    inout FLASH2_SPI_HOLDN,     // IO3
+    inout FLASH2_SPI_WPN,       // IO2
     // DDR3 Memory
     output DDR3_INIT,
     output [2:0] DDR3_BANK,
@@ -344,7 +352,8 @@ key_debounce u_key_debounce_ae350
 
 // RiscV_AE350_SOC_Top instantiation
 // Regenerated SoC adds many optional interfaces (external APB/AHB, DMA, EXT_INT,
-// I2C, ATCSPI200 SPI master, DDR3 PL read/write lanes). For this MINIMAL-BOOT
+// I2C, ATCSPI200 SPI master (now wired to the second SPI NOR, Build 73),
+// DDR3 PL read/write lanes). For this MINIMAL-BOOT
 // build they are all tied off / left open; SD wiring (SPI master -> card) and
 // the external APB come in the next step.
 RiscV_AE350_SOC_Top u_RiscV_AE350_SOC_Top
@@ -422,13 +431,13 @@ RiscV_AE350_SOC_Top u_RiscV_AE350_SOC_Top
     // DMA - unused
     .DMA_REQ(8'b0),
     .DMA_ACK(),
-    // On-SoC ATCSPI200 SPI master IOPORT - unused (SD driven by apb_sd_top)
-    .SPI_HOLDN(),
-    .SPI_WPN(),
-    .SPI_CLK(),
-    .SPI_CSN(),
-    .SPI_MISO(),
-    .SPI_MOSI(),
+    // On-SoC ATCSPI200 SPI2 master -> the SoM's second SPI NOR (U7)
+    .SPI_HOLDN(FLASH2_SPI_HOLDN),
+    .SPI_WPN(FLASH2_SPI_WPN),
+    .SPI_CLK(FLASH2_SPI_CLK),
+    .SPI_CSN(FLASH2_SPI_CSN),
+    .SPI_MISO(FLASH2_SPI_MISO),
+    .SPI_MOSI(FLASH2_SPI_MOSI),
     // I2C - unused
     .I2C_SCL(),
     .I2C_SDA(),

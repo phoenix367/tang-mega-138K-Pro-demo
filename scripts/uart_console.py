@@ -38,6 +38,18 @@ def read_until(s, needles, timeout):
     return buf.decode(errors="replace"), None
 
 
+def stop_autoboot(s, timeout):
+    """Wait for U-Boot's countdown and stop at its prompt; returns (text, at_prompt).
+    The fork's autoboot is keyed (CONFIG_AUTOBOOT_KEYED): only the string "uboot"
+    stops it. Images before that print "Hit any key" and stop on any key."""
+    text, hit = read_until(s, ["type uboot to stop", "Hit any key"], timeout)
+    if hit is None:
+        return text, False
+    s.write(b"uboot" if hit.startswith("type") else b" ")
+    more, hit = read_until(s, ["RISC-V # ", "=> "], 10)
+    return text + more, hit is not None
+
+
 def login(s):
     s.write(b"\x03\r")
     text, hit = read_until(s, ["login:", "Password:", "# ", "$ "], 5)

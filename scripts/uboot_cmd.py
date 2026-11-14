@@ -7,6 +7,7 @@ Env: GOWIN_PATH; per-command timeout UBOOT_TIMEOUT (default 120 s).
 import os
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import uart_console as uc  # noqa: E402
@@ -17,17 +18,17 @@ s.reset_input_buffer()
 env = dict(os.environ, MODE="sram", FS=os.path.abspath(sys.argv[1]))
 prog = subprocess.Popen([os.path.join(REPO, "scripts/gw_program.sh")], env=env,
                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-text, hit = uc.read_until(s, ["Hit any key"], 90)
-if hit is None:
+text, ok = uc.stop_autoboot(s, 90)
+if not ok:
     sys.exit("no U-Boot prompt:\n" + text[-1500:])
-s.write(b" ")
-uc.read_until(s, ["RISC-V # ", "=> "], 10)
 prog.wait()
 tmo = float(os.environ.get("UBOOT_TIMEOUT", "120"))
 for cmd in sys.argv[2:]:
+    t0 = time.time()
     s.write((cmd + "\r").encode())
     text, hit = uc.read_until(s, ["\nRISC-V # ", "\n=> "], tmo)
     print("# " + text.replace("\r", "").replace("RISC-V # ", "").rstrip())
+    print("  (%.2f s)" % (time.time() - t0))
     if hit is None:
         print("(timeout)")
         break

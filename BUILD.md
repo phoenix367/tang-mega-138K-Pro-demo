@@ -95,7 +95,7 @@ GOWIN_PATH=$GP STAGE=all scripts/gw_run.sh    # syn + PnR + bitstream -> impl/pn
 - `impl/mega_138K_test_process_config.json` keeps `CPU`/`MSPI`/`SSPI` = `true` so the
   AE350's SPI-flash interface can use the dedicated config pins (else PnR fails `PR2017`).
 - Synthesis-only needs no constraints; PnR enforces `Promote_Physical_Constraint_Warning_to_Error`.
-- Build 72: logic 30 %, registers 26 %, BSRAM 57 % (192 of 340), DSP 11 % on
+- Build 73 (as Build 72): logic 30 %, registers 26 %, BSRAM 57 % (192 of 340), DSP 11 % on
   `gw5ast138b-007` (doc/01-architecture.md §8.5).
 
 Program the board:
@@ -231,6 +231,7 @@ lvdesk / inputd / wavplay come from `src/apps/desktop` (`make install`).
 ## 5. Flash layout & deploy
 
 16 MB SPI NOR (W25Q128, id `0xEF4018`); CPU XIP base `0x80000000` = flash offset `0x600000`.
+(The SoM's second W25Q128, U7 on the SoC's SPI2, holds nothing yet: U-Boot `sf`, see doc/03-boot.md.)
 
 | Flash offset | XIP addr | Contents |
 |--------------|----------|----------|

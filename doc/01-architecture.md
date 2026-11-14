@@ -13,7 +13,8 @@ describes the hardware in the order of an FPGA architecture document: requiremen
 top-level structure, clocks and reset, memory, datapath, interfaces, verification, and
 implementation. The numbers are those of gateware **Build 72** (2026-11-05; the
 implementation reports in `impl/` of 2026-11-05 00:43) and kernel #97/#98, unless a
-section says otherwise.
+section says otherwise. Build 73 (2026-11-14) only adds the six pins of the second
+SPI NOR; its timing and utilization are Build 72's apart from the I/O count.
 
 | topic | document |
 |---|---|
@@ -124,7 +125,8 @@ By clock (dynamic, mW): ddr3_sysclk 646, ddr3_memory_clk 200, AHB 133, lcd_pclk 
 |---|---:|---|---|
 | board clock | 1 | P16, 50 MHz | all three PLLs and the DDR3 IP's reference |
 | DDR3, 2 × H5TQ4G63EFR (x16) | 71 | SSTL15 / SSTL15D (CK, 4 DQS pairs), 1.5 V, banks 6 / 7 | the data memory (§4.4) |
-| SPI NOR, W25Q128 16 MB | 6 | the FPGA's dedicated MSPI configuration pins | the bitstream, U-Boot (XIP), the splash, the kernel payload |
+| SPI NOR U4, W25Q128 16 MB | 6 | the FPGA's dedicated MSPI configuration pins | the bitstream, U-Boot (XIP), the splash, the kernel payload |
+| second SPI NOR U7, W25Q128 16 MB | 6 | LVCMOS33, bank 3: L25 CS#, P20 CLK, R21/T22/R22/R20 IO0–IO3; pull-ups | the SoC's SPI2 (Build 73+); storage, U-Boot `sf` only so far |
 | RGMII to the RTL8211F PHY | 16 | LVCMOS33; RXC on C23 | Ethernet: TXC/TX_CTL/TXD[3:0], RXC/RX_CTL/RXD[3:0], MDC/MDIO, the PHY's 25 MHz clock and reset |
 | LCD, Sipeed 5" 800 × 480 RGB | 20 | LVCMOS33; data DRIVE 24 | clock, DE, RGB666 |
 | PT8211 DAC + amplifier enable | 4 | LVCMOS33 | audio: BCK, LRCK, DIN, PA_EN |
@@ -136,7 +138,7 @@ By clock (dynamic, mW): ddr3_sysclk 646, ddr3_memory_clk 200, AHB 133, lcd_pclk 
 | keys, LEDs | 4 + 4 | | reset key S3, keys S0–S2 and LEDs on the SoC's GPIO, LED5 = DDR3 not calibrated |
 | debug | 2 | U16 / U15 | EXTM handshake probe |
 
-There are 150 ports on 145 pads: the 5 differential pairs are the DDR3 CK and DQS.
+There are 156 ports on 151 pads: the 5 differential pairs are the DDR3 CK and DQS.
 There is no PCIe, no USB, no HDMI and no camera in the design.
 
 ### 1.5 Device, board and toolchain
@@ -804,7 +806,7 @@ addresses, which is why every core has its own master
 | WDT (atcwdt200) | `0xF050_0000` | | reboot |
 | RTC | `0xF060_0000` | | 1 Hz calendar, not used for timing |
 | SoC GPIO | `0xF070_0000` | | keys S0–S2, LEDs |
-| SoC I2C; DMAC; SPI | `0xF0A0_0000`; `0xF0C0_0000`; `0xF0F0_0000` | | enabled in the SoC, not used by Linux |
+| SoC I2C; DMAC; SPI2 | `0xF0A0_0000`; `0xF0C0_0000`; `0xF0F0_0000` | | enabled in the SoC, not used by Linux; SPI2 drives the second SPI NOR U7 (Build 73+, U-Boot `sf`) |
 | **ddr_perf (external APB)** | `0xF800_0000` | PADDR[11:0] | ID, CTRL, STATUS, trace, CONFIG `0x00020190`, MODE at `0x020`, counters from `0x100` |
 
 The SoC is configured (`src/rtl/riscv_ae350_soc/*.ipc`) with:
@@ -1096,6 +1098,7 @@ The history of the two tight domains across builds:
 | 70 (11-04) | the JPEG entropy decoder | 53.1 | — |
 | 71 (11-04) | scaler and OSD (32 BSRAM of line RAM) | 51.5 | 100.08 |
 | 72 (11-05) | 2048-pixel IDCT bands | 51.06 | 100.02 |
+| 73 (11-14) | SPI2 to the second SPI NOR (I/O only) | 51.06 | 100.02 |
 
 The AHB domain has carried the JPEG core since Build 69 and sits within 1 MHz of its
 constraint. The next core on the bus clock will have to find its slack in the EXTS
@@ -1112,7 +1115,7 @@ The usual guideline keeps 20–30 % headroom for timing closure and later change
 | CLS (logic sites with something in them) | 36 792 | 69 120 | 54 % | within |
 | BSRAM | 192 | 340 | 57 % | within |
 | DSP | 32.5 | 298 | 11 % | well within |
-| I/O ports | 150 | 312 | 49 % | within; bank 6 at 88 % |
+| I/O ports | 156 | 312 | 50 % | within; bank 6 at 88 % |
 | PRIMARY + LW clock wires | 16 | 16 | 100 % | **full** |
 | PLL | 3 | 12 | 25 % | |
 | AE350 SoC, ADCs | 1 + 2 | 1 + 2 | 100 % | single instances |
