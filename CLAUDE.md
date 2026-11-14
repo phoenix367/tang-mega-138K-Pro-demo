@@ -91,7 +91,8 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    TWI mux select (N19/P19/P26) and the write protect (V14) of the Dock's 1 KB ZD24C08A
    EEPROM (mux channel 2, I2C 0x50..0x53). Linux side is all mainline, no board driver:
    `gpio-mmio` (`wd,mbl-gpio`) + `i2c-gpio` + `i2c-mux-gpio` + `at24`/nvmem
-   (`/sys/bus/nvmem/devices/board-eeprom0/nvmem`); Build 66 + kernel #73. See src/rtl/gpio/README.md.
+   (`/sys/bus/nvmem/devices/board-eeprom*/nvmem`: `board-eeprom1` since kernel #99, at24 appends a
+   global nvmem id and `mtd0` takes 0); Build 66 + kernel #73. See src/rtl/gpio/README.md.
    **Console:** UART2 on header pins B19 (TX) / A17 (RX, `PULL_MODE=UP` since Build 67). U-Boot's
    autoboot is keyed (fork defconfig `AUTOBOOT_KEYED`, stop string `uboot`, no `AUTOBOOT_FLUSH_STDIN`):
    a floating or stuck-low RX used to stop it like a keypress and the board sat at the prompt
@@ -188,8 +189,14 @@ no npm/make/test commands. The project holds **two designs**; only one is enable
    (L25 CS#, P20 CLK, R21/T22/R22/R20 IO0..3), driven by the SoC's own second ATCSPI200 (SPI2 @
    `0xF0F00000`, top-level `FLASH2_SPI_*`). U-Boot reads/writes it (`sf probe 0:0`, DT
    `spi@f0f00000` = alias spi0, 25 MHz, ~1.5 MB/s read; `sf probe 0:0 <hz>` sets the clock but
-   not the uclass's cached speed, so a later probe with another speed is ignored). Linux 6.12
-   has no ATCSPI200 driver; the FPGA can't configure from U7; the chip came blank.
+   not the uclass's cached speed, so a later probe with another speed is ignored). Linux
+   (kernel #99+): mainline's `spi-atcspi200` backported (`PATCHES/0017`, PIO, DT
+   `spi@f0f00000` + `flash@0`) → `/dev/mtd0` (`spi0.0`, 16 MB, 4 KB erase); busybox
+   `flashcp` / `flash_eraseall` / `flash_lock|unlock`; check `src/apps/tests/flashtest`
+   (boardtest `cores.flash2`, writes only a blank last 64 KB). SPI2's input clock is ~23 MHz,
+   not the 50 MHz APB (measured; U-Boot's DT still says 50, so its "25 MHz" is ~11.5). The
+   A25 has no `time` CSR (OpenSBI emulates it): clock reads in tight driver loops are slow.
+   The FPGA can't configure from U7; nothing is stored on it yet.
 2. **`led_blink` — a disabled sample.** Counter-based LED blinker (`CLK_FREQ_HZ` /
    `BLINK_HZ` params) on the board's `clk`=P16 / `rst_n`=K16 / `led`=J14. Files present
    but `enable="0"` in the `.gprj`. To switch back to it: enable its three files, disable

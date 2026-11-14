@@ -8,7 +8,10 @@
 
 case "$1" in
 	start)
-		[ -e /sys/bus/nvmem/devices/board-eeprom0/nvmem ] || { echo "boardcfg: no EEPROM (board-eeprom0), settings not persistent"; exit 0; }
+		# at24 names the EEPROM after its DT label + a global nvmem id (board-eeprom1 since
+		# kernel #99: the second SPI NOR's mtd0 registers first); boardcfg finds it the same way
+		set -- /sys/bus/nvmem/devices/board-eeprom*/nvmem
+		[ -e "$1" ] || { echo "boardcfg: no EEPROM (board-eeprom*), settings not persistent"; exit 0; }
 		/usr/sbin/boardcfg -d
 		;;
 	stop)

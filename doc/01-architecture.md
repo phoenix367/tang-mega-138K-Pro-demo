@@ -126,7 +126,7 @@ By clock (dynamic, mW): ddr3_sysclk 646, ddr3_memory_clk 200, AHB 133, lcd_pclk 
 | board clock | 1 | P16, 50 MHz | all three PLLs and the DDR3 IP's reference |
 | DDR3, 2 × H5TQ4G63EFR (x16) | 71 | SSTL15 / SSTL15D (CK, 4 DQS pairs), 1.5 V, banks 6 / 7 | the data memory (§4.4) |
 | SPI NOR U4, W25Q128 16 MB | 6 | the FPGA's dedicated MSPI configuration pins | the bitstream, U-Boot (XIP), the splash, the kernel payload |
-| second SPI NOR U7, W25Q128 16 MB | 6 | LVCMOS33, bank 3: L25 CS#, P20 CLK, R21/T22/R22/R20 IO0–IO3; pull-ups | the SoC's SPI2 (Build 73+); storage, U-Boot `sf` only so far |
+| second SPI NOR U7, W25Q128 16 MB | 6 | LVCMOS33, bank 3: L25 CS#, P20 CLK, R21/T22/R22/R20 IO0–IO3; pull-ups | the SoC's SPI2 (Build 73+); storage: U-Boot `sf`, Linux `/dev/mtd0` (kernel #99+), nothing on it yet |
 | RGMII to the RTL8211F PHY | 16 | LVCMOS33; RXC on C23 | Ethernet: TXC/TX_CTL/TXD[3:0], RXC/RX_CTL/RXD[3:0], MDC/MDIO, the PHY's 25 MHz clock and reset |
 | LCD, Sipeed 5" 800 × 480 RGB | 20 | LVCMOS33; data DRIVE 24 | clock, DE, RGB666 |
 | PT8211 DAC + amplifier enable | 4 | LVCMOS33 | audio: BCK, LRCK, DIN, PA_EN |
@@ -806,7 +806,7 @@ addresses, which is why every core has its own master
 | WDT (atcwdt200) | `0xF050_0000` | | reboot |
 | RTC | `0xF060_0000` | | 1 Hz calendar, not used for timing |
 | SoC GPIO | `0xF070_0000` | | keys S0–S2, LEDs |
-| SoC I2C; DMAC; SPI2 | `0xF0A0_0000`; `0xF0C0_0000`; `0xF0F0_0000` | | enabled in the SoC, not used by Linux; SPI2 drives the second SPI NOR U7 (Build 73+, U-Boot `sf`) |
+| SoC I2C; DMAC; SPI2 | `0xF0A0_0000`; `0xF0C0_0000`; `0xF0F0_0000` | | I2C and DMAC enabled in the SoC, not used by Linux; SPI2 drives the second SPI NOR U7 (Build 73+; `spi-atcspi200`, PIO, kernel #99+) |
 | **ddr_perf (external APB)** | `0xF800_0000` | PADDR[11:0] | ID, CTRL, STATUS, trace, CONFIG `0x00020190`, MODE at `0x020`, counters from `0x100` |
 
 The SoC is configured (`src/rtl/riscv_ae350_soc/*.ipc`) with:

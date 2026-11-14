@@ -4,7 +4,8 @@
 # Source: the busybox git mirror at the commit below (v1.37.0.git, 2024-07-14, no release
 # tag), unmodified, checked out shallow into $AE350_USERSPACE/busybox/src (BUSYBOX_SRC
 # overrides). Config: busybox's defconfig plus static linking and a few applets switched off
-# (CONFIG_STATIC, CONFIG_STATIC_LIBGCC, no HWCLOCK / RDATE / TC / SHA*_HWACCEL).
+# (CONFIG_STATIC, CONFIG_STATIC_LIBGCC, no HWCLOCK / RDATE / TC / SHA*_HWACCEL) and the MTD
+# applets switched on (FLASHCP, FLASH_ERASEALL, FLASH_LOCK/UNLOCK; kernel #99: the second SPI NOR).
 #
 # SOURCE_DATE_EPOCH fixes the timestamp in the "BusyBox v1.37.0.git (date)" banner, the only
 # thing that differs between two builds; SOURCE_DATE_EPOCH=1781018868 (2026-06-09 19:27:48

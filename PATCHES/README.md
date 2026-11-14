@@ -22,6 +22,7 @@ git apply 0013-linux-gowin-idct.patch                         # in linux/ (indep
 git apply 0014-linux-a25-isa-extensions.patch                 # in linux/ (independent; needs 0015 for the names)
 git apply 0015-opensbi-a25-isa-extensions.patch               # in opensbi/ (after 0001)
 git apply 0016-linux-gowin-ddr-perf.patch                     # in linux/ (independent)
+git apply 0017-linux-spi-atcspi200.patch                      # in linux/ (independent)
 ```
 (or `patch -p1 < <file>`). Base versions used: OpenSBI v1.8, Linux 6.12, U-Boot 2026.07-rc3.
 
@@ -236,6 +237,24 @@ with a coherence manager (or AXI exclusive-access support).
   `name value` lines), `statistics/<name>` (one each; files read one after another are
   different samples), `clear`, `interval_ms`, `clock_hz`, `config`, `mode` (read only),
   `trace_arm`, `trace_count`, `trace` (binary, 8 bytes per bus transfer). Kernel #97.
+
+## 0017 — Linux SPI driver for the SoC's second ATCSPI200 (the SoM's second SPI NOR)
+- `drivers/spi/spi-atcspi200.c` is mainline's Andes ATCSPI200 driver (added after 6.12; a
+  spi-mem controller, so SPI NOR / NAND only), backported (`SPI_ATCSPI200`, DT
+  `"andestech,ae350-spi"`). Gateware Build 73 wires the AE350's SPI2 (`0xF0F00000`) to the
+  SoM's second W25Q128 (U7); with `MTD_SPI_NOR` it is `/dev/mtd0` (`spi0.0`, 16 MB, 4 KB
+  erase blocks). Kernel #99.
+- Changes against mainline: `TRUE`/`FALSE` and `devm_dma_request_chan()` (not in 6.12)
+  replaced; the controller's DT node set by the driver (6.12's SPI core does not, and the
+  `flash@0` child was never created); no `ERR_PTR` left in the host's DMA channels when it
+  falls back to PIO; the SCLK divider follows the device's `spi-max-frequency` (mainline
+  programs the controller maximum once at probe); the PIO FIFO wait spins on the status
+  before it reads the clock (the A25 has no `time` CSR: every clock read traps to OpenSBI).
+- PIO only: the DT gives no `dmas` (the SoC's DMAC is not used). The controller's input
+  clock is about 23 MHz, not the 50 MHz APB clock (measured: the DT's `spi2-clock` node says
+  25 MHz and the flash asks for 25 MHz, which selects the undivided clock).
+- `Kconfig` depends on `ARCH_ANDES || RISCV` (mainline: `ARCH_ANDES`) and on `SPI_MEM`, and
+  selects `REGMAP_MMIO`.
 
 ## 0012 — musl 1.2.5 soft atomics (the rootfs toolchain's `libc.a`)
 - `arch/riscv32/atomic_arch.h`: `a_cas` becomes a plain compare-and-store (no `lr.w`/`sc.w`).

@@ -231,7 +231,8 @@ lvdesk / inputd / wavplay come from `src/apps/desktop` (`make install`).
 ## 5. Flash layout & deploy
 
 16 MB SPI NOR (W25Q128, id `0xEF4018`); CPU XIP base `0x80000000` = flash offset `0x600000`.
-(The SoM's second W25Q128, U7 on the SoC's SPI2, holds nothing yet: U-Boot `sf`, see doc/03-boot.md.)
+(The SoM's second W25Q128, U7 on the SoC's SPI2, holds nothing yet: U-Boot `sf`, Linux `/dev/mtd0`
+since kernel #99, see doc/03-boot.md.)
 
 | Flash offset | XIP addr | Contents |
 |--------------|----------|----------|

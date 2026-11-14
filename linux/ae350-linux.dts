@@ -80,6 +80,18 @@
 		reg = <0x00000000 0x40000000>;		/* 1 GB DDR3 (2 x16 chips, 32-bit bus, 15 row bits) */
 	};
 
+	/* Input clock of the SoC's ATCSPI200 (SPI2 below): not the 50 MHz APB clock.
+	 * Measured on Build 73 (2026-11-15): reads of 512-byte Fast Read
+	 * transactions at SCLK dividers 3 / 1 / 0 / 0xFF (= input) gave 0.36 / 0.72 /
+	 * 1.23 / 2.37 MB/s, an input of about 23 MHz, the same as U-Boot's "1 MHz"
+	 * read (divider 24 for a 50 MHz input: 64 KB in 1.06 s). Nominal 25 MHz, so
+	 * a 25 MHz spi-max-frequency selects the undivided clock. */
+	spi2_clk: spi2-clock {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <25000000>;
+	};
+
 	soc {
 		#address-cells = <1>;
 		#size-cells = <1>;
@@ -240,6 +252,24 @@
 		 *   - The watchdog node is what the reset driver matches.
 		 * The Linux kernel has no atcwdt200 driver, so it ignores both nodes.
 		 */
+		/* The SoC's second ATCSPI200 (SPI2) and the SoM's second SPI NOR U7
+		 * (W25Q128, 16 MB) on ordinary bank-3 pins: gateware Build 73+.
+		 * spi-atcspi200 (backport of mainline), PIO only: no "dmas", the SoC's
+		 * DMAC is not used. The FPGA cannot configure from this flash. */
+		spi2: spi@f0f00000 {
+			compatible = "andestech,ae350-spi";
+			reg = <0xf0f00000 0x100>;
+			clocks = <&spi2_clk>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			flash2: flash@0 {
+				compatible = "jedec,spi-nor";
+				reg = <0>;
+				spi-max-frequency = <25000000>;	/* = the input clock, ~23 MHz real */
+			};
+		};
+
 		smu@f0100000 {
 			compatible = "andestech,atcsmu";
 			reg = <0xf0100000 0x1000>;
@@ -288,7 +318,8 @@
 			/* ZD24C08A U24: 1 KB, 24C08-compatible (four 256-byte
 			 * blocks at 0x50..0x53), 16-byte pages.  Hardware WP is
 			 * held high by the nvmem core and dropped only for
-			 * writes.  /sys/bus/nvmem/devices/board-eeprom0/nvmem */
+			 * writes.  /sys/bus/nvmem/devices/board-eeprom<N>/nvmem: at24
+			 * appends a global nvmem id (1 since kernel #99, mtd0 takes 0) */
 			eeprom0: eeprom@50 {
 				compatible = "atmel,24c08";
 				reg = <0x50>;

@@ -186,7 +186,8 @@ upstream; the recipes are the only project-specific part.
   `gpio/` register block with mainline `gpio-mmio` + `i2c-gpio` + `i2c-mux-gpio` + `at24`
   (defconfig: `I2C_GPIO`, `I2C_MUX_GPIO`, `GPIO_GENERIC_PLATFORM`, `EEPROM_AT24`,
   `I2C_CHARDEV`; kernel #73+, gateware Build 66+). Busybox `i2cdetect`/`i2cdump` are in,
-  the EEPROM is `/sys/bus/nvmem/devices/board-eeprom0/nvmem`. See src/rtl/gpio/README.md.
+  the EEPROM is `/sys/bus/nvmem/devices/board-eeprom*/nvmem` (`board-eeprom0` up to kernel #98,
+  `board-eeprom1` since #99: at24 adds a global nvmem id, and the second SPI NOR's `mtd0` takes 0). See src/rtl/gpio/README.md.
   **vidplay** (`src/apps/vidplay/`, kernel #76+): MJPEG AVI / AAC / MP3 player on the trimmed static
   FFmpeg built by `scripts/rootfs/build_ffmpeg.sh` (libav* + `libsoftatomic.a` in the staging
   prefix; the libraries are compiled without the A extension and link against the soft-atomic

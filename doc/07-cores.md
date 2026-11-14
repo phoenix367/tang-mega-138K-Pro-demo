@@ -869,7 +869,9 @@ The Linux stack has no board driver. It is built entirely from mainline drivers:
 - `i2c-mux-gpio` (idle on the EEPROM channel);
 - `at24`, with `wp-gpios`.
 
-The EEPROM appears as `/sys/bus/nvmem/devices/board-eeprom0/nvmem`:
+The EEPROM appears as `/sys/bus/nvmem/devices/board-eeprom<N>/nvmem` (at24 appends a global nvmem
+id: 0 up to kernel #98, 1 since #99, when the second SPI NOR's `mtd0` registers first; boardcfg looks
+for `board-eeprom*`):
 - The kernel reads the eth0 MAC address from its nvmem cell at `0x110`.
 - `boardcfg` keeps the board's settings there ([08-applications.md](08-applications.md)).
 

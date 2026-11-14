@@ -55,10 +55,15 @@
 #include <net/if_arp.h>
 #include <arpa/inet.h>
 #include <sys/wait.h>
+#include <glob.h>
 
-/* paths can be overridden with -D for a host-side test against a 1 KB file */
-#ifndef NVMEM
-#define NVMEM    "/sys/bus/nvmem/devices/board-eeprom0/nvmem"
+/* paths can be overridden with -D for a host-side test against a 1 KB file.
+ * The EEPROM: at24 names its nvmem device after the DT label plus a global nvmem
+ * id, so the number depends on probe order ("board-eeprom0" up to kernel #98; since
+ * #99 the second SPI NOR's MTD, also an nvmem provider, probes first and it is
+ * board-eeprom1).  Found by the label, see nvmem_path(). */
+#ifndef NVMEM_GLOB
+#define NVMEM_GLOB "/sys/bus/nvmem/devices/board-eeprom*/nvmem"
 #endif
 #ifndef CONF
 #define CONF     "/etc/board.conf"
@@ -328,26 +333,43 @@ static int conf_write(cfg_t *c)
 
 /* ---- the EEPROM --------------------------------------------------------- */
 
+/* the EEPROM's nvmem file: NVMEM if given at build time, else the first match of
+ * NVMEM_GLOB (there is one board EEPROM) */
+static const char *nvmem_path(void)
+{
+#ifdef NVMEM
+    return NVMEM;
+#else
+    static char path[256];
+    glob_t g;
+
+    if (!path[0] && glob(NVMEM_GLOB, 0, NULL, &g) == 0) {
+        snprintf(path, sizeof path, "%s", g.gl_pathv[0]);
+        globfree(&g);
+    }
+    return path[0] ? path : NVMEM_GLOB;
+#endif
+}
 /* the EEPROM is bit-banged (i2c-gpio busy-waits): ~1 ms of CPU per byte, so
  * read only what is needed */
 static int eeprom_read(uint8_t *img, size_t len)
 {
-    int fd = open(NVMEM, O_RDONLY);
-    if (fd < 0) { logmsg("cannot open %s: %s", NVMEM, strerror(errno)); return -1; }
+    int fd = open(nvmem_path(), O_RDONLY);
+    if (fd < 0) { logmsg("cannot open %s: %s", nvmem_path(), strerror(errno)); return -1; }
     ssize_t n = pread(fd, img, len, BASE);
     close(fd);
-    if (n != (ssize_t)len) { logmsg("short read from %s", NVMEM); return -1; }
+    if (n != (ssize_t)len) { logmsg("short read from %s", nvmem_path()); return -1; }
     return 0;
 }
 
 static int eeprom_write(const uint8_t *img, size_t len)
 {
-    int fd = open(NVMEM, O_WRONLY);
-    if (fd < 0) { logmsg("cannot open %s for writing: %s", NVMEM, strerror(errno)); return -1; }
+    int fd = open(nvmem_path(), O_WRONLY);
+    if (fd < 0) { logmsg("cannot open %s for writing: %s", nvmem_path(), strerror(errno)); return -1; }
     size_t done = 0;
     while (done < len) {
         ssize_t n = pwrite(fd, img + done, len - done, BASE + done);
-        if (n <= 0) { logmsg("write to %s failed: %s", NVMEM, strerror(errno)); close(fd); return -1; }
+        if (n <= 0) { logmsg("write to %s failed: %s", nvmem_path(), strerror(errno)); close(fd); return -1; }
         done += n;
     }
     close(fd);

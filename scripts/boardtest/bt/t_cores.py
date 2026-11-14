@@ -243,6 +243,41 @@ rm -f /mnt/sd/bt_sd.bin /tmp/bt/sd.bin; sync
     return "%s class %s: read %.1f MB/s, write %.1f MB/s, %d MB md5 ok" % (" ".join(ident[:1]), cls, rs, ws, mb)
 
 
+@test("cores", "flash2", "second SPI NOR (SoC SPI2, spi-atcspi200 + MTD): ID, read, erase/write/verify", slow=True)
+def flash2(ctx, r):
+    """The SoM's second W25Q128 (U7) behind the AE350's SPI2 (Build 73 + kernel #99).
+    flashtest reads the whole chip and writes only its last 64 KB, and only if that is
+    blank, so data kept on the flash survives the test."""
+    rc, out = ctx.run("ls -d /sys/bus/platform/drivers/atcspi200 2>/dev/null; "
+                      "for d in /sys/class/mtd/mtd*; do case $d in *ro) continue;; esac; "
+                      "case $(readlink -f $d/device) in *f0f00000*) echo MTD ${d##*/};; esac; done; "
+                      "n=/sys/bus/spi/devices/spi0.0/spi-nor; echo ID $(cat $n/jedec_id $n/partname 2>/dev/null)")
+    if "atcspi200" not in out:
+        raise Skip("no spi-atcspi200 driver (needs kernel #99)")
+    mtd = grep(r"^MTD (mtd\d+)$", out)
+    ident = grep(r"^ID (.*)$", out, default="").strip()
+    if not mtd:
+        r.fail("spi-atcspi200 is loaded but no MTD device sits on f0f00000.spi (no flash answered?)")
+        return "no MTD device"
+    r.metric("jedec_id", ident)
+    r.check(ident.startswith("ef4018"), "JEDEC ID %r, expected ef4018 (Winbond W25Q128)" % ident)
+    t = ctx.tool("flashtest")
+    rc, out = ctx.root("%s %s/dev/%s; echo RC $?\n" % (t, "-n " if ctx.quick else "", mtd), timeout=300)
+    last = grep(r"^(FLASHTEST (?:PASSED|FAILED).*)$", out, default="flashtest did not finish")
+    r.check("FLASHTEST PASSED" in out and "RC 0" in out, last)
+    rd = grep(r"= ([\d.]+) MB/s", out)
+    if rd:
+        r.metric("read_mb_per_s", float(rd))
+        if float(rd) < 1.0:
+            r.warn("read %s MB/s (1.6 MB/s at the ~23 MHz SPI clock, kernel #99)" % rd)
+    wr = grep(r"write ([\d.]+) KB/s", out)
+    if wr:
+        r.metric("write_kb_per_s", float(wr))
+    if "in use, no write test" in out:
+        r.warn("the last 64 KB of the flash holds data: write test skipped")
+    return "%s %s: %s" % (mtd, ident, last.replace("FLASHTEST ", ""))
+
+
 DDRP = "/sys/bus/platform/devices/f8000000.ddr-perf"
 
 

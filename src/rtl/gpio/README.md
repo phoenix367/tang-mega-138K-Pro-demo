@@ -55,8 +55,8 @@ direction, so the DT uses plain flags.
 ```sh
 ls /sys/bus/i2c/devices/              # i2c-0 = SYS_TWI, i2c-1.. = mux channels
 i2cdetect -y 1                        # EEPROM channel: 50 51 52 53 answer
-hexdump -C /sys/bus/nvmem/devices/board-eeprom0/nvmem | head
-echo -n "TM138K-0001" | dd of=/sys/bus/nvmem/devices/board-eeprom0/nvmem bs=1 seek=0 conv=notrunc
+hexdump -C /sys/bus/nvmem/devices/board-eeprom*/nvmem | head   # board-eeprom1 since kernel #99
+echo -n "TM138K-0001" | dd of=/sys/bus/nvmem/devices/board-eeprom*/nvmem bs=1 seek=0 conv=notrunc
 ```
 
 (The bus numbers depend on probe order; `ls -l /sys/bus/i2c/devices/*/of_node`

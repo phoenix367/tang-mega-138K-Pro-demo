@@ -1,8 +1,13 @@
 """kernel: boot log, drivers, configuration, accounting, EEPROM, services, time, login, ISA."""
-import glob, os, re, subprocess, time
+import fnmatch, glob, os, re, subprocess, time
 from pathlib import Path
 
 from .core import REPO, Skip, grep, test
+
+def _have(have, node):
+    """node (a path, may be a glob) is among the shell loop's "HAVE <path>" lines"""
+    return any(fnmatch.fnmatch(l[5:].strip(), node) for l in have.split("\n") if l.startswith("HAVE "))
+
 
 # probe lines of the board's drivers (dmesg) and what each must have created
 DRIVERS = [
@@ -13,7 +18,8 @@ DRIVERS = [
     ("fan PWM + tacho", r"gowin-fan \S+: fan PWM", None),
     ("audio PT8211", r"gowin-pt8211 \S+: PT8211 audio", "/dev/snd/pcmC0D0p"),
     ("SD host", r"gowin-sdhost \S+: SD host, 4-bit", None),
-    ("board EEPROM", r"at24 \S+: \d+ byte 24c08 EEPROM", "/sys/bus/nvmem/devices/board-eeprom0"),
+    # at24 names it after the DT label + a global nvmem id: board-eeprom1 since kernel #99 (mtd0 first)
+    ("board EEPROM", r"at24 \S+: \d+ byte 24c08 EEPROM", "/sys/bus/nvmem/devices/board-eeprom*"),
     ("I2C mux", r"i2c-mux-gpio \S+: \d+ port mux", None),
     ("DDR bus counters", r"gowin-ddr-perf \S+: DDR bus counters", "/sys/bus/platform/devices/f8000000.ddr-perf/counters"),
     ("Ethernet MAC", r"gw-tse \S+ eth0: Gowin TSE", None),
@@ -78,13 +84,13 @@ def drivers(ctx, r):
         m = re.search(pat, log)
         if not m:
             # an old boot log can have rotated out of the ring buffer: then the node decides
-            if node and "HAVE " + node in have:
+            if node and _have(have, node):
                 r.warn("%s: probe line not in dmesg (rotated?), %s exists" % (name, node))
             else:
                 r.fail("%s: not probed" % name)
             continue
         ok += 1
-        if node and "HAVE " + node not in have:
+        if node and not _have(have, node):
             r.fail("%s: probed, but %s is missing" % (name, node))
     for n in ("/dev/uinput", "/dev/input/event1"):
         r.check("HAVE " + n in have, n + " missing")
@@ -157,7 +163,8 @@ rm -f /tmp/bt/io.bin /tmp/bt/io1 /tmp/bt/io2 /tmp/bt/io3
 
 @test("kernel", "eeprom", "board EEPROM and MAC")
 def eeprom(ctx, r):
-    rc, out = ctx.root("dd if=/sys/bus/nvmem/devices/board-eeprom0/nvmem bs=1 skip=272 count=6 2>/dev/null | od -An -tx1\n"
+    rc, out = ctx.root("set -- /sys/bus/nvmem/devices/board-eeprom*/nvmem\n"
+                       "dd if=$1 bs=1 skip=272 count=6 2>/dev/null | od -An -tx1\n"
                        "cat /sys/class/net/eth0/address\ngrep '^mac=' /etc/board.conf\n")
     lines = [l.strip() for l in out.split("\n") if l.strip()]
     if len(lines) < 2:
